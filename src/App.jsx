@@ -536,11 +536,14 @@ export default function App() {
     return ()=>clearInterval(iv);
   },[tickets]);
 
-  if (!curUser) return <LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={u=>setCurUser(u)}/>;
+  const isAdmin = ["admin","it_manager"].includes(curUser?.role);
+  const isTech  = ["admin","it_manager","it_technician"].includes(curUser?.role);
+  const visible = useMemo(() =>
+    tickets.filter(t => !t.deleted && (isTech || t.submittedBy===curUser?.id || t.assignedTo===curUser?.id)),
+    [tickets, curUser, isTech]
+  );
 
-  const isAdmin=["admin","it_manager"].includes(curUser.role);
-  const isTech =["admin","it_manager","it_technician"].includes(curUser.role);
-  const visible=useMemo(()=>tickets.filter(t=>!t.deleted&&(isTech||t.submittedBy===curUser.id||t.assignedTo===curUser.id)),[tickets,curUser,isTech]);
+  if (!curUser) return <LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={u=>setCurUser(u)}/>;
 
   const NAV=[
     {id:"dashboard",   icon:"🏠",label:"Dashboard"},
