@@ -179,6 +179,39 @@ const SEED_LOGS = [
   { id:"l6",action:"EMAIL_SENT",      userId:"u3",target:"t1",detail:"Email sent to john@acmecorp.com",timestamp:hAgo(9) },
 ];
 
+// ── SUPABASE EDGE FUNCTION HELPERS ───────────────────────────────────────────
+const FUNCTIONS_URL = "https://byuvyyycweowdupyvjgy.supabase.co/functions/v1";
+
+async function callSendEmail({ to, cc, subject, body, ticketId }) {
+  try {
+    const res = await fetch(`${FUNCTIONS_URL}/send-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, cc, subject, body, ticketId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Email send failed");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function callSendSms({ to, message, ticketId }) {
+  try {
+    const res = await fetch(`${FUNCTIONS_URL}/send-sms`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, message, ticketId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "SMS send failed");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 // ── SMALL COMPONENTS ─────────────────────────────────────────────────────────
 function Badge({ label, color, bg }) {
   return (
@@ -819,21 +852,67 @@ function TicketDetail({ ticket, setTickets, users, ticketTypes, companies, clien
     setNote("");
   };
 
-  const sendEmail = () => {
+  const [emailSending, setEmailSending] = useState(false);
+  const [smsSending,   setSmsSending]   = useState(false);
+
+  const sendEmail = async () => {
     if (!msgTo.trim()||!msgBody.trim()) { showToast("Recipient and body required","error"); return; }
-    const msg = { id:uid(),from:curUser.id,fromEmail:curUser.email,to:[],toEmails:msgTo.split(",").map(e=>e.trim()),cc:msgCC?msgCC.split(",").map(e=>e.trim()):[],subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false };
+    setEmailSending(true);
+    const toList = msgTo.split(",").map(e=>e.trim());
+    const ccList = msgCC ? msgCC.split(",").map(e=>e.trim()) : [];
+
+    // Log the message locally immediately so trail is visible
+    const msg = {
+      id:uid(), from:curUser.id, fromEmail:curUser.email,
+      to:[], toEmails:toList, cc:ccList,
+      subject:msgSubj, body:msgBody,
+      timestamp:new Date().toISOString(), isExternal:false,
+      status:"sending",
+    };
     setTickets(prev=>prev.map(t=>t.id===ticket.id?{...t,conversations:[...(t.conversations||[]),msg]}:t));
-    addLog("EMAIL_SENT",ticket.id,"Email sent to "+msgTo);
-    showToast("📧 Email sent & logged");
-    setMsgTo("");setMsgCC("");setMsgBody("");
+
+    // Call real SendGrid via Supabase Edge Function
+    // Send to each recipient (including CC) so all get the email
+    const allRecipients = [...toList, ...ccList];
+    const results = await Promise.all(
+      allRecipients.map(email =>
+        callSendEmail({ to:email, cc:ccList, subject:msgSubj, body:msgBody, ticketId:ticket.id })
+      )
+    );
+    const allOk = results.every(r => r.success);
+
+    // Update the local message status
+    setTickets(prev=>prev.map(t=>t.id===ticket.id ? {
+      ...t,
+      conversations: (t.conversations||[]).map(c =>
+        c.id===msg.id ? {...c, status: allOk?"sent":"failed"} : c
+      )
+    } : t));
+
+    addLog("EMAIL_SENT", ticket.id, "Email sent to "+msgTo+(allOk?"":" [FAILED]"));
+    showToast(allOk ? "📧 Email sent via SendGrid!" : "⚠️ Some emails failed — check SendGrid logs", allOk?"ok":"error");
+    setEmailSending(false);
+    if (allOk) { setMsgTo(""); setMsgCC(""); setMsgBody(""); }
   };
 
-  const sendSms = () => {
+  const sendSms = async () => {
     if (!smsTo.trim()||!smsBody.trim()) { showToast("Phone and message required","error"); return; }
-    setSmsLog(prev=>[...prev,{ id:uid(),to:smsTo,body:smsBody,from:curUser.name,ts:new Date().toISOString(),status:"sent" }]);
-    addLog("SMS_SENT",ticket.id,"SMS → "+smsTo);
-    showToast("📱 SMS tracked");
-    setSmsTo("");setSmsBody("");
+    setSmsSending(true);
+
+    // Log locally first
+    const entry = { id:uid(), to:smsTo, body:smsBody, from:curUser.name, ts:new Date().toISOString(), status:"sending" };
+    setSmsLog(prev=>[...prev, entry]);
+
+    // Call real Twilio via Supabase Edge Function
+    const result = await callSendSms({ to:smsTo, message:smsBody, ticketId:ticket.id });
+
+    // Update local status
+    setSmsLog(prev=>prev.map(s=>s.id===entry.id ? {...s, status: result.success?"delivered":"failed"} : s));
+
+    addLog("SMS_SENT", ticket.id, "SMS → "+smsTo+(result.success?"":" [FAILED]"));
+    showToast(result.success ? "📱 SMS sent via Twilio!" : "⚠️ SMS failed: "+result.error, result.success?"ok":"error");
+    setSmsSending(false);
+    if (result.success) { setSmsTo(""); setSmsBody(""); }
   };
 
   if (!ticket) return null;
@@ -945,7 +1024,9 @@ function TicketDetail({ ticket, setTickets, users, ticketTypes, companies, clien
             <FInput label="CC" value={msgCC} onChange={e=>setMsgCC(e.target.value)} placeholder="manager@company.com"/>
             <FInput label="Subject" value={msgSubj} onChange={e=>setMsgSubj(e.target.value)}/>
             <FTextarea label="Message" value={msgBody} onChange={e=>setMsgBody(e.target.value)} rows={4} placeholder="Type your message…"/>
-            <Btn onClick={sendEmail}>📤 Send Email</Btn>
+            <Btn onClick={sendEmail} disabled={emailSending} style={{ opacity:emailSending?.6:1 }}>
+              {emailSending ? "⏳ Sending…" : "📤 Send Email"}
+            </Btn>
           </div>
           <hr style={{ margin:"14px 0", border:"none", borderTop:"1px solid #e2e8f0" }}/>
           <div style={{ fontWeight:700, color:"#1e293b", marginBottom:10 }}>📬 Conversation Trail ({(ticket.conversations||[]).length})</div>
@@ -957,7 +1038,12 @@ function TicketDetail({ ticket, setTickets, users, ticketTypes, companies, clien
                   {m.isExternal?"📬 EXTERNAL":"📧"} {m.fromEmail}
                   {m.toEmails&&m.toEmails.length>0&&<span style={{ color:"#64748b", fontWeight:400 }}> → {m.toEmails.join(", ")}</span>}
                 </div>
-                <div style={{ fontSize:10, color:"#94a3b8" }}>{fdt(m.timestamp)}</div>
+                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                  {m.status==="sending" && <span style={{ fontSize:10, color:"#f59e0b", fontWeight:600 }}>⏳ Sending…</span>}
+                  {m.status==="sent"    && <span style={{ fontSize:10, color:"#10b981", fontWeight:600 }}>✅ Sent</span>}
+                  {m.status==="failed"  && <span style={{ fontSize:10, color:"#ef4444", fontWeight:600 }}>❌ Failed</span>}
+                  <div style={{ fontSize:10, color:"#94a3b8" }}>{fdt(m.timestamp)}</div>
+                </div>
               </div>
               {m.cc&&m.cc.length>0&&<div style={{ fontSize:11,color:"#94a3b8",marginBottom:4 }}>CC: {m.cc.join(", ")}</div>}
               <div style={{ fontSize:11,color:"#64748b",marginBottom:4 }}>Subj: {m.subject}</div>
@@ -972,7 +1058,9 @@ function TicketDetail({ ticket, setTickets, users, ticketTypes, companies, clien
           <div style={{ background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:10,marginBottom:14,fontSize:12 }}>📱 <strong>SMS Tracker</strong> — Logged via Twilio API, attached to this ticket.</div>
           <FInput label="Phone Number" value={smsTo} onChange={e=>setSmsTo(e.target.value)} placeholder="+1-555-0123"/>
           <FTextarea label="Message" value={smsBody} onChange={e=>setSmsBody(e.target.value)} rows={3} placeholder="Type SMS…"/>
-          <Btn onClick={sendSms}>📱 Send &amp; Track SMS</Btn>
+          <Btn onClick={sendSms} disabled={smsSending} style={{ opacity:smsSending?.6:1 }}>
+            {smsSending ? "⏳ Sending…" : "📱 Send & Track SMS"}
+          </Btn>
           <hr style={{ margin:"14px 0",border:"none",borderTop:"1px solid #e2e8f0" }}/>
           <div style={{ fontWeight:700,marginBottom:8 }}>SMS Log</div>
           {smsLog.length===0&&<div style={{ color:"#94a3b8",fontSize:12 }}>No SMS tracked yet.</div>}
@@ -1448,12 +1536,21 @@ function PageSmsTracker({ tickets, users, curUser, showToast, addLog }) {
     {id:"s1",to:"+1-555-0105",body:"Ticket #t1: Technician will call in 30 min.",from:"Alex Rodriguez",ticketId:"t1",ts:hAgo(2),status:"delivered"},
     {id:"s2",to:"+1-555-0107",body:"Security alert: Change your password immediately.",from:"Mike Chen",ticketId:"t3",ts:hAgo(1),status:"delivered"},
   ]);
-  const send=()=>{
-    if(!to.trim()||!body.trim()){showToast("Phone and message required","error");return;}
-    setLog(prev=>[{id:uid(),to,body,from:curUser.name,ticketId:tid,ts:new Date().toISOString(),status:"sent"},...prev]);
-    addLog("SMS_SENT",tid,"SMS → "+to+": \""+body.slice(0,40)+"\"");
-    showToast("📱 SMS tracked");
-    setTo("");setBody("");
+  const [sending, setSending] = useState(false);
+
+  const send = async () => {
+    if (!to.trim()||!body.trim()) { showToast("Phone and message required","error"); return; }
+    setSending(true);
+    const entry = { id:uid(), to, body, from:curUser.name, ticketId:tid, ts:new Date().toISOString(), status:"sending" };
+    setLog(prev=>[entry,...prev]);
+
+    const result = await callSendSms({ to, message:body, ticketId:tid });
+
+    setLog(prev=>prev.map(s=>s.id===entry.id ? {...s, status:result.success?"delivered":"failed"} : s));
+    addLog("SMS_SENT", tid, "SMS → "+to+(result.success?"":" [FAILED]"));
+    showToast(result.success ? "📱 SMS sent via Twilio!" : "⚠️ SMS failed: "+result.error, result.success?"ok":"error");
+    setSending(false);
+    if (result.success) { setTo(""); setBody(""); }
   };
   return (
     <div>
@@ -1467,7 +1564,9 @@ function PageSmsTracker({ tickets, users, curUser, showToast, addLog }) {
           <FInput label="To (phone number)" value={to} onChange={e=>setTo(e.target.value)} placeholder="+1-555-0123"/>
           <FSelect label="Link to Ticket" value={tid} onChange={e=>setTid(e.target.value)} options={tickets.map(t=>({value:t.id,label:"#"+t.id+" — "+t.title.slice(0,28)}))}/>
           <FTextarea label="Message" value={body} onChange={e=>setBody(e.target.value)} rows={3} placeholder="Type SMS message…"/>
-          <Btn onClick={send}>📤 Send &amp; Track</Btn>
+          <Btn onClick={send} disabled={sending} style={{ opacity:sending?.6:1 }}>
+            {sending ? "⏳ Sending…" : "📤 Send & Track"}
+          </Btn>
         </Card>
         <Card>
           <div style={{ fontWeight:700,marginBottom:14 }}>SMS Log ({log.length})</div>
