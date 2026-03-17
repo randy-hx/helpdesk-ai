@@ -326,7 +326,7 @@ function DemoSwitcher({ users, curUser, onSwitch }) {
 }
 
 // ── LOGIN PAGE ────────────────────────────────────────────────────────────────
-function LoginPage({ users, onLogin }) {
+function LoginPage({ users, setUsers, companies, onLogin }) {
   const [view,        setView]       = useState("login"); // "login" | "signup" | "forgot" | "sent" | "pending"
   const [email,       setEmail]      = useState("");
   const [password,    setPassword]   = useState("");
@@ -692,7 +692,7 @@ export default function App() {
   const [breaches,    setBreaches]    = useState([]);
 
   // Show login if not signed in
-  if (!curUser) return <LoginPage users={users} onLogin={u => setCurUser(u)} />;
+  if (!curUser) return <LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={u => setCurUser(u)} />;
 
   const addLog = useCallback((action, target, detail, uId) => {
     setLogs(p => [{ id:uid(), action, userId:uId||curUser.id, target, detail, timestamp:new Date().toISOString() }, ...p]);
