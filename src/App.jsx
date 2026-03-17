@@ -292,6 +292,235 @@ function Btn({ children, variant, size, style, ...p }) {
   return <button style={{ ...base, ...(cols[v]||cols.primary), ...style }} {...p}>{children}</button>;
 }
 
+// ── DEMO SWITCHER (Admin only — shown in sidebar) ─────────────────────────────
+function DemoSwitcher({ users, curUser, onSwitch }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ padding:"0 8px 8px" }}>
+      <button onClick={()=>setOpen(!open)}
+        style={{ width:"100%", padding:"7px 10px", background:"rgba(99,102,241,.25)", color:"#c7d2fe", border:"1px solid rgba(99,102,241,.4)", borderRadius:8, fontSize:11, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <span>🎭 Demo Switcher</span>
+        <span style={{ fontSize:9 }}>{open?"▲":"▼"}</span>
+      </button>
+      {open && (
+        <div style={{ background:"rgba(0,0,0,.25)", borderRadius:8, marginTop:4, overflow:"hidden" }}>
+          {users.filter(u=>u.active).map(u => {
+            const rm = ROLE_META[u.role];
+            const isMe = u.id === curUser.id;
+            return (
+              <button key={u.id} onClick={()=>{ onSwitch(u); setOpen(false); }} disabled={isMe}
+                style={{ width:"100%", padding:"8px 10px", background: isMe?"rgba(99,102,241,.3)":"transparent", border:"none", borderBottom:"1px solid rgba(255,255,255,.06)", cursor:isMe?"default":"pointer", textAlign:"left", display:"flex", alignItems:"center", gap:8 }}>
+                <Avatar name={u.name} id={u.id} size={22}/>
+                <div style={{ flex:1, overflow:"hidden" }}>
+                  <div style={{ fontSize:11, color:"#e2e8f0", fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{u.name}</div>
+                  <div style={{ fontSize:9, fontWeight:700, color:rm?.color||"#a5b4fc" }}>{rm?.label}</div>
+                </div>
+                {isMe && <span style={{ fontSize:9, color:"#a5b4fc" }}>● you</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── LOGIN PAGE ────────────────────────────────────────────────────────────────
+function LoginPage({ users, onLogin }) {
+  const [view,        setView]       = useState("login"); // "login" | "forgot" | "sent"
+  const [email,       setEmail]      = useState("");
+  const [password,    setPassword]   = useState("");
+  const [resetEmail,  setResetEmail] = useState("");
+  const [error,       setError]      = useState("");
+  const [resetError,  setResetError] = useState("");
+  const [loading,     setLoading]    = useState(false);
+  const [showPass,    setShowPass]   = useState(false);
+
+  const DEMO_PASSWORD = "password123";
+
+  const inputStyle = (focused) => ({
+    width:"100%", padding:"11px 14px", border:"1.5px solid "+(focused?"#6366f1":"#e2e8f0"),
+    borderRadius:10, fontSize:14, outline:"none", boxSizing:"border-box", background:"#f8fafc", transition:"border .2s",
+  });
+
+  const handleLogin = async e => {
+    e.preventDefault();
+    setError("");
+    if (!email.trim()||!password.trim()) { setError("Please enter your email and password."); return; }
+    setLoading(true);
+    await new Promise(r => setTimeout(r, 800));
+    const user = users.find(u => u.email.toLowerCase()===email.toLowerCase().trim() && u.active);
+    if (!user)                    { setError("No account found with that email address."); setLoading(false); return; }
+    if (password!==DEMO_PASSWORD) { setError("Incorrect password. Please try again."); setLoading(false); return; }
+    setLoading(false);
+    onLogin(user);
+  };
+
+  const handleForgot = async e => {
+    e.preventDefault();
+    setResetError("");
+    if (!resetEmail.trim()) { setResetError("Please enter your email address."); return; }
+    const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRx.test(resetEmail.trim())) { setResetError("Please enter a valid email address."); return; }
+    setLoading(true);
+    await new Promise(r => setTimeout(r, 1000));
+    setLoading(false);
+    // Whether the email exists or not we always show success (security best practice)
+    setView("sent");
+  };
+
+  const BG = "linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4338ca 100%)";
+
+  return (
+    <div style={{ minHeight:"100vh", background:BG, display:"flex", alignItems:"center", justifyContent:"center", padding:16, fontFamily:"'Inter',system-ui,sans-serif" }}>
+      <div style={{ width:"100%", maxWidth:420 }}>
+
+        {/* Logo */}
+        <div style={{ textAlign:"center", marginBottom:32 }}>
+          <div style={{ fontSize:56, marginBottom:12 }}>🛡️</div>
+          <h1 style={{ color:"#fff", fontSize:28, fontWeight:800, margin:0, letterSpacing:-0.5 }}>HelpDesk AI</h1>
+          <p style={{ color:"#a5b4fc", fontSize:14, margin:"8px 0 0" }}>IT Ticketing Platform</p>
+        </div>
+
+        <div style={{ background:"#fff", borderRadius:20, padding:36, boxShadow:"0 25px 60px rgba(0,0,0,.35)" }}>
+
+          {/* ── LOGIN VIEW ── */}
+          {view==="login" && (
+            <>
+              <h2 style={{ fontSize:20, fontWeight:700, color:"#1e293b", marginBottom:4, marginTop:0 }}>Welcome back 👋</h2>
+              <p style={{ fontSize:13, color:"#94a3b8", marginTop:0, marginBottom:24 }}>Sign in to access your dashboard</p>
+
+              <form onSubmit={handleLogin}>
+                {/* Email */}
+                <div style={{ marginBottom:16 }}>
+                  <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Email Address</label>
+                  <FocusInput type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" autoFocus />
+                </div>
+
+                {/* Password */}
+                <div style={{ marginBottom:8 }}>
+                  <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Password</label>
+                  <div style={{ position:"relative" }}>
+                    <FocusInput type={showPass?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••••" extraPad />
+                    <button type="button" onClick={()=>setShowPass(!showPass)}
+                      style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:16, color:"#94a3b8", padding:0, lineHeight:1 }}>
+                      {showPass?"🙈":"👁️"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Forgot password link */}
+                <div style={{ textAlign:"right", marginBottom:20 }}>
+                  <button type="button" onClick={()=>{ setView("forgot"); setResetEmail(email); setResetError(""); }}
+                    style={{ background:"none", border:"none", color:"#6366f1", fontSize:12, fontWeight:600, cursor:"pointer", padding:0, textDecoration:"underline" }}>
+                    Forgot your password?
+                  </button>
+                </div>
+
+                {/* Error */}
+                {error && (
+                  <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:8, padding:"10px 14px", marginBottom:16, color:"#dc2626", fontSize:13 }}>
+                    ⚠️ {error}
+                  </div>
+                )}
+
+                <button type="submit" disabled={loading}
+                  style={{ width:"100%", padding:"12px", background:loading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)", color:"#fff", border:"none", borderRadius:10, fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer", boxShadow:"0 4px 14px rgba(99,102,241,.4)" }}>
+                  {loading?"⏳ Signing in…":"Sign In →"}
+                </button>
+              </form>
+
+              <div style={{ marginTop:20, textAlign:"center" }}>
+                <span style={{ fontSize:12, color:"#94a3b8" }}>Need an account? Contact your system administrator.</span>
+              </div>
+            </>
+          )}
+
+          {/* ── FORGOT PASSWORD VIEW ── */}
+          {view==="forgot" && (
+            <>
+              <button type="button" onClick={()=>{ setView("login"); setResetError(""); }}
+                style={{ background:"none", border:"none", color:"#6366f1", fontSize:13, fontWeight:600, cursor:"pointer", padding:"0 0 16px 0", display:"flex", alignItems:"center", gap:4 }}>
+                ← Back to Sign In
+              </button>
+
+              <div style={{ textAlign:"center", marginBottom:24 }}>
+                <div style={{ fontSize:44, marginBottom:10 }}>🔑</div>
+                <h2 style={{ fontSize:20, fontWeight:700, color:"#1e293b", margin:"0 0 6px" }}>Forgot Password?</h2>
+                <p style={{ fontSize:13, color:"#94a3b8", margin:0 }}>Enter your email and we'll send you a link to reset your password.</p>
+              </div>
+
+              <form onSubmit={handleForgot}>
+                <div style={{ marginBottom:20 }}>
+                  <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:6 }}>Email Address</label>
+                  <FocusInput type="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)} placeholder="you@company.com" autoFocus />
+                </div>
+
+                {resetError && (
+                  <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:8, padding:"10px 14px", marginBottom:16, color:"#dc2626", fontSize:13 }}>
+                    ⚠️ {resetError}
+                  </div>
+                )}
+
+                <button type="submit" disabled={loading}
+                  style={{ width:"100%", padding:"12px", background:loading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)", color:"#fff", border:"none", borderRadius:10, fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer", boxShadow:"0 4px 14px rgba(99,102,241,.4)" }}>
+                  {loading?"⏳ Sending…":"Send Reset Link →"}
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* ── EMAIL SENT VIEW ── */}
+          {view==="sent" && (
+            <div style={{ textAlign:"center", padding:"10px 0" }}>
+              <div style={{ fontSize:56, marginBottom:16 }}>📧</div>
+              <h2 style={{ fontSize:20, fontWeight:700, color:"#1e293b", margin:"0 0 10px" }}>Check your inbox!</h2>
+              <p style={{ fontSize:13, color:"#64748b", lineHeight:1.7, margin:"0 0 8px" }}>
+                If an account exists for <strong style={{ color:"#1e293b" }}>{resetEmail}</strong>, you'll receive a password reset link shortly.
+              </p>
+              <p style={{ fontSize:12, color:"#94a3b8", margin:"0 0 28px" }}>
+                Don't see it? Check your spam or junk folder.
+              </p>
+
+              <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:10, padding:14, marginBottom:24, textAlign:"left" }}>
+                <div style={{ fontSize:12, fontWeight:700, color:"#166534", marginBottom:4 }}>✅ What happens next?</div>
+                <div style={{ fontSize:12, color:"#15803d", lineHeight:1.7 }}>
+                  1. Open the email from HelpDesk AI<br/>
+                  2. Click the <strong>"Reset Password"</strong> button<br/>
+                  3. Choose a new secure password<br/>
+                  4. Sign in with your new password
+                </div>
+              </div>
+
+              <button onClick={()=>{ setView("login"); setError(""); }}
+                style={{ width:"100%", padding:"12px", background:"linear-gradient(135deg,#6366f1,#4338ca)", color:"#fff", border:"none", borderRadius:10, fontSize:15, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 14px rgba(99,102,241,.4)" }}>
+                ← Back to Sign In
+              </button>
+            </div>
+          )}
+        </div>
+
+        <p style={{ textAlign:"center", color:"#a5b4fc", fontSize:12, marginTop:20 }}>
+          © 2025 HelpDesk AI · IT Ticketing Platform
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Helper: input with focus border highlight
+function FocusInput({ extraPad, ...props }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <input
+      {...props}
+      onFocus={()=>setFocused(true)}
+      onBlur={()=>setFocused(false)}
+      style={{ width:"100%", padding: extraPad?"11px 44px 11px 14px":"11px 14px", border:"1.5px solid "+(focused?"#6366f1":"#e2e8f0"), borderRadius:10, fontSize:14, outline:"none", boxSizing:"border-box", background:"#f8fafc", transition:"border-color .2s" }}
+    />
+  );
+}
+
 // ── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [users,       setUsers]       = useState(SEED_USERS);
@@ -300,11 +529,14 @@ export default function App() {
   const [tickets,     setTickets]     = useState(SEED_TICKETS);
   const [ticketTypes, setTicketTypes] = useState(SEED_TYPES);
   const [logs,        setLogs]        = useState(SEED_LOGS);
-  const [curUser,     setCurUser]     = useState(SEED_USERS[0]);
+  const [curUser,     setCurUser]     = useState(null);
   const [page,        setPage]        = useState("dashboard");
   const [selTicket,   setSelTicket]   = useState(null);
   const [toast,       setToast]       = useState(null);
   const [breaches,    setBreaches]    = useState([]);
+
+  // Show login if not signed in
+  if (!curUser) return <LoginPage users={users} onLogin={u => setCurUser(u)} />;
 
   const addLog = useCallback((action, target, detail, uId) => {
     setLogs(p => [{ id:uid(), action, userId:uId||curUser.id, target, detail, timestamp:new Date().toISOString() }, ...p]);
@@ -367,12 +599,23 @@ export default function App() {
             </div>
           ))}
         </div>
+        {/* Demo switcher — Admin only */}
+        {curUser.role === "admin" && (
+          <DemoSwitcher users={users} curUser={curUser} onSwitch={u=>{ setCurUser(u); setPage("dashboard"); }} />
+        )}
+
         <div style={{ padding:"12px 10px", borderTop:"1px solid rgba(255,255,255,.12)" }}>
-          <select value={curUser.id} onChange={e => { const u=users.find(x=>x.id===e.target.value); if(u){setCurUser(u);setPage("dashboard");} }}
-            style={{ width:"100%", padding:"6px 8px", borderRadius:8, border:"1px solid rgba(255,255,255,.2)", background:"rgba(255,255,255,.1)", color:"#fff", fontSize:11, outline:"none" }}>
-            {users.filter(u=>u.active).map(u => <option key={u.id} value={u.id} style={{ color:"#1e293b" }}>{u.name}</option>)}
-          </select>
-          <div style={{ color:"#a5b4fc", fontSize:10, marginTop:4 }}>Role: <strong style={{ color:"#fff" }}>{ROLE_META[curUser.role]?.label}</strong></div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+            <Avatar name={curUser.name} id={curUser.id} size={32}/>
+            <div style={{ flex:1, overflow:"hidden" }}>
+              <div style={{ color:"#fff", fontSize:12, fontWeight:700, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{curUser.name}</div>
+              <div style={{ color:"#a5b4fc", fontSize:10 }}>{ROLE_META[curUser.role]?.label}</div>
+            </div>
+          </div>
+          <button onClick={()=>{ setCurUser(null); setPage("dashboard"); }}
+            style={{ width:"100%", padding:"7px", background:"rgba(239,68,68,.2)", color:"#fca5a5", border:"1px solid rgba(239,68,68,.3)", borderRadius:8, fontSize:12, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            🚪 Sign Out
+          </button>
         </div>
       </div>
 
