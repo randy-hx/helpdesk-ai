@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import React from "react";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from "recharts";
 
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -140,6 +141,22 @@ const SEED_LOGS = [
   {id:"l5",action:"CLIENT_CREATED",  userId:"u1",target:"cl1",detail:"Client Globex Corporation added",timestamp:dAgo(30)},
   {id:"l6",action:"EMAIL_SENT",      userId:"u3",target:"t1",detail:"Email sent to john@acmecorp.com",timestamp:hAgo(9)},
 ];
+
+// ── ERROR BOUNDARY ────────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e.message }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{ padding:40, fontFamily:"monospace", background:"#fef2f2", minHeight:"100vh" }}>
+        <div style={{ fontSize:20, fontWeight:700, color:"#dc2626", marginBottom:16 }}>⚠️ App Error — please screenshot this and share</div>
+        <pre style={{ background:"#fff", padding:20, borderRadius:8, border:"1px solid #fecaca", fontSize:13, whiteSpace:"pre-wrap", color:"#7f1d1d" }}>{this.state.error}</pre>
+        <button onClick={()=>this.setState({error:null})} style={{ marginTop:16, padding:"10px 20px", background:"#dc2626", color:"#fff", border:"none", borderRadius:8, cursor:"pointer", fontWeight:700 }}>Try Again</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 
 // ── UI PRIMITIVES ────────────────────────────────────────────────────────────
 function Badge({label,color,bg}) {
@@ -539,6 +556,7 @@ export default function App() {
   ].filter(n=>{if(n.superAdmin) return curUser.role==="admin"; if(n.admin) return isAdmin; return true;});
 
   return (
+    <ErrorBoundary>
     <div style={{display:"flex",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:"#f8fafc",fontSize:13,overflow:"hidden"}}>
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}button:hover{opacity:.88}.nv:hover{background:rgba(14,165,233,.15)!important;color:#7dd3fc!important}`}</style>
 
@@ -613,6 +631,7 @@ export default function App() {
 
       {selTicket&&<TicketDetail ticket={tickets.find(t=>t.id===selTicket)} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} onClose={()=>setSelTicket(null)}/>}
     </div>
+    </ErrorBoundary>
   );
 }
 
