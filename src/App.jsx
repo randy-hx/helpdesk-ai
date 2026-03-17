@@ -34,7 +34,7 @@ const hAgo   = h => new Date(Date.now() - h  * 3600000).toISOString();
 const dAgo   = d => new Date(Date.now() - d  * 86400000).toISOString();
 const fdt    = iso => iso ? new Date(iso).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
 const ago    = iso => { if(!iso) return "—"; const m=Math.floor((Date.now()-new Date(iso))/60000); if(m<1) return "just now"; if(m<60) return m+"m ago"; const h=Math.floor(m/60); if(h<24) return h+"h ago"; return Math.floor(h/24)+"d ago"; };
-const inits  = n => n ? n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase() : "??";
+const inits  = n => { if (!n) return "??"; const parts = n.trim().split(" ").filter(Boolean); return parts.length >= 2 ? (parts[0][0]+parts[1][0]).toUpperCase() : n.slice(0,2).toUpperCase(); };
 const avCol  = id => PAL[Math.abs((id||"").split("").reduce((a,c)=>a+c.charCodeAt(0),0)) % PAL.length];
 const rnd    = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
 
@@ -85,7 +85,7 @@ const SEED_CLIENTS = [
 ];
 
 const SEED_USERS = [
-  {id:"u1",name:"Randy",          email:"randy@omnisecurityinc.com",role:"admin",   companyId:"c1",phone:"+1-555-0101",dept:"IT Administration",active:true,createdAt:dAgo(90),lastLogin:hAgo(1)},
+  {id:"u1",name:"Randy Admin",    email:"randy@omnisecurityinc.com",role:"admin",   companyId:"c1",phone:"+1-555-0101",dept:"IT Administration",active:true,createdAt:dAgo(90),lastLogin:hAgo(1)},
   {id:"u2",name:"Mike Chen",     email:"mike@itsolutions.com", role:"it_manager",   companyId:"c1",phone:"+1-555-0102",dept:"IT Operations",    active:true,createdAt:dAgo(80),lastLogin:hAgo(2)},
   {id:"u3",name:"Alex Rodriguez",email:"alex@itsolutions.com", role:"it_technician",companyId:"c1",phone:"+1-555-0103",dept:"IT Support",       active:true,createdAt:dAgo(75),lastLogin:hAgo(0.5)},
   {id:"u4",name:"Emma Williams", email:"emma@itsolutions.com", role:"it_technician",companyId:"c1",phone:"+1-555-0104",dept:"IT Support",       active:true,createdAt:dAgo(70),lastLogin:hAgo(1)},
