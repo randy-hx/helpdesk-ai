@@ -327,14 +327,17 @@ function DemoSwitcher({ users, curUser, onSwitch }) {
 
 // ── LOGIN PAGE ────────────────────────────────────────────────────────────────
 function LoginPage({ users, onLogin }) {
-  const [view,        setView]       = useState("login"); // "login" | "forgot" | "sent"
+  const [view,        setView]       = useState("login"); // "login" | "signup" | "forgot" | "sent" | "pending"
   const [email,       setEmail]      = useState("");
   const [password,    setPassword]   = useState("");
   const [resetEmail,  setResetEmail] = useState("");
   const [error,       setError]      = useState("");
   const [resetError,  setResetError] = useState("");
+  const [signupError, setSignupError]= useState("");
   const [loading,     setLoading]    = useState(false);
   const [showPass,    setShowPass]   = useState(false);
+  const [showPass2,   setShowPass2]  = useState(false);
+  const [signup,      setSignup]     = useState({ name:"", email:"", password:"", confirm:"", company:"", dept:"", phone:"" });
 
   const DEMO_PASSWORD = "password123";
 
@@ -369,20 +372,47 @@ function LoginPage({ users, onLogin }) {
     setView("sent");
   };
 
-  const BG = "linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4338ca 100%)";
+  const BG_STYLE = {
+    minHeight:"100vh",
+    background:"linear-gradient(135deg,#020e1f 0%,#041833 30%,#062d6b 65%,#0a3d8f 100%)",
+    backgroundImage:`url(${typeof HOPTIX_BG !== 'undefined' ? HOPTIX_BG : ''})`,
+    backgroundSize:"cover",
+    backgroundPosition:"center",
+    backgroundRepeat:"no-repeat",
+    display:"flex", alignItems:"center", justifyContent:"center", padding:16,
+    fontFamily:"'Inter',system-ui,sans-serif",
+    position:"relative",
+  };
 
   return (
-    <div style={{ minHeight:"100vh", background:BG, display:"flex", alignItems:"center", justifyContent:"center", padding:16, fontFamily:"'Inter',system-ui,sans-serif" }}>
-      <div style={{ width:"100%", maxWidth:420 }}>
+    <div style={BG_STYLE}>
+      {/* Dark overlay so the form stays readable over the image */}
+      <div style={{ position:"absolute", inset:0, background:"rgba(2,14,31,0.62)", backdropFilter:"blur(1px)" }}/>
 
-        {/* Logo */}
-        <div style={{ textAlign:"center", marginBottom:32 }}>
-          <div style={{ fontSize:56, marginBottom:12 }}>🛡️</div>
-          <h1 style={{ color:"#fff", fontSize:28, fontWeight:800, margin:0, letterSpacing:-0.5 }}>HelpDesk AI</h1>
-          <p style={{ color:"#a5b4fc", fontSize:14, margin:"8px 0 0" }}>IT Ticketing Platform</p>
+      <div style={{ width:"100%", maxWidth:440, position:"relative", zIndex:1 }}>
+
+        {/* Hoptix Logo Block */}
+        <div style={{ textAlign:"center", marginBottom:28 }}>
+          <div style={{ display:"inline-flex", alignItems:"center", justifyContent:"center", gap:14, marginBottom:10 }}>
+            {/* Eye icon matching Hoptix mascot style */}
+            <div style={{ width:54, height:54, borderRadius:"50%", background:"linear-gradient(135deg,#fff 60%,#b3d9ff)", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 24px rgba(56,189,248,.5)", border:"2px solid rgba(56,189,248,.4)" }}>
+              <div style={{ width:34, height:34, borderRadius:"50%", background:"linear-gradient(135deg,#0369a1,#0ea5e9)", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"inset 0 2px 8px rgba(0,0,0,.4)" }}>
+                <div style={{ width:14, height:14, borderRadius:"50%", background:"#020e1f" }}/>
+              </div>
+            </div>
+            <div style={{ textAlign:"left" }}>
+              <div style={{ color:"#fff", fontSize:32, fontWeight:800, letterSpacing:-1, lineHeight:1 }}>hoptix</div>
+              <div style={{ color:"#38bdf8", fontSize:13, fontWeight:500, letterSpacing:1 }}>
+                <span style={{ color:"#7dd3fc" }}>A.</span>
+                <span style={{ fontStyle:"italic", color:"#38bdf8" }}>eye</span>
+                <span style={{ color:"#94a3b8" }}> technology</span>
+              </div>
+            </div>
+          </div>
+          <p style={{ color:"#94a3b8", fontSize:13, margin:0 }}>IT Helpdesk — Sign in to your workspace</p>
         </div>
 
-        <div style={{ background:"#fff", borderRadius:20, padding:36, boxShadow:"0 25px 60px rgba(0,0,0,.35)" }}>
+        <div style={{ background:"rgba(255,255,255,0.97)", borderRadius:20, padding:36, boxShadow:"0 25px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(56,189,248,.15)" }}>
 
           {/* ── LOGIN VIEW ── */}
           {view==="login" && (
@@ -425,15 +455,141 @@ function LoginPage({ users, onLogin }) {
                 )}
 
                 <button type="submit" disabled={loading}
-                  style={{ width:"100%", padding:"12px", background:loading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)", color:"#fff", border:"none", borderRadius:10, fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer", boxShadow:"0 4px 14px rgba(99,102,241,.4)" }}>
+                  style={{ width:"100%", padding:"12px", background:loading?"#7dd3fc":"linear-gradient(135deg,#0369a1,#0ea5e9)", color:"#fff", border:"none", borderRadius:10, fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer", boxShadow:"0 4px 14px rgba(14,165,233,.4)" }}>
                   {loading?"⏳ Signing in…":"Sign In →"}
                 </button>
               </form>
 
               <div style={{ marginTop:20, textAlign:"center" }}>
-                <span style={{ fontSize:12, color:"#94a3b8" }}>Need an account? Contact your system administrator.</span>
+                <span style={{ fontSize:12, color:"#94a3b8" }}>Don't have an account? </span>
+                <button type="button" onClick={()=>{ setView("signup"); setSignupError(""); setSignup({ name:"",email:"",password:"",confirm:"",company:"",dept:"",phone:"" }); }}
+                  style={{ background:"none", border:"none", color:"#6366f1", fontSize:12, fontWeight:700, cursor:"pointer", padding:0, textDecoration:"underline" }}>
+                  Sign Up
+                </button>
               </div>
             </>
+          )}
+
+          {/* ── SIGN UP VIEW ── */}
+          {view==="signup" && (
+            <>
+              <button type="button" onClick={()=>{ setView("login"); setSignupError(""); }}
+                style={{ background:"none", border:"none", color:"#6366f1", fontSize:13, fontWeight:600, cursor:"pointer", padding:"0 0 14px 0", display:"flex", alignItems:"center", gap:4 }}>
+                ← Back to Sign In
+              </button>
+
+              <h2 style={{ fontSize:20, fontWeight:700, color:"#1e293b", margin:"0 0 4px" }}>Create an Account 🚀</h2>
+              <p style={{ fontSize:13, color:"#94a3b8", margin:"0 0 20px" }}>Fill in your details. An admin will approve your account.</p>
+
+              <form onSubmit={handleSignup}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:2 }}>
+                  <div>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Full Name *</label>
+                    <FocusInput type="text" value={signup.name} onChange={e=>sfld("name",e.target.value)} placeholder="Jane Smith" autoFocus />
+                  </div>
+                  <div>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Phone</label>
+                    <FocusInput type="tel" value={signup.phone} onChange={e=>sfld("phone",e.target.value)} placeholder="+1-555-0100" />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom:2 }}>
+                  <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Work Email *</label>
+                  <FocusInput type="email" value={signup.email} onChange={e=>sfld("email",e.target.value)} placeholder="you@company.com" />
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:2 }}>
+                  <div>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Company</label>
+                    <FocusInput type="text" value={signup.company} onChange={e=>sfld("company",e.target.value)} placeholder="Acme Corp" />
+                  </div>
+                  <div>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Department</label>
+                    <FocusInput type="text" value={signup.dept} onChange={e=>sfld("dept",e.target.value)} placeholder="Sales" />
+                  </div>
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                  <div>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Password *</label>
+                    <div style={{ position:"relative" }}>
+                      <FocusInput type={showPass?"text":"password"} value={signup.password} onChange={e=>sfld("password",e.target.value)} placeholder="Min 8 chars" extraPad />
+                      <button type="button" onClick={()=>setShowPass(!showPass)} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#94a3b8",padding:0 }}>{showPass?"🙈":"👁️"}</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Confirm *</label>
+                    <div style={{ position:"relative" }}>
+                      <FocusInput type={showPass2?"text":"password"} value={signup.confirm} onChange={e=>sfld("confirm",e.target.value)} placeholder="Repeat password" extraPad />
+                      <button type="button" onClick={()=>setShowPass2(!showPass2)} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#94a3b8",padding:0 }}>{showPass2?"🙈":"👁️"}</button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Password strength */}
+                {signup.password.length > 0 && (
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ display:"flex", gap:4, marginBottom:4 }}>
+                      {[1,2,3,4].map(i => {
+                        const strength = signup.password.length >= 12 && /[A-Z]/.test(signup.password) && /[0-9]/.test(signup.password) && /[^A-Za-z0-9]/.test(signup.password) ? 4
+                          : signup.password.length >= 10 && /[A-Z]/.test(signup.password) && /[0-9]/.test(signup.password) ? 3
+                          : signup.password.length >= 8 ? 2 : 1;
+                        const colors = ["#ef4444","#f59e0b","#3b82f6","#10b981"];
+                        return <div key={i} style={{ flex:1, height:4, borderRadius:2, background: i<=strength ? colors[strength-1] : "#e2e8f0", transition:"background .3s" }} />;
+                      })}
+                    </div>
+                    <div style={{ fontSize:10, color:"#64748b" }}>
+                      {signup.password.length < 8 ? "Too short" : signup.password.length < 10 ? "Weak — add uppercase & numbers" : signup.password.length < 12 ? "Good — add symbols to strengthen" : "Strong password ✅"}
+                    </div>
+                  </div>
+                )}
+
+                {signupError && (
+                  <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:8, padding:"10px 14px", marginBottom:14, color:"#dc2626", fontSize:13 }}>
+                    ⚠️ {signupError}
+                  </div>
+                )}
+
+                <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:8, padding:"10px 14px", marginBottom:16, fontSize:12, color:"#92400e" }}>
+                  ⚠️ New accounts require <strong>admin approval</strong> before you can log in. You'll be notified once approved.
+                </div>
+
+                <button type="submit" disabled={loading}
+                  style={{ width:"100%", padding:"12px", background:loading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)", color:"#fff", border:"none", borderRadius:10, fontSize:15, fontWeight:700, cursor:loading?"not-allowed":"pointer", boxShadow:"0 4px 14px rgba(99,102,241,.4)" }}>
+                  {loading ? "⏳ Creating account…" : "Create Account →"}
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* ── PENDING APPROVAL VIEW ── */}
+          {view==="pending" && (
+            <div style={{ textAlign:"center", padding:"10px 0" }}>
+              <div style={{ fontSize:56, marginBottom:16 }}>⏳</div>
+              <h2 style={{ fontSize:20, fontWeight:700, color:"#1e293b", margin:"0 0 10px" }}>Account Pending Approval</h2>
+              <p style={{ fontSize:13, color:"#64748b", lineHeight:1.7, margin:"0 0 20px" }}>
+                Your account for <strong style={{ color:"#1e293b" }}>{signup.email}</strong> has been submitted successfully!
+              </p>
+
+              <div style={{ background:"#f0f9ff", border:"1px solid #bae6fd", borderRadius:10, padding:16, marginBottom:24, textAlign:"left" }}>
+                <div style={{ fontSize:12, fontWeight:700, color:"#0369a1", marginBottom:8 }}>📋 What happens next?</div>
+                <div style={{ fontSize:12, color:"#0c4a6e", lineHeight:1.9 }}>
+                  1. Your request is sent to the system administrator<br/>
+                  2. Admin reviews and approves your account<br/>
+                  3. You'll receive an email when you're approved<br/>
+                  4. Sign in with your email and password
+                </div>
+              </div>
+
+              <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:8, padding:"10px 14px", marginBottom:20, fontSize:12, color:"#166534" }}>
+                ✅ Account created — awaiting admin activation
+              </div>
+
+              <button onClick={()=>{ setView("login"); setError(""); }}
+                style={{ width:"100%", padding:"12px", background:"linear-gradient(135deg,#6366f1,#4338ca)", color:"#fff", border:"none", borderRadius:10, fontSize:15, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 14px rgba(99,102,241,.4)" }}>
+                ← Back to Sign In
+              </button>
+            </div>
           )}
 
           {/* ── FORGOT PASSWORD VIEW ── */}
@@ -500,8 +656,8 @@ function LoginPage({ users, onLogin }) {
           )}
         </div>
 
-        <p style={{ textAlign:"center", color:"#a5b4fc", fontSize:12, marginTop:20 }}>
-          © 2025 HelpDesk AI · IT Ticketing Platform
+        <p style={{ textAlign:"center", color:"rgba(255,255,255,.45)", fontSize:11, marginTop:20, letterSpacing:.3 }}>
+          © 2025 Hoptix · A.eye Technology · All rights reserved
         </p>
       </div>
     </div>
@@ -583,10 +739,19 @@ export default function App() {
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}button:hover{opacity:.88}.nv:hover{background:#e0e7ff!important;color:#4338ca!important}`}</style>
 
       {/* SIDEBAR */}
-      <div style={{ width:220, background:"linear-gradient(180deg,#1e1b4b,#312e81)", display:"flex", flexDirection:"column", flexShrink:0 }}>
-        <div style={{ padding:"20px 16px 14px", borderBottom:"1px solid rgba(255,255,255,.12)" }}>
-          <div style={{ color:"#fff", fontWeight:800, fontSize:15 }}>🛡️ HelpDesk AI</div>
-          <div style={{ color:"#a5b4fc", fontSize:11, marginTop:2 }}>IT Ticketing Platform</div>
+      <div style={{ width:220, background:"linear-gradient(180deg,#020e1f,#041833,#062d6b)", display:"flex", flexDirection:"column", flexShrink:0 }}>
+        <div style={{ padding:"20px 16px 14px", borderBottom:"1px solid rgba(56,189,248,.15)" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ width:32, height:32, borderRadius:"50%", background:"linear-gradient(135deg,#fff 60%,#b3d9ff)", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 12px rgba(56,189,248,.4)" }}>
+              <div style={{ width:20, height:20, borderRadius:"50%", background:"linear-gradient(135deg,#0369a1,#0ea5e9)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:"#020e1f" }}/>
+              </div>
+            </div>
+            <div>
+              <div style={{ color:"#fff", fontWeight:800, fontSize:15, letterSpacing:-.3 }}>hoptix</div>
+              <div style={{ color:"#38bdf8", fontSize:9, letterSpacing:.8 }}>A.eye technology</div>
+            </div>
+          </div>
         </div>
         <div style={{ padding:"8px 8px", flex:1, overflowY:"auto" }}>
           {NAV.map(n => (
@@ -679,8 +844,40 @@ function PageDashboard({ tickets, users, ticketTypes, companies, clients, setPag
   });
   const techs = users.filter(u => ["it_technician","it_manager"].includes(u.role));
 
+  const pendingUsers = users.filter(u => !u.active && u.createdAt);
+
+  const approveUser = u => {
+    setUsers(prev => prev.map(x => x.id===u.id ? {...x, active:true} : x));
+    addLog("USER_APPROVED", u.id, `${u.name} account approved`);
+    showToast("✅ Account approved — user can now sign in");
+  };
+
   return (
     <div>
+      {/* Pending approvals banner */}
+      {pendingUsers.length > 0 && (
+        <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:12, padding:16, marginBottom:20 }}>
+          <div style={{ fontWeight:700, color:"#92400e", marginBottom:10, fontSize:13 }}>
+            ⏳ {pendingUsers.length} Account{pendingUsers.length>1?"s":""} Awaiting Approval
+          </div>
+          {pendingUsers.map(u => (
+            <div key={u.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#fff", padding:"10px 14px", borderRadius:8, border:"1px solid #fde68a", marginBottom:6 }}>
+              <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+                <Avatar name={u.name} id={u.id} size={32}/>
+                <div>
+                  <div style={{ fontWeight:600, fontSize:13 }}>{u.name}</div>
+                  <div style={{ fontSize:11, color:"#64748b" }}>{u.email} {u.dept ? "· "+u.dept : ""} {u.phone ? "· "+u.phone : ""}</div>
+                  <div style={{ fontSize:10, color:"#94a3b8" }}>Requested: {fdt(u.createdAt)}</div>
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <Btn size="sm" variant="success" onClick={()=>approveUser(u)}>✅ Approve</Btn>
+                <Btn size="sm" variant="danger"  onClick={()=>{ setUsers(prev=>prev.filter(x=>x.id!==u.id)); showToast("Account rejected & removed"); }}>✕ Reject</Btn>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:20 }}>
         <Stat label="Total Tickets"   value={tickets.length}                                     icon="🎫" color="#6366f1" />
         <Stat label="Open"            value={tickets.filter(t=>t.status==="Open").length}         icon="📬" color="#f59e0b" />
