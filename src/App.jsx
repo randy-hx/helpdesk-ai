@@ -5,10 +5,10 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 const PAL = ["#6366f1","#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ef4444","#ec4899","#f97316"];
 const FUNCTIONS_URL = "https://byuvyyycweowdupyvjgy.supabase.co/functions/v1";
 
-const STATUS_META = { "Open":{color:"#f59e0b",bg:"#fef3c7"}, "In Progress":{color:"#6366f1",bg:"#eef2ff"}, "Resolved":{color:"#10b981",bg:"#d1fae5"}, "Escalated":{color:"#ef4444",bg:"#fee2e2"}, "Closed":{color:"#94a3b8",bg:"#f1f5f9"} };
-const ALL_STATUSES = ["Open","In Progress","Resolved","Escalated","Closed"];
+const STATUS_META = { "Open":{color:"#f59e0b",bg:"#fef3c7"}, "In Progress":{color:"#6366f1",bg:"#eef2ff"}, "Pending":{color:"#0ea5e9",bg:"#e0f2fe"}, "Escalated":{color:"#ef4444",bg:"#fee2e2"}, "Closed":{color:"#94a3b8",bg:"#f1f5f9"} };
+const ALL_STATUSES = ["Open","In Progress","Pending","Escalated","Closed"];
 const PRI_META = { critical:{color:"#dc2626",bg:"#fee2e2",label:"Critical",slaHours:1}, high:{color:"#ef4444",bg:"#fef2f2",label:"High",slaHours:4}, medium:{color:"#f59e0b",bg:"#fffbeb",label:"Medium",slaHours:24}, low:{color:"#10b981",bg:"#f0fdf4",label:"Low",slaHours:72} };
-const DEFAULT_STATUS_SLA = { "Open":2, "In Progress":8, "Pending":24, "Escalated":1, "Resolved":48, "Closed":null };
+const DEFAULT_STATUS_SLA = { "Open":2, "In Progress":8, "Pending":24, "Escalated":1, "Closed":null };
 function loadStatusSla(){ try{ var s=localStorage.getItem("hd_statusSla"); return s?JSON.parse(s):DEFAULT_STATUS_SLA; }catch{ return DEFAULT_STATUS_SLA; } }
 function saveStatusSlaStore(v){ try{ localStorage.setItem("hd_statusSla",JSON.stringify(v)); }catch{} }
 const ROLE_META = { admin:{label:"Administrator",color:"#dc2626"}, it_manager:{label:"IT Manager",color:"#7c3aed"}, it_technician:{label:"IT Technician",color:"#2563eb"}, end_user:{label:"End User",color:"#059669"} };
@@ -114,18 +114,18 @@ function mkT(id,title,desc,typeId,status,sub,asn,co,cl,loc,hrs,msgs,hist){
   var cat=hAgo(hrs);
   var sla=new Date(new Date(cat).getTime()+(tt?tt.slaHours:24)*3600000).toISOString();
   var createMins=rnd(2,18);
-  return {id,title,description:desc,typeId,customTypeName:null,status,priority:tt?tt.priority:"medium",submittedBy:sub,assignedTo:asn,companyId:co,clientId:cl||null,locationId:loc||null,createdAt:cat,updatedAt:hAgo(Math.max(0,hrs-1)),slaDeadline:sla,slaBreached:new Date()>new Date(sla)&&!["Closed","Resolved"].includes(status),timeToCreateMins:createMins,submittedAt:cat,formOpenedAt:new Date(new Date(cat).getTime()-createMins*60000).toISOString(),statusHistory:hist&&hist.length?hist:[{status,assignedTo:asn,timestamp:cat,changedBy:sub,note:"Ticket created"}],conversations:msgs||[],externalEmail:null,resolvedAt:["Resolved","Closed"].includes(status)?hAgo(Math.max(0,hrs-3)):null,closedAt:status==="Closed"?hAgo(Math.max(0,hrs-1)):null,deleted:false,aiReason:"Type: "+(tt?tt.name:"Others"),attachments:[]};
+  return {id,title,description:desc,typeId,customTypeName:null,status,priority:tt?tt.priority:"medium",submittedBy:sub,assignedTo:asn,companyId:co,clientId:cl||null,locationId:loc||null,createdAt:cat,updatedAt:hAgo(Math.max(0,hrs-1)),slaDeadline:sla,slaBreached:new Date()>new Date(sla)&&status!=="Closed",timeToCreateMins:createMins,submittedAt:cat,formOpenedAt:new Date(new Date(cat).getTime()-createMins*60000).toISOString(),statusHistory:hist&&hist.length?hist:[{status,assignedTo:asn,timestamp:cat,changedBy:sub,note:"Ticket created"}],conversations:msgs||[],externalEmail:null,resolvedAt:status==="Closed"?hAgo(Math.max(0,hrs-3)):null,closedAt:status==="Closed"?hAgo(Math.max(0,hrs-1)):null,deleted:false,aiReason:"Type: "+(tt?tt.name:"Others"),attachments:[]};
 }
 const SEED_TICKETS = [
   mkT("t1","Laptop screen flickering","Screen flickers on Dell XPS 15.","tt1","In Progress","u5","u3","c2","cl4","loc8",12,[{id:"m1",from:"u5",fromEmail:"john@acmecorp.com",to:["u3"],toEmails:["alex@itsolutions.com"],cc:[],subject:"Re: [#t1]",body:"Flickering every 5 min.",timestamp:hAgo(10),isExternal:false,status:"sent"},{id:"m2",from:"u3",fromEmail:"alex@itsolutions.com",to:["u5"],toEmails:["john@acmecorp.com"],cc:[],subject:"Re: [#t1]",body:"Bring laptop to IT at 2PM.\n\nAlex",timestamp:hAgo(9),isExternal:false,status:"sent"}],[{status:"Open",assignedTo:"u3",timestamp:hAgo(12),changedBy:"u5",note:"Ticket created"},{status:"In Progress",assignedTo:"u3",timestamp:hAgo(10),changedBy:"u3",note:"Diagnostic scheduled"}]),
   mkT("t2","Cannot connect to VPN","Error 789 on VPN. Windows 11.","tt7","Open","u6","u4","c3","cl2","loc4",3,[],[]),
   mkT("t3","Phishing email received","Fake IT domain. Five colleagues affected.","tt6","Escalated","u7","u2","c2","cl1","loc1",6,[{id:"m3",from:"u7",fromEmail:"bob@acmecorp.com",to:["u2"],toEmails:["mike@itsolutions.com"],cc:[],subject:"Re: [#t3]",body:"5 colleagues confirmed.",timestamp:hAgo(5),isExternal:false,status:"sent"},{id:"m4",from:"u2",fromEmail:"mike@itsolutions.com",to:["u7"],toEmails:["bob@acmecorp.com"],cc:[],subject:"Re: [#t3]",body:"Blocking domain now.\n\nMike",timestamp:hAgo(4),isExternal:false,status:"sent"}],[{status:"Open",assignedTo:"u2",timestamp:hAgo(6),changedBy:"u7",note:"Ticket created"},{status:"Escalated",assignedTo:"u2",timestamp:hAgo(4),changedBy:"u2",note:"Escalated"}]),
-  mkT("t4","Outlook not syncing","Stopped syncing 3h ago.","tt5","Resolved","u5","u4","c2","cl4","loc7",24,[],[]),
+  mkT("t4","Outlook not syncing","Stopped syncing 3h ago.","tt5","Closed","u5","u4","c2","cl4","loc7",24,[],[]),
   mkT("t5","AD Account locked","Locked before presentation.","tt4","Closed","u6","u4","c3","cl2","loc5",48,[],[]),
   mkT("t6","Adobe CS install","Need Adobe CS on 3 computers.","tt2","Open","u7","u4","c2","cl1","loc2",5,[],[]),
   mkT("t7","3rd floor outage","25+ users offline.","tt3","In Progress","u5","u3","c2","cl4","loc8",2,[],[]),
   mkT("t8","TEST - ignore","Test ticket.","tt8","Open","u5",null,"c2",null,null,1,[],[]),
-  mkT("t9","New employee setup","Configure laptop for new hire.","tt2","Resolved","u7","u4","c2","cl4","loc8",72,[],[]),
+  mkT("t9","New employee setup","Configure laptop for new hire.","tt2","Closed","u7","u4","c2","cl4","loc8",72,[],[]),
   mkT("t10","Backup drive error","Not recognized after update.","tt1","Open","u6","u3","c3","cl2","loc4",8,[],[]),
 ];
 const SEED_LOGS = [
@@ -292,7 +292,7 @@ export default function App(){
   },[]);
 
   useEffect(function(){
-    function check(){ setBreaches(tickets.filter(function(t){ return !t.deleted&&!["Closed","Resolved"].includes(t.status)&&t.slaDeadline&&Date.now()>new Date(t.slaDeadline).getTime(); })); }
+    function check(){ setBreaches(tickets.filter(function(t){ return !t.deleted&&t.status!=="Closed"&&t.slaDeadline&&Date.now()>new Date(t.slaDeadline).getTime(); })); }
     check(); var iv=setInterval(check,30000); return function(){clearInterval(iv);};
   },[tickets]);
 
@@ -748,7 +748,7 @@ function PageTimeTracking(p){
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function PageDashboard(p){ var tickets=p.tickets; var users=p.users; var ticketTypes=p.ticketTypes; var clients=p.clients; var setPage=p.setPage; var setSelTicket=p.setSelTicket; var breaches=p.breaches;
   var byStatus=ALL_STATUSES.map(function(s){ return {name:s,value:tickets.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color}; });
-  var byType=ticketTypes.map(function(tt,i){ return {name:tt.name,value:tickets.filter(function(t){return t.typeId===tt.id;}).length,fill:PAL[i%PAL.length]}; }).filter(function(x){return x.value>0;});
+  function slaRt(arr){return arr.length?Math.round((1-arr.filter(function(t){return t.slaBreached;}).length/arr.length)*100):100;} return {name:tt.name,value:tickets.filter(function(t){return t.typeId===tt.id;}).length,fill:PAL[i%PAL.length]}; }).filter(function(x){return x.value>0;});
   var byPri=Object.keys(PRI_META).map(function(k){ return {name:PRI_META[k].label,value:tickets.filter(function(t){return t.priority===k;}).length,color:PRI_META[k].color}; });
   var daily=Array.from({length:7},function(_,i){ var d=new Date(Date.now()-(6-i)*86400000); return {lbl:d.toLocaleDateString("en",{weekday:"short"}),created:tickets.filter(function(t){return new Date(t.createdAt).toDateString()===d.toDateString();}).length,resolved:tickets.filter(function(t){return t.resolvedAt&&new Date(t.resolvedAt).toDateString()===d.toDateString();}).length}; });
   var techs=users.filter(function(u){return ["it_technician","it_manager"].includes(u.role);});
@@ -757,7 +757,7 @@ function PageDashboard(p){ var tickets=p.tickets; var users=p.users; var ticketT
       <Stat label="Total Tickets"  value={tickets.length} icon="🎫" color="#6366f1"/>
       <Stat label="Open"           value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b"/>
       <Stat label="In Progress"    value={tickets.filter(function(t){return t.status==="In Progress";}).length} icon="⚙️" color="#6366f1"/>
-      <Stat label="Resolved"       value={tickets.filter(function(t){return t.status==="Resolved";}).length} icon="✅" color="#10b981"/>
+      <Stat label="Closed"        value={tickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981"/>
       <Stat label="Escalated"      value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed" sub="need senior review"/>
       <Stat label="SLA Breaches"   value={breaches.length} icon="🚨" color="#ef4444" sub="need attention"/>
       <Stat label="Active Clients" value={clients.length} icon="🤝" color="#8b5cf6" sub={clients.reduce(function(a,c){return a+c.locations.length;},0)+" locations"}/>
@@ -908,7 +908,7 @@ function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var 
     var newSlaDeadline=typeChanged&&newTT?new Date(new Date(ticket.createdAt).getTime()+newTT.slaHours*3600000).toISOString():ticket.slaDeadline;
     var newPriority=typeChanged&&newTT?newTT.priority:ticket.priority;
     if(typeChanged) hist.note=(note||"")+(note?" | ":"")+"Type changed to: "+newTT.name;
-    setTickets(function(prev){return prev.map(function(t){return t.id!==ticket.id?t:Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:new Date().toISOString(),slaBreached:new Date()>new Date(newSlaDeadline)&&!["Closed","Resolved"].includes(status),resolvedAt:status==="Resolved"&&!t.resolvedAt?new Date().toISOString():t.resolvedAt,closedAt:status==="Closed"&&!t.closedAt?new Date().toISOString():t.closedAt,statusHistory:(t.statusHistory||[]).concat([hist])});});});
+    setTickets(function(prev){return prev.map(function(t){return t.id!==ticket.id?t:Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:new Date().toISOString(),slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",resolvedAt:status==="Closed"&&!t.resolvedAt?new Date().toISOString():t.resolvedAt,closedAt:status==="Closed"&&!t.closedAt?new Date().toISOString():t.closedAt,statusHistory:(t.statusHistory||[]).concat([hist])});});});
     if(typeChanged) addLog("TICKET_TYPE_CHANGE",ticket.id,"Type changed to: "+newTT.name);
     addLog("TICKET_STATUS",ticket.id,"Status → "+status+". Assigned: "+(fu(asgn)?.name||"nobody")); showToast("Ticket updated"); setNote(""); onClose();
   }
@@ -1035,16 +1035,16 @@ function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var 
             <div style={{flex:1,paddingTop:4}}>
               <div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>SLA Deadline</div>
               <div style={{fontSize:12,color:"#334155",marginTop:2}}>{fdtFull(ticket.slaDeadline)}</div>
-              <div style={{marginTop:4}}>{ticket.slaBreached&&!["Resolved","Closed"].includes(ticket.status)?<Badge label="⚠️ SLA BREACHED" color="#ef4444"/>:<Badge label="✓ Within SLA" color="#10b981"/>}</div>
+              <div style={{marginTop:4}}>{ticket.slaBreached&&ticket.status!=="Closed"?<Badge label="⚠️ SLA BREACHED" color="#ef4444"/>:<Badge label="✓ Within SLA" color="#10b981"/>}</div>
             </div>
           </div>
           {/* Resolved */}
-          {ticket.resolvedAt&&<div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+          {ticket.closedAt&&<div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}><div style={{width:36,height:36,borderRadius:"50%",background:"#d1fae5",border:"2px solid #10b981",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🎉</div></div>
             <div style={{flex:1,paddingTop:4}}>
-              <div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>Resolved</div>
-              <div style={{fontSize:12,color:"#334155",marginTop:2}}>{fdtFull(ticket.resolvedAt)}</div>
-              <div style={{fontSize:11,color:"#10b981",marginTop:1,fontWeight:600}}>Total resolution time: {Math.round((new Date(ticket.resolvedAt)-new Date(submittedAt))/3600000)}h</div>
+              <div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>Closed</div>
+              <div style={{fontSize:12,color:"#334155",marginTop:2}}>{fdtFull(ticket.closedAt)}</div>
+              <div style={{fontSize:11,color:"#10b981",marginTop:1,fontWeight:600}}>Total resolution time: {Math.round((new Date(ticket.closedAt)-new Date(submittedAt))/3600000)}h</div>
             </div>
           </div>}
         </div>
@@ -1117,9 +1117,8 @@ function PageReports(p){ var tickets=p.tickets; var users=p.users; var ticketTyp
   var techs=users.filter(function(u){return ["it_technician","it_manager","admin"].includes(u.role);});
   var active=tickets.filter(function(t){return !t.deleted&&new Date(t.createdAt)>=new Date(rangeStart);});
   var allActive=tickets.filter(function(t){return !t.deleted;});
-  function avgH(arr){return arr.length?Math.round(arr.reduce(function(a,t){return a+(new Date(t.resolvedAt||t.updatedAt)-new Date(t.createdAt))/3600000;},0)/arr.length):0;}
-  function slaRt(arr){return arr.length?Math.round((1-arr.filter(function(t){return t.slaBreached;}).length/arr.length)*100):100;}
-  function resolved(arr){return arr.filter(function(t){return ["Resolved","Closed"].includes(t.status);});}
+  function resolved(arr){return arr.filter(function(t){return t.status==="Closed";});}
+  function avgH(arr){return arr.length?Math.round(arr.reduce(function(a,t){return a+(new Date(t.closedAt||t.updatedAt)-new Date(t.createdAt))/3600000;},0)/arr.length):0;}
   var byType=ticketTypes.map(function(tt,i){ var mine=active.filter(function(t){return t.typeId===tt.id;}); var res=resolved(mine); return {id:tt.id,name:tt.name,color:tt.color,priority:tt.priority,slaH:tt.slaHours,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,inProg:mine.filter(function(t){return t.status==="In Progress";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:slaRt(mine),avgClose:avgH(res),fill:PAL[i%PAL.length]}; }).filter(function(x){return x.total>0;});
   var byUser=techs.map(function(t){ var mine=active.filter(function(tk){return tk.assignedTo===t.id;}); var res=resolved(mine); var avgStatus=ALL_STATUSES.map(function(s){ var sm=mine.filter(function(tk){return tk.status===s;}); return {s:s,h:sm.length?Math.round(sm.reduce(function(a,tk){return a+(new Date(tk.updatedAt)-new Date(tk.createdAt))/3600000;},0)/sm.length):0}; }); return {id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,inProg:mine.filter(function(t){return t.status==="In Progress";}).length,escalated:mine.filter(function(t){return t.status==="Escalated";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:slaRt(mine),avgClose:avgH(res),createMins:Math.round(mine.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0)/Math.max(mine.length,1)),avgStatus:avgStatus}; });
   var byClient=clients.map(function(cl){ var mine=active.filter(function(t){return t.clientId===cl.id;}); var res=resolved(mine); return {id:cl.id,name:cl.name,industry:cl.industry,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:slaRt(mine),avgClose:avgH(res)}; }).filter(function(x){return x.total>0;});
