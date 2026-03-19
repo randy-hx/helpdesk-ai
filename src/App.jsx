@@ -273,7 +273,7 @@ function LoginPage({users,setUsers,companies,onLogin}) {
     const user = users.find(u=>u.email.toLowerCase()===loginEmail.toLowerCase().trim());
     if (!user)        { setLoginErr("No account found with that email."); setLoading(false); return; }
     if (!user.active) { setLoginErr("Your account is pending admin approval."); setLoading(false); return; }
-    if (loginPass!=="password123") { setLoginErr("Incorrect password. Please try again."); setLoading(false); return; }
+    if (loginPass !== getPassword(user.id)) { setLoginErr("Incorrect password. Please try again."); setLoading(false); return; }
     setLoading(false); onLogin(user);
   };
 
@@ -476,6 +476,166 @@ function LoginPage({users,setUsers,companies,onLogin}) {
   );
 }
 
+// ── PROFILE MODAL ─────────────────────────────────────────────────────────────
+function ProfileModal({ curUser, setUsers, showToast, addLog, onClose }) {
+  const [tab,       setTab]       = useState("profile");
+  const [name,      setName]      = useState(curUser.name);
+  const [phone,     setPhone]     = useState(curUser.phone||"");
+  const [dept,      setDept]      = useState(curUser.dept||"");
+  const [curPw,     setCurPw]     = useState("");
+  const [newPw,     setNewPw]     = useState("");
+  const [confPw,    setConfPw]    = useState("");
+  const [showCur,   setShowCur]   = useState(false);
+  const [showNew,   setShowNew]   = useState(false);
+  const [showConf,  setShowConf]  = useState(false);
+  const [pwErr,     setPwErr]     = useState("");
+  const [pwOk,      setPwOk]      = useState("");
+  const [saving,    setSaving]    = useState(false);
+
+  const pwStr = p => { if(!p||p.length<8) return 1; if(p.length>=12&&/[A-Z]/.test(p)&&/[0-9]/.test(p)&&/[^A-Za-z0-9]/.test(p)) return 4; if(p.length>=10&&/[A-Z]/.test(p)&&/[0-9]/.test(p)) return 3; return 2; };
+  const strLabel = ["","Too short","Weak — add uppercase & numbers","Good","Strong ✅"];
+  const strColor = ["","#ef4444","#f59e0b","#3b82f6","#10b981"];
+  const str = pwStr(newPw);
+
+  const saveProfile = async () => {
+    if (!name.trim()) { showToast("Name cannot be empty","error"); return; }
+    setSaving(true);
+    await new Promise(r=>setTimeout(r,400));
+    setUsers(prev=>prev.map(u=>u.id===curUser.id?{...u,name:name.trim(),phone:phone.trim(),dept:dept.trim()}:u));
+    addLog("PROFILE_UPDATED", curUser.id, `${curUser.name} updated their profile`);
+    showToast("✅ Profile updated!");
+    setSaving(false);
+  };
+
+  const changePassword = async () => {
+    setPwErr(""); setPwOk("");
+    if (!curPw)          { setPwErr("Enter your current password."); return; }
+    if (curPw !== getPassword(curUser.id)) { setPwErr("Current password is incorrect."); return; }
+    if (newPw.length < 8){ setPwErr("New password must be at least 8 characters."); return; }
+    if (newPw !== confPw){ setPwErr("New passwords do not match."); return; }
+    if (newPw === curPw) { setPwErr("New password must be different from current."); return; }
+    setSaving(true);
+    await new Promise(r=>setTimeout(r,500));
+    setPassword(curUser.id, newPw);
+    addLog("PASSWORD_CHANGED", curUser.id, `${curUser.name} changed their password`);
+    setSaving(false);
+    setCurPw(""); setNewPw(""); setConfPw("");
+    setPwOk("✅ Password changed successfully!");
+    showToast("Password updated!");
+  };
+
+  const inputStyle = { width:"100%", padding:"9px 12px", border:"1px solid #e2e8f0", borderRadius:8, fontSize:13, outline:"none", background:"#f8fafc", boxSizing:"border-box" };
+  const pwInputStyle = { ...inputStyle, paddingRight:40 };
+
+  return (
+    <Modal title="My Profile" onClose={onClose}>
+      {/* Avatar + name header */}
+      <div style={{ display:"flex", alignItems:"center", gap:16, padding:"0 0 20px", borderBottom:"1px solid #e2e8f0", marginBottom:20 }}>
+        <div style={{ width:64, height:64, borderRadius:"50%", background:avCol(curUser.id), display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:24, fontWeight:800 }}>
+          {inits(curUser.name)}
+        </div>
+        <div>
+          <div style={{ fontWeight:700, fontSize:16, color:"#1e293b" }}>{curUser.name}</div>
+          <div style={{ fontSize:12, color:"#64748b" }}>{curUser.email}</div>
+          <div style={{ marginTop:4 }}><Badge label={ROLE_META[curUser.role]?.label||curUser.role} color={ROLE_META[curUser.role]?.color||"#6366f1"}/></div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", gap:6, marginBottom:20 }}>
+        {["profile","password"].map(t=>(
+          <button key={t} onClick={()=>setTab(t)} style={{ background:tab===t?"#6366f1":"#f1f5f9", color:tab===t?"#fff":"#475569", border:"none", borderRadius:8, padding:"6px 18px", cursor:"pointer", fontSize:12, fontWeight:700, textTransform:"capitalize" }}>
+            {t==="profile"?"👤 Profile":"🔑 Change Password"}
+          </button>
+        ))}
+      </div>
+
+      {/* Profile tab */}
+      {tab==="profile" && (
+        <div>
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Full Name</label>
+            <input value={name} onChange={e=>setName(e.target.value)} style={inputStyle}/>
+          </div>
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Email Address</label>
+            <input value={curUser.email} disabled style={{ ...inputStyle, background:"#f1f5f9", color:"#94a3b8", cursor:"not-allowed" }}/>
+            <div style={{ fontSize:10, color:"#94a3b8", marginTop:3 }}>Email cannot be changed. Contact your admin.</div>
+          </div>
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Phone</label>
+            <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+1-555-0100" style={inputStyle}/>
+          </div>
+          <div style={{ marginBottom:20 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Department</label>
+            <input value={dept} onChange={e=>setDept(e.target.value)} placeholder="e.g. Sales" style={inputStyle}/>
+          </div>
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button onClick={onClose} style={{ padding:"8px 18px", background:"#f1f5f9", color:"#475569", border:"none", borderRadius:8, fontWeight:600, fontSize:13, cursor:"pointer" }}>Cancel</button>
+            <button onClick={saveProfile} disabled={saving} style={{ padding:"8px 18px", background:saving?"#a5b4fc":"#6366f1", color:"#fff", border:"none", borderRadius:8, fontWeight:600, fontSize:13, cursor:saving?"not-allowed":"pointer" }}>
+              {saving?"⏳ Saving…":"💾 Save Changes"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Password tab */}
+      {tab==="password" && (
+        <div>
+          <div style={{ background:"#f0f9ff", border:"1px solid #bae6fd", borderRadius:8, padding:12, marginBottom:18, fontSize:12, color:"#0369a1" }}>
+            🔒 Use a strong password with uppercase letters, numbers, and symbols.
+          </div>
+
+          {/* Current password */}
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Current Password</label>
+            <div style={{ position:"relative" }}>
+              <input type={showCur?"text":"password"} value={curPw} onChange={e=>setCurPw(e.target.value)} placeholder="••••••••" style={pwInputStyle}/>
+              <button type="button" onClick={()=>setShowCur(!showCur)} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#94a3b8" }}>{showCur?"🙈":"👁️"}</button>
+            </div>
+          </div>
+
+          {/* New password */}
+          <div style={{ marginBottom:14 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>New Password</label>
+            <div style={{ position:"relative" }}>
+              <input type={showNew?"text":"password"} value={newPw} onChange={e=>setNewPw(e.target.value)} placeholder="Min 8 characters" style={pwInputStyle}/>
+              <button type="button" onClick={()=>setShowNew(!showNew)} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#94a3b8" }}>{showNew?"🙈":"👁️"}</button>
+            </div>
+            {newPw.length>0&&(
+              <div style={{ marginTop:6 }}>
+                <div style={{ display:"flex", gap:4, marginBottom:3 }}>{[1,2,3,4].map(i=><div key={i} style={{ flex:1,height:4,borderRadius:2,background:i<=str?strColor[str]:"#e2e8f0",transition:"background .3s" }}/>)}</div>
+                <div style={{ fontSize:10, color:strColor[str] }}>{strLabel[str]}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Confirm new password */}
+          <div style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:12, fontWeight:600, color:"#475569", marginBottom:4 }}>Confirm New Password</label>
+            <div style={{ position:"relative" }}>
+              <input type={showConf?"text":"password"} value={confPw} onChange={e=>setConfPw(e.target.value)} placeholder="Repeat new password" style={pwInputStyle}/>
+              <button type="button" onClick={()=>setShowConf(!showConf)} style={{ position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#94a3b8" }}>{showConf?"🙈":"👁️"}</button>
+            </div>
+            {confPw.length>0&&newPw!==confPw&&<div style={{ fontSize:11,color:"#ef4444",marginTop:3 }}>⚠️ Passwords do not match</div>}
+            {confPw.length>0&&newPw===confPw&&newPw.length>=8&&<div style={{ fontSize:11,color:"#10b981",marginTop:3 }}>✅ Passwords match</div>}
+          </div>
+
+          {pwErr && <div style={{ background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#dc2626",fontSize:13 }}>⚠️ {pwErr}</div>}
+          {pwOk  && <div style={{ background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#166534",fontSize:13 }}>{pwOk}</div>}
+
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button onClick={onClose} style={{ padding:"8px 18px", background:"#f1f5f9", color:"#475569", border:"none", borderRadius:8, fontWeight:600, fontSize:13, cursor:"pointer" }}>Cancel</button>
+            <button onClick={changePassword} disabled={saving} style={{ padding:"8px 18px", background:saving?"#a5b4fc":"#6366f1", color:"#fff", border:"none", borderRadius:8, fontWeight:600, fontSize:13, cursor:saving?"not-allowed":"pointer" }}>
+              {saving?"⏳ Saving…":"🔑 Change Password"}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // ── DEMO SWITCHER (admin only) ────────────────────────────────────────────────
 function DemoSwitcher({users,curUser,onSwitch}) {
   const [open,setOpen]=useState(false);
@@ -506,6 +666,22 @@ function DemoSwitcher({users,curUser,onSwitch}) {
   );
 }
 
+// ── PASSWORD STORE (separate from user objects) ───────────────────────────────
+function getPasswords() {
+  try { return JSON.parse(localStorage.getItem("hd_passwords")||"{}"); } catch { return {}; }
+}
+function getPassword(userId) {
+  const pw = getPasswords();
+  return pw[userId] || "password123";
+}
+function setPassword(userId, newPw) {
+  try {
+    const pw = getPasswords();
+    pw[userId] = newPw;
+    localStorage.setItem("hd_passwords", JSON.stringify(pw));
+  } catch {}
+}
+
 // ── STORAGE HELPERS (persist to localStorage on live site) ───────────────────
 function loadState(key, fallback) {
   try {
@@ -533,6 +709,7 @@ export default function App() {
   const [selTicket,   setSelTicket]   = useState(null);
   const [toast,       setToast]       = useState(null);
   const [breaches,    setBreaches]    = useState([]);
+  const [showProfile, setShowProfile] = useState(false);
 
   // Wrap setters to also persist to localStorage
   const setUsers       = v => { const n = typeof v==="function"?v(users):v;       saveState("hd_users",n);       setUsersRaw(n); };
@@ -635,8 +812,14 @@ export default function App() {
           <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{(NAV.find(n=>n.id===page)||{icon:"",label:""}).icon} {(NAV.find(n=>n.id===page)||{label:"—"}).label}</div>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             {breaches.length>0&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:20,padding:"4px 12px",color:"#dc2626",fontSize:11,fontWeight:700}}>⚠️ {breaches.length} SLA Breach{breaches.length>1?"es":""}</div>}
-            <Avatar name={curUser.name} id={curUser.id} size={30}/>
-            <div><div style={{fontWeight:700,fontSize:12}}>{curUser.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[curUser.role]?.label}</div></div>
+            <button onClick={()=>setShowProfile(true)} style={{ display:"flex", alignItems:"center", gap:8, background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:10, padding:"5px 12px 5px 6px", cursor:"pointer" }}>
+              <Avatar name={curUser.name} id={curUser.id} size={28}/>
+              <div style={{ textAlign:"left" }}>
+                <div style={{fontWeight:700,fontSize:12}}>{curUser.name}</div>
+                <div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[curUser.role]?.label}</div>
+              </div>
+              <span style={{ fontSize:10, color:"#94a3b8", marginLeft:4 }}>▼</span>
+            </button>
           </div>
         </div>
 
@@ -657,6 +840,7 @@ export default function App() {
       </div>
 
       {selTicket&&<TicketDetail ticket={tickets.find(t=>t.id===selTicket)} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} onClose={()=>setSelTicket(null)}/>}
+      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} showToast={showToast} addLog={addLog} onClose={()=>setShowProfile(false)}/>}
     </div>
     </ErrorBoundary>
   );
@@ -1192,7 +1376,7 @@ function PageTicketTypes({ticketTypes,users,setTicketTypes,addLog,showToast}) {
 }
 
 // ── ACTIVITY LOG ──────────────────────────────────────────────────────────────
-const ACTION_META={USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},SMS_SENT:{icon:"📱",color:"#8b5cf6",label:"SMS Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},LOCATION_ADDED:{icon:"📍",color:"#10b981",label:"Location Added"},LOCATION_REMOVED:{icon:"📍",color:"#ef4444",label:"Location Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"}};
+const ACTION_META={USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},SMS_SENT:{icon:"📱",color:"#8b5cf6",label:"SMS Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},LOCATION_ADDED:{icon:"📍",color:"#10b981",label:"Location Added"},LOCATION_REMOVED:{icon:"📍",color:"#ef4444",label:"Location Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"}};
 
 function PageActivityLog({logs,users}) {
   const [filter,setFilter]=useState(""); const fu=id=>users.find(x=>x.id===id); const filtered=filter?logs.filter(l=>l.action===filter):logs;
