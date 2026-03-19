@@ -374,6 +374,20 @@ function PageTimeTracking(p){
   var slowest=filtered.length?filtered.reduce(function(a,t){return (t.timeToCreateMins||0)>(a.timeToCreateMins||0)?t:a;},filtered[0]):null;
   var byTypeTime=ticketTypes.map(function(tt){var mine=filtered.filter(function(t){return t.typeId===tt.id&&t.timeToCreateMins;});return {name:tt.name,color:tt.color,avg:mine.length?Math.round(mine.reduce(function(a,t){return a+t.timeToCreateMins;},0)/mine.length):0,count:mine.length};}).filter(function(x){return x.count>0;});
 
+  // daily summary
+  var dailySummary=useMemo(function(){
+    var map={};
+    filtered.forEach(function(t){
+      var d=new Date(t.submittedAt||t.createdAt);
+      var key=d.toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"});
+      if(!map[key]) map[key]={date:key,rawDate:d,count:0,totalMins:0,tickets:[]};
+      map[key].count+=1;
+      map[key].totalMins+=(t.timeToCreateMins||0);
+      map[key].tickets.push(t);
+    });
+    return Object.values(map).sort(function(a,b){return new Date(b.rawDate)-new Date(a.rawDate);});
+  },[filtered]);
+
   // hourly heatmap data
   var hourBuckets=Array.from({length:24},function(_,h){
     var cnt=filtered.filter(function(t){return new Date(t.submittedAt||t.createdAt).getHours()===h;}).length;
@@ -410,7 +424,7 @@ function PageTimeTracking(p){
       <div style={{display:"flex",gap:6}}>
         <button onClick={function(){setView("table");}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+(view==="table"?"#6366f1":"#e2e8f0"),background:view==="table"?"#6366f1":"#fff",color:view==="table"?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>📋 Table</button>
         <button onClick={function(){setView("heatmap");}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+(view==="heatmap"?"#6366f1":"#e2e8f0"),background:view==="heatmap"?"#6366f1":"#fff",color:view==="heatmap"?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>🔥 Heatmap</button>
-        {isTech&&<button onClick={function(){setView("byuser");}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+(view==="byuser"?"#6366f1":"#e2e8f0"),background:view==="byuser"?"#6366f1":"#fff",color:view==="byuser"?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>👥 By User</button>}
+        <button onClick={function(){setView("daily");}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+(view==="daily"?"#6366f1":"#e2e8f0"),background:view==="daily"?"#6366f1":"#fff",color:view==="daily"?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>📅 Daily Summary</button>
       </div>
     </div>
 
@@ -437,6 +451,91 @@ function PageTimeTracking(p){
         </select>}
       </div>
     </Card>
+
+    {/* DAILY SUMMARY VIEW */}
+    {view==="daily"&&<div>
+      {dailySummary.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets match the current filters.</div></Card>}
+      {dailySummary.length>0&&<>
+        <Card style={{marginBottom:16,padding:"14px 18px"}}>
+          <div style={{fontWeight:700,color:"#1e293b",marginBottom:12}}>📊 Daily Create-Time Chart</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={dailySummary.slice().reverse()} margin={{top:4,right:8,left:0,bottom:30}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="date" tick={{fontSize:9}} angle={-30} textAnchor="end" height={55}/>
+              <YAxis tick={{fontSize:10}} label={{value:"mins",angle:-90,position:"insideLeft",style:{fontSize:10,fill:"#94a3b8"}}}/>
+              <Tooltip formatter={function(v,n){return [v+"m","Total Create Time"];}} labelFormatter={function(l){return "Date: "+l;}}/>
+              <Bar dataKey="totalMins" name="Total Mins" radius={[4,4,0,0]} fill="#6366f1"/>
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card style={{padding:0,overflow:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+            <thead>
+              <tr style={{background:"#f8fafc"}}>
+                {["Date","Tickets Submitted","Total Create Time","Avg per Ticket","Fastest","Slowest","Breakdown"].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:.4,borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}
+              </tr>
+            </thead>
+            <tbody>
+              {dailySummary.map(function(row,i){
+                var avg=row.count?Math.round(row.totalMins/row.count):0;
+                var fastest=row.tickets.reduce(function(a,t){return (t.timeToCreateMins||999)<(a.timeToCreateMins||999)?t:a;},row.tickets[0]);
+                var slowest=row.tickets.reduce(function(a,t){return (t.timeToCreateMins||0)>(a.timeToCreateMins||0)?t:a;},row.tickets[0]);
+                var avgColor=avg<=5?"#10b981":avg<=15?"#f59e0b":"#ef4444";
+                return <tr key={row.date} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
+                  <td style={{padding:"10px 12px"}}>
+                    <div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{row.date}</div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{new Date(row.rawDate).toLocaleDateString("en-US",{weekday:"long"})}</div>
+                  </td>
+                  <td style={{padding:"10px 12px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:28,height:28,borderRadius:"50%",background:"#eef2ff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:"#6366f1"}}>{row.count}</div>
+                      <span style={{fontSize:12,color:"#475569"}}>{row.count===1?"ticket":"tickets"}</span>
+                    </div>
+                  </td>
+                  <td style={{padding:"10px 12px"}}>
+                    <div style={{fontWeight:800,fontSize:18,color:"#6366f1"}}>{row.totalMins}<span style={{fontSize:12,fontWeight:400,color:"#94a3b8"}}>m</span></div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>{Math.floor(row.totalMins/60)>0?Math.floor(row.totalMins/60)+"h "+row.totalMins%60+"m":row.totalMins+"m"} total</div>
+                  </td>
+                  <td style={{padding:"10px 12px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:36,height:7,background:"#e2e8f0",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,avg/30*100)+"%",background:avgColor,borderRadius:4}}/></div>
+                      <span style={{fontWeight:700,color:avgColor,fontSize:13}}>{avg}m</span>
+                    </div>
+                  </td>
+                  <td style={{padding:"10px 12px"}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"#10b981"}}>{fastest?(fastest.timeToCreateMins||0)+"m":"—"}</div>
+                    {fastest&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1,maxWidth:120,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fastest.title}</div>}
+                  </td>
+                  <td style={{padding:"10px 12px"}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"#f59e0b"}}>{slowest?(slowest.timeToCreateMins||0)+"m":"—"}</div>
+                    {slowest&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1,maxWidth:120,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slowest.title}</div>}
+                  </td>
+                  <td style={{padding:"10px 12px"}}>
+                    <div style={{display:"flex",gap:3,flexWrap:"wrap",maxWidth:160}}>
+                      {row.tickets.slice(0,6).map(function(t){
+                        var m=t.timeToCreateMins||0;
+                        var c=m<=5?"#10b981":m<=15?"#f59e0b":"#ef4444";
+                        return <span key={t.id} title={t.title+" ("+m+"m)"} style={{background:c+"22",color:c,border:"1px solid "+c+"44",borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:700,cursor:"default"}}>{m}m</span>;
+                      })}
+                      {row.tickets.length>6&&<span style={{fontSize:10,color:"#94a3b8",alignSelf:"center"}}>+{row.tickets.length-6}</span>}
+                    </div>
+                  </td>
+                </tr>;
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{background:"#f0f9ff",borderTop:"2px solid #bae6fd"}}>
+                <td style={{padding:"10px 12px",fontWeight:800,color:"#0369a1",fontSize:13}}>TOTAL</td>
+                <td style={{padding:"10px 12px",fontWeight:800,color:"#0369a1",fontSize:13}}>{filtered.length} tickets</td>
+                <td style={{padding:"10px 12px",fontWeight:800,color:"#0369a1",fontSize:18}}>{filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0)}<span style={{fontSize:12,fontWeight:400,color:"#0369a1"}}>m</span></td>
+                <td style={{padding:"10px 12px",fontWeight:700,color:"#0369a1",fontSize:13}}>{filtered.length?Math.round(filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0)/filtered.length):0}m avg</td>
+                <td colSpan={3}/>
+              </tr>
+            </tfoot>
+          </table>
+        </Card>
+      </>}
+    </div>}
 
     {/* TABLE VIEW */}
     {view==="table"&&<Card style={{padding:0,overflow:"auto"}}>
