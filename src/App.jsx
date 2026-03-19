@@ -21,7 +21,7 @@ const ago   = function(iso){ if(!iso)return"—"; var m=Math.floor((Date.now()-n
 const inits = function(n){ if(!n)return"??"; var p=n.trim().split(" ").filter(Boolean); return p.length>=2?(p[0][0]+p[1][0]).toUpperCase():n.slice(0,2).toUpperCase(); };
 const avCol = function(id){ return PAL[Math.abs((id||"").split("").reduce(function(a,c){return a+c.charCodeAt(0);},0))%PAL.length]; };
 const rnd   = function(a,b){ return Math.floor(Math.random()*(b-a+1))+a; };
-const slaColor = function(r){ return r>=90?"#10b981":r>=75?"#f59e0b":"#ef4444"; };
+const fmtMs = function(mins){ if(!mins&&mins!==0)return"—"; var m=Math.floor(mins); var s=Math.round((mins-m)*60); return m+"m "+s+"s"; };
 // returns {hoursAllowed, hoursSpent, pct, breached, remaining} for the current status of a ticket
 function getStatusSla(ticket){
   var allowed=STATUS_SLA[ticket.status];
@@ -354,17 +354,16 @@ export default function App(){
 // ── TIME TRACKING PAGE ────────────────────────────────────────────────────────
 function PageTimeTracking(p){
   var tickets=p.tickets; var users=p.users; var ticketTypes=p.ticketTypes; var curUser=p.curUser; var isAdmin=p.isAdmin; var isTech=p.isTech; var setSelTicket=p.setSelTicket; var setPage=p.setPage;
-  var [search,setSearch]=useState(""); var [filterUser,setFilterUser]=useState(isTech?"":"curUser"); var [filterType,setFilterType]=useState(""); var [sortBy,setSortBy]=useState("submittedAt"); var [sortDir,setSortDir]=useState("desc");
+  var [search,setSearch]=useState(""); var [filterUser,setFilterUser]=useState(""); var [filterType,setFilterType]=useState(""); var [sortBy,setSortBy]=useState("submittedAt"); var [sortDir,setSortDir]=useState("desc");
   var [view,setView]=useState("table");
 
-  // show all for tech/admin, own only for end users
+  // non-admins always see only their own tickets
   var scope=useMemo(function(){
     var base=tickets.filter(function(t){return !t.deleted;});
-    if(!isTech) return base.filter(function(t){return t.submittedBy===curUser.id;});
-    if(filterUser==="curUser") return base.filter(function(t){return t.submittedBy===curUser.id;});
+    if(!isAdmin) return base.filter(function(t){return t.submittedBy===curUser.id;});
     if(filterUser) return base.filter(function(t){return t.submittedBy===filterUser;});
     return base;
-  },[tickets,curUser,isTech,filterUser]);
+  },[tickets,curUser,isAdmin,filterUser]);
 
   var filtered=useMemo(function(){
     var q=search.toLowerCase();
@@ -449,10 +448,10 @@ function PageTimeTracking(p){
     {/* Stats cards */}
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
       <Stat label="Tickets Shown"    value={filtered.length}    icon="🎫" color="#6366f1"/>
-      <Stat label="Total Create Time" value={(function(){ var t=filtered.reduce(function(a,tk){return a+(tk.timeToCreateMins||0);},0); return Math.floor(t)+"m "+Math.round((t%1)*60)+"s"; })()} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets combined"}/>
-      <Stat label="Avg Create Time"  value={(function(){ var t=filtered.length?filtered.reduce(function(a,tk){return a+(tk.timeToCreateMins||0);},0)/filtered.length:0; return Math.floor(t)+"m "+Math.round((t%1)*60)+"s"; })()} icon="⏱" color="#0ea5e9" sub="time to fill form"/>
-      <Stat label="Fastest Submit"   value={fastest?(fastest.timeToCreateMins||0)+"m":"—"} icon="⚡" color="#10b981" sub={fastest?fastest.title.slice(0,18)+"…":""}/>
-      <Stat label="Slowest Submit"   value={slowest?(slowest.timeToCreateMins||0)+"m":"—"} icon="🐢" color="#f59e0b" sub={slowest?slowest.title.slice(0,18)+"…":""}/>
+      <Stat label="Total Create Time" value={(function(){ var t=filtered.reduce(function(a,tk){return a+(tk.timeToCreateMins||0);},0); return fmtMs(t); })()} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets combined"}/>
+      <Stat label="Avg Create Time"  value={(function(){ var t=filtered.length?filtered.reduce(function(a,tk){return a+(tk.timeToCreateMins||0);},0)/filtered.length:0; return fmtMs(t); })()} icon="⏱" color="#0ea5e9" sub="time to fill form"/>
+      <Stat label="Fastest Submit"   value={fastest?fmtMs(fastest.timeToCreateMins):"—"} icon="⚡" color="#10b981" sub={fastest?fastest.title.slice(0,18)+"…":""}/>
+      <Stat label="Slowest Submit"   value={slowest?fmtMs(slowest.timeToCreateMins):"—"} icon="🐢" color="#f59e0b" sub={slowest?slowest.title.slice(0,18)+"…":""}/>
     </div>
 
     {/* Filters */}
@@ -463,10 +462,9 @@ function PageTimeTracking(p){
           <option value="">All Types</option>
           {ticketTypes.map(function(t){return <option key={t.id} value={t.id}>{t.name}</option>;})}
         </select>
-        {isTech&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}>
+        {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}>
           <option value="">All Users</option>
-          <option value="curUser">My Tickets</option>
-          {techUsers.map(function(u){return <option key={u.id} value={u.id}>{u.name}</option>;})}
+          {users.filter(function(u){return u.active;}).map(function(u){return <option key={u.id} value={u.id}>{u.name}</option>;})}
         </select>}
       </div>
     </Card>
@@ -498,7 +496,7 @@ function PageTimeTracking(p){
             {dailySummary.map(function(row){
               return <div key={row.date} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"8px 14px",textAlign:"center",minWidth:90}}>
                 <div style={{fontSize:10,color:"#64748b",fontWeight:600}}>{new Date(row.rawDate).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</div>
-                <div style={{fontSize:20,fontWeight:800,color:"#6366f1",margin:"2px 0"}}>{row.totalMins}<span style={{fontSize:11,fontWeight:400,color:"#94a3b8"}}>m</span></div>
+                <div style={{fontSize:20,fontWeight:800,color:"#6366f1",margin:"2px 0"}}>{fmtMs(row.totalMins)}</div>
                 <div style={{fontSize:10,color:"#94a3b8"}}>{row.count} ticket{row.count!==1?"s":""}</div>
               </div>;
             })}
@@ -529,21 +527,20 @@ function PageTimeTracking(p){
                     </div>
                   </td>
                   <td style={{padding:"10px 12px"}}>
-                    <div style={{fontWeight:800,fontSize:18,color:"#6366f1"}}>{row.totalMins}<span style={{fontSize:12,fontWeight:400,color:"#94a3b8"}}>m</span></div>
-                    <div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>{Math.floor(row.totalMins/60)>0?Math.floor(row.totalMins/60)+"h "+row.totalMins%60+"m":row.totalMins+"m"} total</div>
+                    <div style={{fontWeight:800,fontSize:16,color:"#6366f1"}}>{fmtMs(row.totalMins)}</div>
                   </td>
                   <td style={{padding:"10px 12px"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <div style={{width:36,height:7,background:"#e2e8f0",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,avg/30*100)+"%",background:avgColor,borderRadius:4}}/></div>
-                      <span style={{fontWeight:700,color:avgColor,fontSize:13}}>{avg}m</span>
+                      <span style={{fontWeight:700,color:avgColor,fontSize:13}}>{fmtMs(avg)}</span>
                     </div>
                   </td>
                   <td style={{padding:"10px 12px"}}>
-                    <div style={{fontSize:12,fontWeight:600,color:"#10b981"}}>{fastest?(fastest.timeToCreateMins||0)+"m":"—"}</div>
+                    <div style={{fontSize:12,fontWeight:600,color:"#10b981"}}>{fastest?fmtMs(fastest.timeToCreateMins):"—"}</div>
                     {fastest&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1,maxWidth:120,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fastest.title}</div>}
                   </td>
                   <td style={{padding:"10px 12px"}}>
-                    <div style={{fontSize:12,fontWeight:600,color:"#f59e0b"}}>{slowest?(slowest.timeToCreateMins||0)+"m":"—"}</div>
+                    <div style={{fontSize:12,fontWeight:600,color:"#f59e0b"}}>{slowest?fmtMs(slowest.timeToCreateMins):"—"}</div>
                     {slowest&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1,maxWidth:120,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slowest.title}</div>}
                   </td>
                   <td style={{padding:"10px 12px"}}>
@@ -551,7 +548,7 @@ function PageTimeTracking(p){
                       {row.tickets.slice(0,6).map(function(t){
                         var m=t.timeToCreateMins||0;
                         var c=m<=5?"#10b981":m<=15?"#f59e0b":"#ef4444";
-                        return <span key={t.id} title={t.title+" ("+m+"m)"} style={{background:c+"22",color:c,border:"1px solid "+c+"44",borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:700,cursor:"default"}}>{m}m</span>;
+                        return <span key={t.id} title={t.title+" ("+fmtMs(m)+")"} style={{background:c+"22",color:c,border:"1px solid "+c+"44",borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:700,cursor:"default"}}>{fmtMs(m)}</span>;
                       })}
                       {row.tickets.length>6&&<span style={{fontSize:10,color:"#94a3b8",alignSelf:"center"}}>+{row.tickets.length-6}</span>}
                     </div>
@@ -683,8 +680,8 @@ function PageTimeTracking(p){
       </Card>
     </div>}
 
-    {/* BY USER VIEW */}
-    {view==="byuser"&&isTech&&<div>
+    {/* BY USER VIEW — admin only */}
+    {view==="byuser"&&isAdmin&&<div>
       {bySubmitter.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No user data in the current filter.</div></Card>}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,marginBottom:16}}>
         {bySubmitter.map(function(row){
@@ -707,8 +704,8 @@ function PageTimeTracking(p){
                 <div style={{fontSize:20,fontWeight:800,color:"#0ea5e9"}}>{row.avg}<span style={{fontSize:11,color:"#94a3b8"}}>m</span></div>
               </div>
             </div>
-            {row.fastest&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>⚡ Fastest: <strong>{row.fastest.timeToCreateMins||0}m</strong> — {row.fastest.title.slice(0,22)}</div>}
-            {row.slowest&&<div style={{fontSize:11,color:"#64748b"}}>🐢 Slowest: <strong>{row.slowest.timeToCreateMins||0}m</strong> — {row.slowest.title.slice(0,22)}</div>}
+            {row.fastest&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>⚡ Fastest: <strong>{fmtMs(row.fastest.timeToCreateMins)}</strong> — {row.fastest.title.slice(0,22)}</div>}
+            {row.slowest&&<div style={{fontSize:11,color:"#64748b"}}>🐢 Slowest: <strong>{fmtMs(row.slowest.timeToCreateMins)}</strong> — {row.slowest.title.slice(0,22)}</div>}
           </Card>;
         })}
       </div>
@@ -844,7 +841,7 @@ function PageNewTicket(p){ var users=p.users; var companies=p.companies; var cli
     var tt=ticketTypes.find(function(t){return t.id===form.typeId;});
     var now=new Date().toISOString();
     var sla=new Date(Date.now()+(tt?tt.slaHours:24)*3600000).toISOString();
-    var mins=Math.max(1,Math.round((Date.now()-start)/60000));
+    var mins=Math.max(0.017,(Date.now()-start)/60000); // decimal minutes, min ~1s
     var formOpenedAt=new Date(start).toISOString();
     var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,companyId:form.companyId,clientId:form.clientId,locationId:form.locationId,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:formOpenedAt,slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],conversations:[],resolvedAt:null,closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
     setPreview({draft:draft,assign:assign});
@@ -1005,7 +1002,7 @@ function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var 
                 <div style={{flex:1,height:10,background:"#e2e8f0",borderRadius:5,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,createMins/30*100)+"%",background:createColor,borderRadius:5}}/></div>
                 <span style={{fontSize:16,fontWeight:800,color:createColor,minWidth:40}}>{createMins}m</span>
               </div>
-              <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{createMins<=5?"⚡ Very fast":createMins<=15?"✅ Normal pace":"🐢 Took a while"}</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{createMins<=5?"⚡ Very fast":createMins<=15?"✅ Normal pace":"🐢 Took a while"} · {fmtMs(createMins)}</div>
             </div>
           </div>
           {/* Submitted */}
