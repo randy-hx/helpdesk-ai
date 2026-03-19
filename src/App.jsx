@@ -240,7 +240,8 @@ export default function App(){
   var [ticketTypes,setTTR]    = useState(function(){ return loadState("hd_ticketTypes",SEED_TYPES); });
   var [logs,setLogsR]         = useState(function(){ return loadState("hd_logs",SEED_LOGS); });
   var [curUser,setCurUserR]   = useState(function(){ return loadState("hd_curUser",null); });
-  var [page,setPage]          = useState("dashboard");
+  var [page,setPageR]         = useState(function(){ return loadState("hd_page","dashboard"); });
+  function setPage(v){ saveState("hd_page",v); setPageR(v); }
   var [selTicket,setSelTicket]= useState(null);
   var [toast,setToast]        = useState(null);
   var [breaches,setBreaches]  = useState([]);
