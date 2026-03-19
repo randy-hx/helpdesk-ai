@@ -29,7 +29,6 @@ const fmtMs = function(mins){
 };
 const pieLabel = function(p){ return p.value>0?p.name+": "+p.value:""; };
 
-// ── Shared helpers (used in both Dashboard and Reports) ───────────────────────
 function calcSlaRate(arr){ return arr.length?Math.round((1-arr.filter(function(t){return t.slaBreached;}).length/arr.length)*100):100; }
 function calcAvgClose(arr){ return arr.length?Math.round(arr.reduce(function(a,t){return a+(new Date(t.closedAt||t.updatedAt)-new Date(t.createdAt))/3600000;},0)/arr.length):0; }
 function calcClosed(arr){ return arr.filter(function(t){return t.status==="Closed";}); }
@@ -914,7 +913,6 @@ function PageReports(p){
   function TD(dp){return <td style={{padding:"9px 12px",fontSize:12,fontWeight:dp.bold?700:400,color:"#1e293b"}}>{dp.children}</td>;}
   var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"},{id:"per_client",label:"🤝 Per Client"},{id:"per_location",label:"📍 Per Location"},{id:"sla",label:"⏱ SLA & Time"}];
 
-  // helper to compute per-status SLA compliance
   function statusSlaStats(status){
     var allowedH=statusSla[status];
     if(!allowedH) return {rate:100,met:0,breached:0,total:0};
@@ -1061,17 +1059,94 @@ function PageReports(p){
 }
 
 // ── USERS ─────────────────────────────────────────────────────────────────────
-function PageUsers(p){ var users=p.users; var companies=p.companies; var setUsers=p.setUsers; var curUser=p.curUser; var addLog=p.addLog; var showToast=p.showToast;
+function PageUsers(p){
+  var users=p.users; var companies=p.companies; var setUsers=p.setUsers; var curUser=p.curUser; var addLog=p.addLog; var showToast=p.showToast;
   var [modal,setModal]=useState(null); var [form,setForm]=useState({});
+  var [emailStatus,setEmailStatus]=useState(null); // null | "sending" | "sent" | "failed"
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
   var pendingUsers=users.filter(function(u){return !u.active;});
-  function approveUser(u){setUsers(function(prev){return prev.map(function(x){return x.id===u.id?Object.assign({},x,{active:true}):x;});}); addLog("USER_APPROVED",u.id,u.name+" approved"); showToast("✅ Account approved!");}
-  function save(){if(!form.name||!form.email){showToast("Name and email required","error");return;} if(modal==="new"){var nu=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString(),lastLogin:null});setUsers(function(prev){return prev.concat([nu]);});addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");showToast("User created");}else{var old=users.find(function(u){return u.id===form.id;});setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});if(old&&old.role!==form.role)addLog("USER_ROLE_CHANGE",form.id,"Role: "+ROLE_META[old.role]?.label+" → "+ROLE_META[form.role]?.label);showToast("User updated");}setModal(null);}
+
+  function approveUser(u){
+    setUsers(function(prev){return prev.map(function(x){return x.id===u.id?Object.assign({},x,{active:true}):x;});});
+    addLog("USER_APPROVED",u.id,u.name+" approved");
+    showToast("✅ Account approved!");
+  }
+
+  async function save(){
+    if(!form.name||!form.email){showToast("Name and email required","error");return;}
+    if(modal==="new"){
+      var nu=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString(),lastLogin:null});
+      setUsers(function(prev){return prev.concat([nu]);});
+      addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");
+      showToast("User created");
+
+      // ── Send welcome email ──────────────────────────────────────────────────
+      setEmailStatus("sending");
+      var defaultPw=getPassword(nu.id); // will be "password123" for new users
+      var emailBody=[
+        "Hi "+nu.name+",",
+        "",
+        "An account has been created for you on the Hoptix IT Helpdesk portal.",
+        "",
+        "📧 Email:    "+nu.email,
+        "🔑 Password: "+defaultPw,
+        "",
+        "⚠️  For your security, please sign in and change your password immediately.",
+        "",
+        "You can access the portal at any time to submit and track support tickets.",
+        "",
+        "If you did not expect this email or believe it was sent in error, please",
+        "contact your IT administrator.",
+        "",
+        "— The Hoptix IT Team"
+      ].join("\n");
+
+      var result=await callSendEmail({
+        to: nu.email,
+        subject: "🎉 Your Hoptix IT Helpdesk account is ready",
+        body: emailBody
+      });
+
+      setEmailStatus(result.success?"sent":"failed");
+      if(result.success){
+        addLog("EMAIL_SENT",nu.id,"Welcome email sent to "+nu.email);
+      } else {
+        showToast("⚠️ Welcome email failed to send","error");
+        addLog("EMAIL_SENT",nu.id,"Welcome email FAILED for "+nu.email);
+      }
+      // ── End send welcome email ──────────────────────────────────────────────
+
+    } else {
+      var old=users.find(function(u){return u.id===form.id;});
+      setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});
+      if(old&&old.role!==form.role) addLog("USER_ROLE_CHANGE",form.id,"Role: "+ROLE_META[old.role]?.label+" → "+ROLE_META[form.role]?.label);
+      showToast("User updated");
+    }
+    setModal(null);
+  }
+
   return <div>
     {pendingUsers.length>0&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:16,marginBottom:20}}><div style={{fontWeight:700,color:"#92400e",marginBottom:10,fontSize:13}}>⏳ {pendingUsers.length} Account{pendingUsers.length>1?"s":""} Awaiting Approval</div>{pendingUsers.map(function(u){return <div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 14px",borderRadius:8,border:"1px solid #fde68a",marginBottom:6}}><div style={{display:"flex",gap:10,alignItems:"center"}}><Avatar name={u.name} id={u.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{u.name}</div><div style={{fontSize:11,color:"#64748b"}}>{u.email}</div></div></div><div style={{display:"flex",gap:6}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅ Approve</Btn><Btn size="sm" variant="danger" onClick={function(){setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Account rejected");}}>✕ Reject</Btn></div></div>;})}</div>}
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>User Management ({users.length})</div><Btn onClick={function(){setForm({name:"",email:"",role:"end_user",companyId:companies[0]?.id||"",phone:"",dept:"",active:true});setModal("new");}}>➕ Add User</Btn></div>
-    <Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}><thead><tr style={{background:"#f8fafc"}}>{["User","Email","Role","Company","Status","Actions"].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>{h}</th>;})}</tr></thead><tbody>{users.map(function(u){ var co=companies.find(function(c){return c.id===u.companyId;}); var rm=ROLE_META[u.role]; return <tr key={u.id} style={{borderBottom:"1px solid #f1f5f9"}}><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:8,alignItems:"center"}}><Avatar name={u.name} id={u.id} size={30}/><div><div style={{fontWeight:600,fontSize:12}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>Last: {ago(u.lastLogin)}</div></div></div></td><td style={{padding:"10px 12px",fontSize:12}}>{u.email}</td><td style={{padding:"10px 12px"}}><Badge label={rm?.label||u.role} color={rm?.color||"#6366f1"}/></td><td style={{padding:"10px 12px",fontSize:12}}>{co?.name||"—"}</td><td style={{padding:"10px 12px"}}><Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/></td><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},u));setModal("edit");}}>✏️</Btn><Btn size="sm" variant={u.active?"warning":"success"} onClick={function(){setUsers(function(prev){return prev.map(function(x){return x.id===u.id?Object.assign({},x,{active:!x.active}):x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>{u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={function(){setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}</div></td></tr>; })}</tbody></table></Card>
-    {modal&&<Modal title={modal==="new"?"Add User":"Edit User"} onClose={function(){setModal(null);}}><FInput label="Full Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Email *" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Department" value={form.dept||""} onChange={function(e){fld("dept",e.target.value);}}/><FSelect label="Role" value={form.role||"end_user"} onChange={function(e){fld("role",e.target.value);}} options={OPT_ROLES}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompanies(companies)}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div></Modal>}
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>User Management ({users.length})</div><Btn onClick={function(){setEmailStatus(null);setForm({name:"",email:"",role:"end_user",companyId:companies[0]?.id||"",phone:"",dept:"",active:true});setModal("new");}}>➕ Add User</Btn></div>
+    <Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}><thead><tr style={{background:"#f8fafc"}}>{["User","Email","Role","Company","Status","Actions"].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>{h}</th>;})}</tr></thead><tbody>{users.map(function(u){ var co=companies.find(function(c){return c.id===u.companyId;}); var rm=ROLE_META[u.role]; return <tr key={u.id} style={{borderBottom:"1px solid #f1f5f9"}}><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:8,alignItems:"center"}}><Avatar name={u.name} id={u.id} size={30}/><div><div style={{fontWeight:600,fontSize:12}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>Last: {ago(u.lastLogin)}</div></div></div></td><td style={{padding:"10px 12px",fontSize:12}}>{u.email}</td><td style={{padding:"10px 12px"}}><Badge label={rm?.label||u.role} color={rm?.color||"#6366f1"}/></td><td style={{padding:"10px 12px",fontSize:12}}>{co?.name||"—"}</td><td style={{padding:"10px 12px"}}><Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/></td><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️</Btn><Btn size="sm" variant={u.active?"warning":"success"} onClick={function(){setUsers(function(prev){return prev.map(function(x){return x.id===u.id?Object.assign({},x,{active:!x.active}):x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>{u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={function(){setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}</div></td></tr>; })}</tbody></table></Card>
+    {modal&&<Modal title={modal==="new"?"Add User":"Edit User"} onClose={function(){setModal(null);}}>
+      <FInput label="Full Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/>
+      <FInput label="Email *" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/>
+      <FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/>
+      <FInput label="Department" value={form.dept||""} onChange={function(e){fld("dept",e.target.value);}}/>
+      <FSelect label="Role" value={form.role||"end_user"} onChange={function(e){fld("role",e.target.value);}} options={OPT_ROLES}/>
+      <FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompanies(companies)}/>
+      {modal==="new"&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1"}}>
+        📧 A welcome email with login credentials will be sent to the provided address upon creation.
+      </div>}
+      {emailStatus==="sending"&&<div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e",display:"flex",alignItems:"center",gap:8}}><span style={{display:"inline-block",width:12,height:12,border:"2px solid #92400e",borderTop:"2px solid transparent",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> Sending welcome email…</div>}
+      {emailStatus==="sent"&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#166534"}}>✅ Welcome email sent successfully!</div>}
+      {emailStatus==="failed"&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#dc2626"}}>⚠️ Welcome email failed. The account was still created.</div>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn>
+        <Btn onClick={save}>{modal==="new"?"Create & Send Welcome Email":"Save"}</Btn>
+      </div>
+    </Modal>}
   </div>;
 }
 
@@ -1105,7 +1180,6 @@ function PageTicketTypes(p){
   function saveSla(){ setStatusSla(slaEdit); addLog("SLA_UPDATED","system","Status SLA thresholds updated"); showToast("✅ Status SLA settings saved!"); setSlaChanged(false); }
   function resetSla(){ setSlaEdit(Object.assign({},DEFAULT_STATUS_SLA)); setSlaChanged(true); }
   var SLA_DESC={"Open":"Time allowed before a new ticket must be acknowledged","In Progress":"Time allowed for an agent to resolve once work begins","Pending":"Time allowed while waiting for requester response","Escalated":"Time allowed for senior staff to take action after escalation","Closed":"No SLA — ticket is closed"};
-
   return <div>
     <Card style={{marginBottom:24,borderTop:"3px solid #6366f1"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -1125,7 +1199,6 @@ function PageTicketTypes(p){
       </div>
       {slaChanged&&<div style={{marginTop:14,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e"}}>⚠️ You have unsaved changes. Click <strong>Save SLA Settings</strong> to apply.</div>}
     </Card>
-
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>Ticket Types ({ticketTypes.length})</div><Btn onClick={function(){setForm({name:"",priority:"medium",slaHours:24,color:"#6366f1",keywords:[],defaultAssignee:""});setModal("new");}}>➕ Add Type</Btn></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:14}}>
       {ticketTypes.map(function(tt){ var asgn=users.find(function(u){return u.id===tt.defaultAssignee;}); return <Card key={tt.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:tt.color}}/><span style={{fontWeight:700,color:"#1e293b"}}>{tt.name}</span></div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},tt,{keywords:(tt.keywords||[]).slice()}));setModal("edit");}}>✏️</Btn>{tt.name!=="Others"&&<Btn size="sm" variant="danger" onClick={function(){setTicketTypes(function(prev){return prev.filter(function(t){return t.id!==tt.id;});});addLog("TICKET_TYPE_DELETED",tt.id,"Type \""+tt.name+"\" deleted");showToast("Deleted");}}>🗑</Btn>}</div></div><div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}><Badge label={PRI_META[tt.priority]?.label||tt.priority} color={PRI_META[tt.priority]?.color||"#6366f1"}/><Badge label={"SLA "+tt.slaHours+"h"} color="#0ea5e9"/></div>{asgn&&<div style={{fontSize:11,color:"#64748b",marginBottom:6}}>👤 {asgn.name}</div>}<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(tt.keywords||[]).slice(0,5).map(function(k){return <span key={k} style={{background:"#f1f5f9",color:"#475569",fontSize:10,padding:"2px 6px",borderRadius:4}}>{k}</span>;})}{(tt.keywords||[]).length>5&&<span style={{fontSize:10,color:"#94a3b8"}}>+{(tt.keywords||[]).length-5}</span>}</div></Card>; })}
