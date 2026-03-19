@@ -8,8 +8,9 @@ const FUNCTIONS_URL = "https://byuvyyycweowdupyvjgy.supabase.co/functions/v1";
 const STATUS_META = { "Open":{color:"#f59e0b",bg:"#fef3c7"}, "In Progress":{color:"#6366f1",bg:"#eef2ff"}, "Resolved":{color:"#10b981",bg:"#d1fae5"}, "Escalated":{color:"#ef4444",bg:"#fee2e2"}, "Closed":{color:"#94a3b8",bg:"#f1f5f9"} };
 const ALL_STATUSES = ["Open","In Progress","Resolved","Escalated","Closed"];
 const PRI_META = { critical:{color:"#dc2626",bg:"#fee2e2",label:"Critical",slaHours:1}, high:{color:"#ef4444",bg:"#fef2f2",label:"High",slaHours:4}, medium:{color:"#f59e0b",bg:"#fffbeb",label:"Medium",slaHours:24}, low:{color:"#10b981",bg:"#f0fdf4",label:"Low",slaHours:72} };
-// SLA hours allowed per status stage
-const STATUS_SLA = { "Open":2, "In Progress":8, "Pending":24, "Escalated":1, "Resolved":48, "Closed":null };
+const DEFAULT_STATUS_SLA = { "Open":2, "In Progress":8, "Pending":24, "Escalated":1, "Resolved":48, "Closed":null };
+function loadStatusSla(){ try{ var s=localStorage.getItem("hd_statusSla"); return s?JSON.parse(s):DEFAULT_STATUS_SLA; }catch{ return DEFAULT_STATUS_SLA; } }
+function saveStatusSlaStore(v){ try{ localStorage.setItem("hd_statusSla",JSON.stringify(v)); }catch{} }
 const ROLE_META = { admin:{label:"Administrator",color:"#dc2626"}, it_manager:{label:"IT Manager",color:"#7c3aed"}, it_technician:{label:"IT Technician",color:"#2563eb"}, end_user:{label:"End User",color:"#059669"} };
 
 const uid   = function(){ return "id_"+Date.now()+"_"+Math.random().toString(36).slice(2,6); };
@@ -261,6 +262,7 @@ export default function App(){
   var [clients,setClientsR]   = useState(function(){ return loadState("hd_clients",SEED_CLIENTS); });
   var [tickets,setTicketsR]   = useState(function(){ return loadState("hd_tickets",SEED_TICKETS); });
   var [ticketTypes,setTTR]    = useState(function(){ return loadState("hd_ticketTypes",SEED_TYPES); });
+  var [statusSla,setStatusSlaR] = useState(function(){ return loadStatusSla(); });
   var [logs,setLogsR]         = useState(function(){ return loadState("hd_logs",SEED_LOGS); });
   var [curUser,setCurUserR]   = useState(function(){ return loadState("hd_curUser",null); });
   var [page,setPageR]         = useState(function(){ return loadState("hd_page","dashboard"); });
@@ -275,6 +277,7 @@ export default function App(){
   function setClients(v){     var n=typeof v==="function"?v(clients):v;     saveState("hd_clients",n);     setClientsR(n); }
   function setTickets(v){     var n=typeof v==="function"?v(tickets):v;     saveState("hd_tickets",n);     setTicketsR(n); }
   function setTicketTypes(v){ var n=typeof v==="function"?v(ticketTypes):v; saveState("hd_ticketTypes",n); setTTR(n); }
+  function setStatusSla(v){   var n=typeof v==="function"?v(statusSla):v;   saveStatusSlaStore(n);           setStatusSlaR(n); }
   function setLogs(v){        var n=typeof v==="function"?v(logs):v;        saveState("hd_logs",n);        setLogsR(n); }
   function setCurUser(u){     if(u)saveState("hd_curUser",u); else clearAuth(); setCurUserR(u); }
 
@@ -342,7 +345,7 @@ export default function App(){
           {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin}/>}
           {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage}/>}
           {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} setPage={setPage}/>}
-          {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients}/>}
+          {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla}/>}
           {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast}/>}
           {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast}/>}
           {page==="clients"      &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast}/>}
@@ -351,7 +354,7 @@ export default function App(){
           {page==="sms_tracker"  &&<PageSmsTracker  tickets={visible} users={users} curUser={curUser} showToast={showToast} addLog={addLog}/>}
         </div>
       </div>
-      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} onClose={function(){setSelTicket(null);}}/>}
+      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} onClose={function(){setSelTicket(null);}}/>}
       {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} showToast={showToast} addLog={addLog} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
@@ -780,7 +783,7 @@ function PageDashboard(p){ var tickets=p.tickets; var users=p.users; var ticketT
 }
 
 // ── TICKET LIST ───────────────────────────────────────────────────────────────
-function PageTickets(p){ var tickets=p.tickets; var users=p.users; var clients=p.clients; var ticketTypes=p.ticketTypes; var curUser=p.curUser; var setTickets=p.setTickets; var addLog=p.addLog; var showToast=p.showToast; var setSelTicket=p.setSelTicket; var setPage=p.setPage; var isAdmin=p.isAdmin;
+function PageTickets(p){ var tickets=p.tickets; var users=p.users; var clients=p.clients; var ticketTypes=p.ticketTypes; var curUser=p.curUser; var setTickets=p.setTickets; var addLog=p.addLog; var showToast=p.showToast; var setSelTicket=p.setSelTicket; var setPage=p.setPage; var isAdmin=p.isAdmin; var statusSla=p.statusSla;
   var [search,setSearch]=useState(""); var [fStat,setFStat]=useState(""); var [fPri,setFPri]=useState(""); var [fType,setFType]=useState("");
   var filtered=tickets.filter(function(t){ var q=search.toLowerCase(); return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType); });
   function delTicket(id){ setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});}); addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted"); showToast("Ticket deleted"); }
@@ -801,7 +804,7 @@ function PageTickets(p){ var tickets=p.tickets; var users=p.users; var clients=p
         <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Location","Assigned To","SLA",""].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:.5,borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
         <tbody>
           {filtered.length===0&&<tr><td colSpan={10} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found</td></tr>}
-          {filtered.map(function(t,i){ var asgn=fu(t.assignedTo); var type=ftt(t.typeId); var client=fcl(t.clientId); var loc=getLoc(t.clientId,t.locationId); var pri=PRI_META[t.priority]||PRI_META.medium; var sm=STATUS_META[t.status]||STATUS_META.Open; var sSla=getStatusSla(t); return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
+          {filtered.map(function(t,i){ var asgn=fu(t.assignedTo); var type=ftt(t.typeId); var client=fcl(t.clientId); var loc=getLoc(t.clientId,t.locationId); var pri=PRI_META[t.priority]||PRI_META.medium; var sm=STATUS_META[t.status]||STATUS_META.Open; var sSla=getStatusSla(t,statusSla); return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
             <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id}</td>
             <td style={{padding:"9px 12px",maxWidth:180}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div></td>
             <td style={{padding:"9px 12px"}}><Badge label={type?.name||"—"} color={type?.color||"#94a3b8"}/></td>
@@ -891,7 +894,7 @@ function PageNewTicket(p){ var users=p.users; var companies=p.companies; var cli
 }
 
 // ── TICKET DETAIL ─────────────────────────────────────────────────────────────
-function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var users=p.users; var ticketTypes=p.ticketTypes; var companies=p.companies; var clients=p.clients; var curUser=p.curUser; var isAdmin=p.isAdmin; var isTech=p.isTech; var addLog=p.addLog; var showToast=p.showToast; var onClose=p.onClose;
+function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var users=p.users; var ticketTypes=p.ticketTypes; var companies=p.companies; var clients=p.clients; var curUser=p.curUser; var isAdmin=p.isAdmin; var isTech=p.isTech; var addLog=p.addLog; var showToast=p.showToast; var onClose=p.onClose; var statusSla=p.statusSla;
   var [tab,setTab]=useState("details"); var [status,setStatus]=useState(ticket.status); var [asgn,setAsgn]=useState(ticket.assignedTo||""); var [note,setNote]=useState(""); var [typeId,setTypeId]=useState(ticket.typeId||"");
   var [msgTo,setMsgTo]=useState(""); var [msgCC,setMsgCC]=useState(""); var [msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title); var [msgBody,setMsgBody]=useState("");
   var [smsTo,setSmsTo]=useState(""); var [smsBody,setSmsBody]=useState(""); var [smsLog,setSmsLog]=useState([]);
@@ -936,7 +939,7 @@ function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var 
   var createMins=ticket.timeToCreateMins||0;
   var createColor=createMins<=5?"#10b981":createMins<=15?"#f59e0b":"#ef4444";
 
-  var sSla=getStatusSla(ticket);
+  var sSla=getStatusSla(ticket, statusSla);
   var detailRows=[["Title",ticket.title],["Type",tt?.name||(ticket.customTypeName||"—")],["Priority",<Badge key="p" label={PRI_META[ticket.priority]?.label||ticket.priority} color={PRI_META[ticket.priority]?.color||"#6366f1"}/>],["Status",<Badge key="s" label={ticket.status} color={STATUS_META[ticket.status]?.color||"#6366f1"}/>],["Company",co?.name||"—"],["Submitted By",fu(ticket.submittedBy)?.name||"—"],["Assigned To",fu(ticket.assignedTo)?.name||"Unassigned"],["AI Reason",ticket.aiReason||"—"],["Created",fdt(ticket.createdAt)],["SLA Deadline",fdt(ticket.slaDeadline)],["Create Time",(ticket.timeToCreateMins||1)+" min"],["Overall SLA",ticket.slaBreached?<Badge key="sl" label="BREACHED" color="#ef4444"/>:<Badge key="sl2" label="✓ OK" color="#10b981"/>]];
   var TABS=["details","time","status","email","sms","history"].filter(function(t){if(t==="status")return isTech;return true;});
   return <Modal title={"Ticket #"+ticket.id+" — "+ticket.title} onClose={onClose} wide>
@@ -1107,7 +1110,7 @@ function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var 
 }
 
 // ── REPORTS ────────────────────────────────────────────────────────────────────
-function PageReports(p){ var tickets=p.tickets; var users=p.users; var ticketTypes=p.ticketTypes; var clients=p.clients;
+function PageReports(p){ var tickets=p.tickets; var users=p.users; var ticketTypes=p.ticketTypes; var clients=p.clients; var statusSla=p.statusSla||DEFAULT_STATUS_SLA;
   var [view,setView]=useState("summary"); var [range,setRange]=useState("month"); var [aiInsight,setAiInsight]=useState(""); var [aiLoading,setAiLoading]=useState(false);
   var rangeStart=useMemo(function(){ var now=new Date(); if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString(); if(range==="week")return new Date(now.getTime()-7*86400000).toISOString(); if(range==="month")return new Date(now.getTime()-30*86400000).toISOString(); if(range==="year")return new Date(now.getTime()-365*86400000).toISOString(); return new Date(0).toISOString(); },[range]);
   var rangeLabel={day:"Today",week:"Last 7 Days",month:"Last 30 Days",year:"Last 12 Months",all:"All Time"};
@@ -1188,12 +1191,75 @@ function PageClients(p){ var clients=p.clients; var setClients=p.setClients; var
 }
 
 // ── TICKET TYPES ──────────────────────────────────────────────────────────────
-function PageTicketTypes(p){ var ticketTypes=p.ticketTypes; var users=p.users; var setTicketTypes=p.setTicketTypes; var addLog=p.addLog; var showToast=p.showToast;
+function PageTicketTypes(p){ var ticketTypes=p.ticketTypes; var users=p.users; var setTicketTypes=p.setTicketTypes; var statusSla=p.statusSla; var setStatusSla=p.setStatusSla; var addLog=p.addLog; var showToast=p.showToast;
   var [modal,setModal]=useState(null); var [form,setForm]=useState({}); var [kwInput,setKwInput]=useState("");
+  var [slaEdit,setSlaEdit]=useState(function(){ return Object.assign({},statusSla); });
+  var [slaChanged,setSlaChanged]=useState(false);
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
   function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nt=Object.assign({},form,{id:uid(),keywords:form.keywords||[]});setTicketTypes(function(prev){return prev.concat([nt]);});addLog("TICKET_TYPE_CREATED",nt.id,"Type \""+nt.name+"\" created");showToast("Created");}else{setTicketTypes(function(prev){return prev.map(function(t){return t.id===form.id?Object.assign({},form):t;});});showToast("Updated");}setModal(null);}
   function addKw(){if(kwInput.trim()){fld("keywords",(form.keywords||[]).concat([kwInput.trim()]));setKwInput("");}}
-  return <div><div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>Ticket Types ({ticketTypes.length})</div><Btn onClick={function(){setForm({name:"",priority:"medium",slaHours:24,color:"#6366f1",keywords:[],defaultAssignee:""});setModal("new");}}>➕ Add Type</Btn></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:14}}>{ticketTypes.map(function(tt){ var asgn=users.find(function(u){return u.id===tt.defaultAssignee;}); return <Card key={tt.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:tt.color}}/><span style={{fontWeight:700,color:"#1e293b"}}>{tt.name}</span></div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},tt,{keywords:(tt.keywords||[]).slice()}));setModal("edit");}}>✏️</Btn>{tt.name!=="Others"&&<Btn size="sm" variant="danger" onClick={function(){setTicketTypes(function(prev){return prev.filter(function(t){return t.id!==tt.id;});});addLog("TICKET_TYPE_DELETED",tt.id,"Type \""+tt.name+"\" deleted");showToast("Deleted");}}>🗑</Btn>}</div></div><div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}><Badge label={PRI_META[tt.priority]?.label||tt.priority} color={PRI_META[tt.priority]?.color||"#6366f1"}/><Badge label={"SLA "+tt.slaHours+"h"} color="#0ea5e9"/></div>{asgn&&<div style={{fontSize:11,color:"#64748b",marginBottom:6}}>👤 {asgn.name}</div>}<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(tt.keywords||[]).slice(0,5).map(function(k){return <span key={k} style={{background:"#f1f5f9",color:"#475569",fontSize:10,padding:"2px 6px",borderRadius:4}}>{k}</span>;})} {(tt.keywords||[]).length>5&&<span style={{fontSize:10,color:"#94a3b8"}}>+{(tt.keywords||[]).length-5}</span>}</div></Card>; })}</div>{modal&&<Modal title={modal==="new"?"Add Ticket Type":"Edit Ticket Type"} onClose={function(){setModal(null);}}><FInput label="Type Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FSelect label="Priority" value={form.priority||"medium"} onChange={function(e){fld("priority",e.target.value);}} options={OPT_PRIORITY}/><FInput label="SLA Hours" value={form.slaHours||24} onChange={function(e){fld("slaHours",Number(e.target.value));}} type="number" min={1}/><FInput label="Color" value={form.color||"#6366f1"} onChange={function(e){fld("color",e.target.value);}} type="color"/><FSelect label="Default Assignee" value={form.defaultAssignee||""} onChange={function(e){fld("defaultAssignee",e.target.value);}} options={optAssignees(users)}/><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Keywords</label><div style={{display:"flex",gap:6,marginBottom:6}}><input value={kwInput} onChange={function(e){setKwInput(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addKw();}} placeholder="e.g. printer, monitor" style={{flex:1,padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,outline:"none"}}/><Btn size="sm" onClick={addKw}>Add</Btn></div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(form.keywords||[]).map(function(k,i){return <span key={i} onClick={function(){fld("keywords",(form.keywords||[]).filter(function(_,j){return j!==i;}));}} style={{background:"#eef2ff",color:"#4338ca",fontSize:11,padding:"2px 8px",borderRadius:4,cursor:"pointer"}}>{k} ×</span>;})}</div></div><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div></Modal>}</div>;
+  function updateSlaField(status,val){
+    var n=Object.assign({},slaEdit);
+    n[status]=val===""||val===null?null:parseFloat(val);
+    setSlaEdit(n); setSlaChanged(true);
+  }
+  function saveSla(){
+    setStatusSla(slaEdit);
+    addLog("SLA_UPDATED","system","Status SLA thresholds updated");
+    showToast("✅ Status SLA settings saved!");
+    setSlaChanged(false);
+  }
+  function resetSla(){
+    setSlaEdit(Object.assign({},DEFAULT_STATUS_SLA));
+    setSlaChanged(true);
+  }
+  var SLA_DESC={"Open":"Time allowed before a new ticket must be acknowledged","In Progress":"Time allowed for an agent to resolve once work begins","Pending":"Time allowed while waiting for requester response","Escalated":"Time allowed for senior staff to take action after escalation","Resolved":"Grace period before auto-close after resolution","Closed":"No SLA — ticket is closed"};
+  return <div>
+    {/* Status SLA Settings */}
+    <Card style={{marginBottom:24,borderTop:"3px solid #6366f1"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>⏱ Status SLA Thresholds</div>
+          <div style={{fontSize:12,color:"#64748b",marginTop:2}}>Set how many hours are allowed for each ticket status before it's considered breached.</div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <Btn size="sm" variant="ghost" onClick={resetSla}>↺ Reset to Defaults</Btn>
+          <Btn size="sm" variant={slaChanged?"primary":"ghost"} onClick={saveSla} style={{opacity:slaChanged?1:0.5}}>💾 Save SLA Settings</Btn>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
+        {ALL_STATUSES.map(function(status){
+          var sm=STATUS_META[status]; var isClosed=status==="Closed";
+          var val=slaEdit[status];
+          return <div key={status} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
+              <div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{status}</div>
+              {!isClosed&&val!==null&&<Badge label={val+"h"} color={sm.color}/>}
+              {isClosed&&<Badge label="No SLA" color="#94a3b8"/>}
+            </div>
+            <div style={{fontSize:11,color:"#64748b",marginBottom:10,lineHeight:1.5}}>{SLA_DESC[status]}</div>
+            {isClosed
+              ? <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic"}}>Closed tickets do not have an SLA timer.</div>
+              : <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <input
+                    type="number" min="0.5" step="0.5"
+                    value={val===null||val===undefined?"":val}
+                    onChange={function(e){updateSlaField(status,e.target.value);}}
+                    style={{width:80,padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box"}}
+                  />
+                  <span style={{fontSize:12,color:"#64748b",fontWeight:600}}>hours</span>
+                  {slaEdit[status]!==DEFAULT_STATUS_SLA[status]&&<span style={{fontSize:10,color:"#f59e0b",fontWeight:700}}>modified</span>}
+                </div>
+            }
+          </div>;
+        })}
+      </div>
+      {slaChanged&&<div style={{marginTop:14,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e"}}>⚠️ You have unsaved changes. Click <strong>Save SLA Settings</strong> to apply.</div>}
+    </Card>
+
+    {/* Ticket Types list */}
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>Ticket Types ({ticketTypes.length})</div><Btn onClick={function(){setForm({name:"",priority:"medium",slaHours:24,color:"#6366f1",keywords:[],defaultAssignee:""});setModal("new");}}>➕ Add Type</Btn></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:14}}>{ticketTypes.map(function(tt){ var asgn=users.find(function(u){return u.id===tt.defaultAssignee;}); return <Card key={tt.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:tt.color}}/><span style={{fontWeight:700,color:"#1e293b"}}>{tt.name}</span></div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},tt,{keywords:(tt.keywords||[]).slice()}));setModal("edit");}}>✏️</Btn>{tt.name!=="Others"&&<Btn size="sm" variant="danger" onClick={function(){setTicketTypes(function(prev){return prev.filter(function(t){return t.id!==tt.id;});});addLog("TICKET_TYPE_DELETED",tt.id,"Type \""+tt.name+"\" deleted");showToast("Deleted");}}>🗑</Btn>}</div></div><div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}><Badge label={PRI_META[tt.priority]?.label||tt.priority} color={PRI_META[tt.priority]?.color||"#6366f1"}/><Badge label={"SLA "+tt.slaHours+"h"} color="#0ea5e9"/></div>{asgn&&<div style={{fontSize:11,color:"#64748b",marginBottom:6}}>👤 {asgn.name}</div>}<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(tt.keywords||[]).slice(0,5).map(function(k){return <span key={k} style={{background:"#f1f5f9",color:"#475569",fontSize:10,padding:"2px 6px",borderRadius:4}}>{k}</span>;})} {(tt.keywords||[]).length>5&&<span style={{fontSize:10,color:"#94a3b8"}}>+{(tt.keywords||[]).length-5}</span>}</div></Card>; })}</div>{modal&&<Modal title={modal==="new"?"Add Ticket Type":"Edit Ticket Type"} onClose={function(){setModal(null);}}><FInput label="Type Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FSelect label="Priority" value={form.priority||"medium"} onChange={function(e){fld("priority",e.target.value);}} options={OPT_PRIORITY}/><FInput label="SLA Hours" value={form.slaHours||24} onChange={function(e){fld("slaHours",Number(e.target.value));}} type="number" min={1}/><FInput label="Color" value={form.color||"#6366f1"} onChange={function(e){fld("color",e.target.value);}} type="color"/><FSelect label="Default Assignee" value={form.defaultAssignee||""} onChange={function(e){fld("defaultAssignee",e.target.value);}} options={optAssignees(users)}/><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Keywords</label><div style={{display:"flex",gap:6,marginBottom:6}}><input value={kwInput} onChange={function(e){setKwInput(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addKw();}} placeholder="e.g. printer, monitor" style={{flex:1,padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,outline:"none"}}/><Btn size="sm" onClick={addKw}>Add</Btn></div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(form.keywords||[]).map(function(k,i){return <span key={i} onClick={function(){fld("keywords",(form.keywords||[]).filter(function(_,j){return j!==i;}));}} style={{background:"#eef2ff",color:"#4338ca",fontSize:11,padding:"2px 8px",borderRadius:4,cursor:"pointer"}}>{k} ×</span>;})}</div></div><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div></Modal>}</div>;
 }
 
 // ── ACTIVITY LOG ──────────────────────────────────────────────────────────────
