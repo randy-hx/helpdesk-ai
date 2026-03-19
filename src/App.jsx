@@ -7,7 +7,9 @@ const FUNCTIONS_URL = "https://byuvyyycweowdupyvjgy.supabase.co/functions/v1";
 
 const STATUS_META = { "Open":{color:"#f59e0b",bg:"#fef3c7"}, "In Progress":{color:"#6366f1",bg:"#eef2ff"}, "Resolved":{color:"#10b981",bg:"#d1fae5"}, "Escalated":{color:"#ef4444",bg:"#fee2e2"}, "Closed":{color:"#94a3b8",bg:"#f1f5f9"} };
 const ALL_STATUSES = ["Open","In Progress","Resolved","Escalated","Closed"];
-const PRI_META = { critical:{color:"#dc2626",bg:"#fee2e2",label:"Critical"}, high:{color:"#ef4444",bg:"#fef2f2",label:"High"}, medium:{color:"#f59e0b",bg:"#fffbeb",label:"Medium"}, low:{color:"#10b981",bg:"#f0fdf4",label:"Low"} };
+const PRI_META = { critical:{color:"#dc2626",bg:"#fee2e2",label:"Critical",slaHours:1}, high:{color:"#ef4444",bg:"#fef2f2",label:"High",slaHours:4}, medium:{color:"#f59e0b",bg:"#fffbeb",label:"Medium",slaHours:24}, low:{color:"#10b981",bg:"#f0fdf4",label:"Low",slaHours:72} };
+// SLA hours allowed per status stage
+const STATUS_SLA = { "Open":2, "In Progress":8, "Pending":24, "Escalated":1, "Resolved":48, "Closed":null };
 const ROLE_META = { admin:{label:"Administrator",color:"#dc2626"}, it_manager:{label:"IT Manager",color:"#7c3aed"}, it_technician:{label:"IT Technician",color:"#2563eb"}, end_user:{label:"End User",color:"#059669"} };
 
 const uid   = function(){ return "id_"+Date.now()+"_"+Math.random().toString(36).slice(2,6); };
@@ -20,6 +22,21 @@ const inits = function(n){ if(!n)return"??"; var p=n.trim().split(" ").filter(Bo
 const avCol = function(id){ return PAL[Math.abs((id||"").split("").reduce(function(a,c){return a+c.charCodeAt(0);},0))%PAL.length]; };
 const rnd   = function(a,b){ return Math.floor(Math.random()*(b-a+1))+a; };
 const slaColor = function(r){ return r>=90?"#10b981":r>=75?"#f59e0b":"#ef4444"; };
+// returns {hoursAllowed, hoursSpent, pct, breached, remaining} for the current status of a ticket
+function getStatusSla(ticket){
+  var allowed=STATUS_SLA[ticket.status];
+  if(allowed===null||allowed===undefined) return null;
+  // find when the ticket entered current status
+  var hist=(ticket.statusHistory||[]);
+  var entry=null;
+  for(var i=hist.length-1;i>=0;i--){ if(hist[i].status===ticket.status){entry=hist[i].timestamp;break;} }
+  if(!entry) entry=ticket.updatedAt||ticket.createdAt;
+  var spent=(Date.now()-new Date(entry).getTime())/3600000;
+  var pct=Math.min(100,Math.round(spent/allowed*100));
+  var breached=spent>allowed;
+  var remaining=Math.max(0,allowed-spent);
+  return {hoursAllowed:allowed,hoursSpent:parseFloat(spent.toFixed(1)),pct,breached,remaining:parseFloat(remaining.toFixed(1)),enteredAt:entry};
+}
 
 async function callSendEmail(opts) {
   try {
@@ -781,7 +798,7 @@ function PageTickets(p){ var tickets=p.tickets; var users=p.users; var clients=p
         <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Location","Assigned To","SLA",""].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:.5,borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
         <tbody>
           {filtered.length===0&&<tr><td colSpan={10} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found</td></tr>}
-          {filtered.map(function(t,i){ var asgn=fu(t.assignedTo); var type=ftt(t.typeId); var client=fcl(t.clientId); var loc=getLoc(t.clientId,t.locationId); var pri=PRI_META[t.priority]||PRI_META.medium; var sm=STATUS_META[t.status]||STATUS_META.Open; return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
+          {filtered.map(function(t,i){ var asgn=fu(t.assignedTo); var type=ftt(t.typeId); var client=fcl(t.clientId); var loc=getLoc(t.clientId,t.locationId); var pri=PRI_META[t.priority]||PRI_META.medium; var sm=STATUS_META[t.status]||STATUS_META.Open; var sSla=getStatusSla(t); return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
             <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id}</td>
             <td style={{padding:"9px 12px",maxWidth:180}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div></td>
             <td style={{padding:"9px 12px"}}><Badge label={type?.name||"—"} color={type?.color||"#94a3b8"}/></td>
@@ -790,7 +807,18 @@ function PageTickets(p){ var tickets=p.tickets; var users=p.users; var clients=p
             <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{client?<span>🤝 {client.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
             <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{loc?<span>📍 {loc.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
             <td style={{padding:"9px 12px"}}>{asgn?<div style={{display:"flex",alignItems:"center",gap:6}}><Avatar name={asgn.name} id={asgn.id} size={22}/><span style={{fontSize:11}}>{asgn.name}</span></div>:<span style={{fontSize:11,color:"#ef4444"}}>Unassigned</span>}</td>
-            <td style={{padding:"9px 12px"}}>{t.slaBreached&&!["Closed","Resolved"].includes(t.status)?<Badge label="BREACHED" color="#ef4444"/>:<span style={{fontSize:10,color:"#10b981"}}>✓ OK</span>}</td>
+            <td style={{padding:"9px 12px",minWidth:130}}>
+              {sSla?<div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:3}}>
+                  <span style={{color:sSla.breached?"#ef4444":"#64748b",fontWeight:600}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining+"h left"}</span>
+                  <span style={{color:"#94a3b8"}}>{sSla.pct}%</span>
+                </div>
+                <div style={{height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3,transition:"width .3s"}}/>
+                </div>
+                <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{sSla.hoursSpent}h / {sSla.hoursAllowed}h allowed</div>
+              </div>:<span style={{fontSize:10,color:"#94a3b8"}}>— closed</span>}
+            </td>
             <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn>{isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}</div></td>
           </tr>; })}
         </tbody>
@@ -861,7 +889,7 @@ function PageNewTicket(p){ var users=p.users; var companies=p.companies; var cli
 
 // ── TICKET DETAIL ─────────────────────────────────────────────────────────────
 function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var users=p.users; var ticketTypes=p.ticketTypes; var companies=p.companies; var clients=p.clients; var curUser=p.curUser; var isAdmin=p.isAdmin; var isTech=p.isTech; var addLog=p.addLog; var showToast=p.showToast; var onClose=p.onClose;
-  var [tab,setTab]=useState("details"); var [status,setStatus]=useState(ticket.status); var [asgn,setAsgn]=useState(ticket.assignedTo||""); var [note,setNote]=useState("");
+  var [tab,setTab]=useState("details"); var [status,setStatus]=useState(ticket.status); var [asgn,setAsgn]=useState(ticket.assignedTo||""); var [note,setNote]=useState(""); var [typeId,setTypeId]=useState(ticket.typeId||"");
   var [msgTo,setMsgTo]=useState(""); var [msgCC,setMsgCC]=useState(""); var [msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title); var [msgBody,setMsgBody]=useState("");
   var [smsTo,setSmsTo]=useState(""); var [smsBody,setSmsBody]=useState(""); var [smsLog,setSmsLog]=useState([]);
   var [emailSending,setEmailSending]=useState(false); var [smsSending,setSmsSending]=useState(false);
@@ -869,7 +897,13 @@ function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var 
   var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;}); var co=companies.find(function(c){return c.id===ticket.companyId;}); var client=clients.find(function(c){return c.id===ticket.clientId;}); var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
   function saveStatus(){
     var hist={status,assignedTo:asgn||null,timestamp:new Date().toISOString(),changedBy:curUser.id,note:note||"Status changed to "+status};
-    setTickets(function(prev){return prev.map(function(t){return t.id!==ticket.id?t:Object.assign({},t,{status,assignedTo:asgn||null,updatedAt:new Date().toISOString(),slaBreached:new Date()>new Date(t.slaDeadline)&&!["Closed","Resolved"].includes(status),resolvedAt:status==="Resolved"&&!t.resolvedAt?new Date().toISOString():t.resolvedAt,closedAt:status==="Closed"&&!t.closedAt?new Date().toISOString():t.closedAt,statusHistory:(t.statusHistory||[]).concat([hist])});});});
+    var newTT=ticketTypes.find(function(t){return t.id===typeId;});
+    var typeChanged=typeId&&typeId!==ticket.typeId;
+    var newSlaDeadline=typeChanged&&newTT?new Date(new Date(ticket.createdAt).getTime()+newTT.slaHours*3600000).toISOString():ticket.slaDeadline;
+    var newPriority=typeChanged&&newTT?newTT.priority:ticket.priority;
+    if(typeChanged) hist.note=(note||"")+(note?" | ":"")+"Type changed to: "+newTT.name;
+    setTickets(function(prev){return prev.map(function(t){return t.id!==ticket.id?t:Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:new Date().toISOString(),slaBreached:new Date()>new Date(newSlaDeadline)&&!["Closed","Resolved"].includes(status),resolvedAt:status==="Resolved"&&!t.resolvedAt?new Date().toISOString():t.resolvedAt,closedAt:status==="Closed"&&!t.closedAt?new Date().toISOString():t.closedAt,statusHistory:(t.statusHistory||[]).concat([hist])});});});
+    if(typeChanged) addLog("TICKET_TYPE_CHANGE",ticket.id,"Type changed to: "+newTT.name);
     addLog("TICKET_STATUS",ticket.id,"Status → "+status+". Assigned: "+(fu(asgn)?.name||"nobody")); showToast("Ticket updated"); setNote(""); onClose();
   }
   async function sendEmail(){
@@ -899,7 +933,8 @@ function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var 
   var createMins=ticket.timeToCreateMins||0;
   var createColor=createMins<=5?"#10b981":createMins<=15?"#f59e0b":"#ef4444";
 
-  var detailRows=[["Title",ticket.title],["Type",tt?.name||(ticket.customTypeName||"—")],["Priority",<Badge key="p" label={PRI_META[ticket.priority]?.label||ticket.priority} color={PRI_META[ticket.priority]?.color||"#6366f1"}/>],["Status",<Badge key="s" label={ticket.status} color={STATUS_META[ticket.status]?.color||"#6366f1"}/>],["Company",co?.name||"—"],["Submitted By",fu(ticket.submittedBy)?.name||"—"],["Assigned To",fu(ticket.assignedTo)?.name||"Unassigned"],["AI Reason",ticket.aiReason||"—"],["Created",fdt(ticket.createdAt)],["SLA Deadline",fdt(ticket.slaDeadline)],["Create Time",(ticket.timeToCreateMins||1)+" min"],["SLA Status",ticket.slaBreached?<Badge key="sl" label="BREACHED" color="#ef4444"/>:<Badge key="sl2" label="✓ OK" color="#10b981"/>]];
+  var sSla=getStatusSla(ticket);
+  var detailRows=[["Title",ticket.title],["Type",tt?.name||(ticket.customTypeName||"—")],["Priority",<Badge key="p" label={PRI_META[ticket.priority]?.label||ticket.priority} color={PRI_META[ticket.priority]?.color||"#6366f1"}/>],["Status",<Badge key="s" label={ticket.status} color={STATUS_META[ticket.status]?.color||"#6366f1"}/>],["Company",co?.name||"—"],["Submitted By",fu(ticket.submittedBy)?.name||"—"],["Assigned To",fu(ticket.assignedTo)?.name||"Unassigned"],["AI Reason",ticket.aiReason||"—"],["Created",fdt(ticket.createdAt)],["SLA Deadline",fdt(ticket.slaDeadline)],["Create Time",(ticket.timeToCreateMins||1)+" min"],["Overall SLA",ticket.slaBreached?<Badge key="sl" label="BREACHED" color="#ef4444"/>:<Badge key="sl2" label="✓ OK" color="#10b981"/>]];
   var TABS=["details","time","status","email","sms","history"].filter(function(t){if(t==="status")return isTech;return true;});
   return <Modal title={"Ticket #"+ticket.id+" — "+ticket.title} onClose={onClose} wide>
     <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
@@ -913,6 +948,22 @@ function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var 
         {client?<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><div><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Client</div><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{client.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {client.email}</div><div style={{fontSize:11,color:"#64748b"}}>📞 {client.phone}</div></div><div><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Location</div>{loc?<><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>📍 {loc.name}</div><div style={{fontSize:11,color:"#64748b"}}>{loc.address}</div>{loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}{loc.contact&&<div style={{fontSize:11,color:"#64748b"}}>👤 {loc.contact}</div>}</>:<div style={{fontSize:12,color:"#94a3b8"}}>No location</div>}</div></div>:<div style={{fontSize:12,color:"#94a3b8"}}>No client associated.</div>}
       </div>
       <div style={{background:"#f8fafc",padding:12,borderRadius:8,fontSize:12,lineHeight:1.6,whiteSpace:"pre-wrap",color:"#334155"}}>{ticket.description}</div>
+      {sSla&&<div style={{marginTop:14,background:sSla.breached?"#fef2f2":"#f0fdf4",border:"1px solid "+(sSla.breached?"#fecaca":"#bbf7d0"),borderRadius:10,padding:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{fontWeight:700,color:sSla.breached?"#dc2626":"#166534",fontSize:13}}>⏱ Status SLA — "{ticket.status}"</div>
+          <Badge label={sSla.breached?"BREACHED":"✓ Within SLA"} color={sSla.breached?"#ef4444":"#10b981"}/>
+        </div>
+        <div style={{height:8,background:"#e2e8f0",borderRadius:4,overflow:"hidden",marginBottom:8}}>
+          <div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:4,transition:"width .5s"}}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
+          <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Allowed</div><div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{sSla.hoursAllowed}h</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Spent</div><div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{sSla.hoursSpent}h</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Remaining</div><div style={{fontWeight:800,fontSize:16,color:sSla.breached?"#ef4444":"#10b981"}}>{sSla.breached?"0h":sSla.remaining+"h"}</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Used</div><div style={{fontWeight:800,fontSize:16,color:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981"}}>{sSla.pct}%</div></div>
+        </div>
+        <div style={{fontSize:10,color:"#94a3b8",marginTop:8}}>Entered "{ticket.status}" at: {fdtFull(sSla.enteredAt)}</div>
+      </div>}
       {ticket.attachments&&ticket.attachments.length>0&&<div style={{marginTop:14}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:10}}>📎 Attachments ({ticket.attachments.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>{ticket.attachments.map(function(a){ var isImg=a.type.startsWith("image/"); return <div key={a.id} style={{borderRadius:10,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){var w=window.open();w.document.write(isImg?'<img src="'+a.dataUrl+'" style="max-width:100%;"/>':'<video src="'+a.dataUrl+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:90,objectFit:"cover",display:"block"}}/>:<div style={{height:90,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:32}}>▶️</span></div>}<div style={{padding:"6px 8px"}}><div style={{fontSize:10,fontWeight:600,color:"#334155",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.name}</div></div></div>; })}</div></div>}
     </div>}
 
@@ -1011,6 +1062,13 @@ function TicketDetail(p){ var ticket=p.ticket; var setTickets=p.setTickets; var 
     {tab==="status"&&isTech&&<div>
       <FSelect label="Update Status" value={status} onChange={function(e){setStatus(e.target.value);}} options={OPT_STATUSES}/>
       <FSelect label="Assign To" value={asgn} onChange={function(e){setAsgn(e.target.value);}} options={optTechs(users)}/>
+      <div style={{marginBottom:14}}>
+        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Ticket Type</label>
+        <select value={typeId} onChange={function(e){setTypeId(e.target.value);}} style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}>
+          {ticketTypes.map(function(t){ return <option key={t.id} value={t.id}>{t.name} — {PRI_META[t.priority]?.label||t.priority}, SLA {t.slaHours}h</option>; })}
+        </select>
+        {typeId!==ticket.typeId&&<div style={{fontSize:11,color:"#f59e0b",marginTop:4}}>⚠️ Changing type will update priority and SLA deadline.</div>}
+      </div>
       <FTextarea label="Note" value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What was done or why?" rows={3}/>
       <Btn onClick={saveStatus}>💾 Save Changes</Btn>
     </div>}
