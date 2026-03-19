@@ -506,22 +506,46 @@ function DemoSwitcher({users,curUser,onSwitch}) {
   );
 }
 
+// ── STORAGE HELPERS (persist to localStorage on live site) ───────────────────
+function loadState(key, fallback) {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
+  } catch { return fallback; }
+}
+function saveState(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+function clearAuth() {
+  try { localStorage.removeItem("hd_curUser"); } catch {}
+}
+
 // ── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [users,       setUsers]       = useState(SEED_USERS);
-  const [companies,   setCompanies]   = useState(SEED_COMPANIES);
-  const [clients,     setClients]     = useState(SEED_CLIENTS);
-  const [tickets,     setTickets]     = useState(SEED_TICKETS);
-  const [ticketTypes, setTicketTypes] = useState(SEED_TYPES);
-  const [logs,        setLogs]        = useState(SEED_LOGS);
-  const [curUser,     setCurUser]     = useState(null);
+  const [users,       setUsersRaw]       = useState(() => loadState("hd_users",       SEED_USERS));
+  const [companies,   setCompaniesRaw]   = useState(() => loadState("hd_companies",   SEED_COMPANIES));
+  const [clients,     setClientsRaw]     = useState(() => loadState("hd_clients",     SEED_CLIENTS));
+  const [tickets,     setTicketsRaw]     = useState(() => loadState("hd_tickets",     SEED_TICKETS));
+  const [ticketTypes, setTicketTypesRaw] = useState(() => loadState("hd_ticketTypes", SEED_TYPES));
+  const [logs,        setLogsRaw]        = useState(() => loadState("hd_logs",        SEED_LOGS));
+  const [curUser,     setCurUserRaw]     = useState(() => loadState("hd_curUser",     null));
   const [page,        setPage]        = useState("dashboard");
   const [selTicket,   setSelTicket]   = useState(null);
   const [toast,       setToast]       = useState(null);
   const [breaches,    setBreaches]    = useState([]);
 
+  // Wrap setters to also persist to localStorage
+  const setUsers       = v => { const n = typeof v==="function"?v(users):v;       saveState("hd_users",n);       setUsersRaw(n); };
+  const setCompanies   = v => { const n = typeof v==="function"?v(companies):v;   saveState("hd_companies",n);   setCompaniesRaw(n); };
+  const setClients     = v => { const n = typeof v==="function"?v(clients):v;     saveState("hd_clients",n);     setClientsRaw(n); };
+  const setTickets     = v => { const n = typeof v==="function"?v(tickets):v;     saveState("hd_tickets",n);     setTicketsRaw(n); };
+  const setTicketTypes = v => { const n = typeof v==="function"?v(ticketTypes):v; saveState("hd_ticketTypes",n); setTicketTypesRaw(n); };
+  const setLogs        = v => { const n = typeof v==="function"?v(logs):v;        saveState("hd_logs",n);        setLogsRaw(n); };
+  const setCurUser     = u => { if(u) saveState("hd_curUser",u); else clearAuth(); setCurUserRaw(u); };
+
   const addLog = useCallback((action,target,detail,uId)=>{
-    setLogs(p=>[{id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()},...p]);
+    const entry = {id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};
+    setLogs(p => { const n=[entry,...p].slice(0,500); saveState("hd_logs",n); return n; });
   },[curUser]);
 
   const showToast = useCallback((msg,type)=>{
@@ -599,7 +623,7 @@ export default function App() {
               <div style={{color:"#7dd3fc",fontSize:10}}>{ROLE_META[curUser.role]?.label}</div>
             </div>
           </div>
-          <button onClick={()=>{setCurUser(null);setPage("dashboard");}} style={{width:"100%",padding:"7px",background:"rgba(239,68,68,.2)",color:"#fca5a5",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          <button onClick={()=>{ setCurUser(null); setPage("dashboard"); setSelTicket(null); }} style={{width:"100%",padding:"7px",background:"rgba(239,68,68,.2)",color:"#fca5a5",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
             🚪 Sign Out
           </button>
         </div>
