@@ -431,8 +431,8 @@ function PageTimeTracking(p){
     {/* Stats cards */}
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
       <Stat label="Tickets Shown"    value={filtered.length}    icon="🎫" color="#6366f1"/>
-      <Stat label="Avg Create Time"  value={avgCreate+"m"}      icon="⏱" color="#0ea5e9" sub="time to fill form"/>
-      <Stat label="Total Create Time" value={filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0)+"m"} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets combined"}/>
+      <Stat label="Total Create Time" value={(function(){ var t=filtered.reduce(function(a,tk){return a+(tk.timeToCreateMins||0);},0); return Math.floor(t)+"m "+Math.round((t%1)*60)+"s"; })()} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets combined"}/>
+      <Stat label="Avg Create Time"  value={(function(){ var t=filtered.length?filtered.reduce(function(a,tk){return a+(tk.timeToCreateMins||0);},0)/filtered.length:0; return Math.floor(t)+"m "+Math.round((t%1)*60)+"s"; })()} icon="⏱" color="#0ea5e9" sub="time to fill form"/>
       <Stat label="Fastest Submit"   value={fastest?(fastest.timeToCreateMins||0)+"m":"—"} icon="⚡" color="#10b981" sub={fastest?fastest.title.slice(0,18)+"…":""}/>
       <Stat label="Slowest Submit"   value={slowest?(slowest.timeToCreateMins||0)+"m":"—"} icon="🐢" color="#f59e0b" sub={slowest?slowest.title.slice(0,18)+"…":""}/>
     </div>
