@@ -432,6 +432,7 @@ function PageTimeTracking(p){
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
       <Stat label="Tickets Shown"    value={filtered.length}    icon="🎫" color="#6366f1"/>
       <Stat label="Avg Create Time"  value={avgCreate+"m"}      icon="⏱" color="#0ea5e9" sub="time to fill form"/>
+      <Stat label="Total Create Time" value={filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0)+"m"} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets combined"}/>
       <Stat label="Fastest Submit"   value={fastest?(fastest.timeToCreateMins||0)+"m":"—"} icon="⚡" color="#10b981" sub={fastest?fastest.title.slice(0,18)+"…":""}/>
       <Stat label="Slowest Submit"   value={slowest?(slowest.timeToCreateMins||0)+"m":"—"} icon="🐢" color="#f59e0b" sub={slowest?slowest.title.slice(0,18)+"…":""}/>
     </div>
@@ -457,16 +458,33 @@ function PageTimeTracking(p){
       {dailySummary.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets match the current filters.</div></Card>}
       {dailySummary.length>0&&<>
         <Card style={{marginBottom:16,padding:"14px 18px"}}>
-          <div style={{fontWeight:700,color:"#1e293b",marginBottom:12}}>📊 Daily Create-Time Chart</div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={dailySummary.slice().reverse()} margin={{top:4,right:8,left:0,bottom:30}}>
+          <div style={{fontWeight:700,color:"#1e293b",marginBottom:4}}>📊 Total Create Time per Day</div>
+          <div style={{fontSize:11,color:"#64748b",marginBottom:12}}>Sum of minutes spent filling out the ticket form, grouped by submission date.</div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={dailySummary.slice().reverse()} margin={{top:4,right:8,left:0,bottom:40}}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-              <XAxis dataKey="date" tick={{fontSize:9}} angle={-30} textAnchor="end" height={55}/>
-              <YAxis tick={{fontSize:10}} label={{value:"mins",angle:-90,position:"insideLeft",style:{fontSize:10,fill:"#94a3b8"}}}/>
-              <Tooltip formatter={function(v,n){return [v+"m","Total Create Time"];}} labelFormatter={function(l){return "Date: "+l;}}/>
-              <Bar dataKey="totalMins" name="Total Mins" radius={[4,4,0,0]} fill="#6366f1"/>
+              <XAxis dataKey="date" tick={{fontSize:9}} angle={-30} textAnchor="end" height={60}/>
+              <YAxis tick={{fontSize:10}} unit="m"/>
+              <Tooltip
+                formatter={function(v){ return [v+"m","Total Create Time"]; }}
+                labelFormatter={function(l){ return "📅 "+l; }}
+                contentStyle={{fontSize:12,borderRadius:8}}
+              />
+              <Bar dataKey="totalMins" name="Total Mins" radius={[5,5,0,0]}>
+                {dailySummary.slice().reverse().map(function(_,i){ return <Cell key={i} fill={PAL[i%PAL.length]}/>; })}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
+          {/* Day-by-day total pills */}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
+            {dailySummary.map(function(row){
+              return <div key={row.date} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"8px 14px",textAlign:"center",minWidth:90}}>
+                <div style={{fontSize:10,color:"#64748b",fontWeight:600}}>{new Date(row.rawDate).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</div>
+                <div style={{fontSize:20,fontWeight:800,color:"#6366f1",margin:"2px 0"}}>{row.totalMins}<span style={{fontSize:11,fontWeight:400,color:"#94a3b8"}}>m</span></div>
+                <div style={{fontSize:10,color:"#94a3b8"}}>{row.count} ticket{row.count!==1?"s":""}</div>
+              </div>;
+            })}
+          </div>
         </Card>
         <Card style={{padding:0,overflow:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
