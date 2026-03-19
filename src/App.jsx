@@ -21,7 +21,13 @@ const ago   = function(iso){ if(!iso)return"—"; var m=Math.floor((Date.now()-n
 const inits = function(n){ if(!n)return"??"; var p=n.trim().split(" ").filter(Boolean); return p.length>=2?(p[0][0]+p[1][0]).toUpperCase():n.slice(0,2).toUpperCase(); };
 const avCol = function(id){ return PAL[Math.abs((id||"").split("").reduce(function(a,c){return a+c.charCodeAt(0);},0))%PAL.length]; };
 const rnd   = function(a,b){ return Math.floor(Math.random()*(b-a+1))+a; };
-const fmtMs = function(mins){ if(!mins&&mins!==0)return"—"; var m=Math.floor(mins); var s=Math.round((mins-m)*60); return m+"m "+s+"s"; };
+const fmtMs = function(mins){
+  if(!mins&&mins!==0) return "—";
+  var totalSecs=mins*60;
+  if(totalSecs<60) return totalSecs.toFixed(2)+"s";
+  if(totalSecs<3600){ var m=Math.floor(mins); var s=parseFloat(((mins-m)*60).toFixed(2)); return m+"m "+s+"s"; }
+  var h=Math.floor(mins/60); var remMins=mins-h*60; var m2=Math.floor(remMins); var s2=parseFloat(((remMins-m2)*60).toFixed(2)); return h+"h "+m2+"m "+s2+"s";
+};
 // returns {hoursAllowed, hoursSpent, pct, breached, remaining} for the current status of a ticket
 function getStatusSla(ticket){
   var allowed=STATUS_SLA[ticket.status];
