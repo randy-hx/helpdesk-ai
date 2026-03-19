@@ -158,6 +158,21 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+const dashPieLabel  = (p) => p.value > 0 ? p.name + ":" + p.value : "";
+const dashTypeLabel = (p) => p.name + ": " + (p.percent * 100).toFixed(0) + "%";
+
+// ── PRECOMPUTED SELECT OPTIONS (avoids inline map→object in JSX) ─────────────
+const OPT_ROLES     = Object.keys(ROLE_META).map(k => ({ value:k, label:ROLE_META[k].label }));
+const OPT_PRIORITY  = Object.keys(PRI_META).map(k  => ({ value:k, label:PRI_META[k].label  }));
+const OPT_STATUSES  = ALL_STATUSES.map(s => ({ value:s, label:s }));
+
+function optCompanies(companies) { return companies.map(c => ({ value:c.id, label:c.name })); }
+function optClients(clients)     { return [{ value:"", label:"— No Client —" }, ...clients.map(c => ({ value:c.id, label:c.name }))]; }
+function optLocs(locs)           { return [{ value:"", label:"— Select Location —" }, ...locs.map(l => ({ value:l.id, label:l.name }))]; }
+function optTypes(ticketTypes)   { return ticketTypes.map(t => ({ value:t.id, label:t.name+" — "+(PRI_META[t.priority]?.label||t.priority)+", SLA "+t.slaHours+"h" })); }
+function optTechs(users)         { return [{ value:"", label:"— Unassigned —" }, ...users.filter(u=>["it_technician","it_manager","admin"].includes(u.role)&&u.active).map(u => ({ value:u.id, label:u.name+" ("+ROLE_META[u.role]?.label+")" }))]; }
+function optAssignees(users)     { return [{ value:"", label:"— Auto-assign —" }, ...users.filter(u=>["it_technician","it_manager","admin"].includes(u.role)&&u.active).map(u => ({ value:u.id, label:u.name+" ("+ROLE_META[u.role]?.label+")" }))]; }
+
 // ── UI PRIMITIVES ────────────────────────────────────────────────────────────
 function Badge({label,color,bg}) {
   return <span style={{background:bg||color+"22",color,border:"1px solid "+color+"44",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,whiteSpace:"nowrap",display:"inline-block"}}>{label}</span>;
@@ -636,35 +651,7 @@ function ProfileModal({ curUser, setUsers, showToast, addLog, onClose }) {
   );
 }
 
-// ── DEMO SWITCHER (admin only) ────────────────────────────────────────────────
-function DemoSwitcher({users,curUser,onSwitch}) {
-  const [open,setOpen]=useState(false);
-  return (
-    <div style={{padding:"0 8px 8px"}}>
-      <button onClick={()=>setOpen(!open)} style={{width:"100%",padding:"7px 10px",background:"rgba(14,165,233,.2)",color:"#7dd3fc",border:"1px solid rgba(14,165,233,.3)",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <span>🎭 Demo Switcher</span><span style={{fontSize:9}}>{open?"▲":"▼"}</span>
-      </button>
-      {open&&(
-        <div style={{background:"rgba(0,0,0,.25)",borderRadius:8,marginTop:4,overflow:"hidden"}}>
-          {users.filter(u=>u.active).map(u=>{
-            const rm=ROLE_META[u.role]; const isMe=u.id===curUser.id;
-            return (
-              <button key={u.id} onClick={()=>{onSwitch(u);setOpen(false);}} disabled={isMe}
-                style={{width:"100%",padding:"8px 10px",background:isMe?"rgba(14,165,233,.2)":"transparent",border:"none",borderBottom:"1px solid rgba(255,255,255,.06)",cursor:isMe?"default":"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:8}}>
-                <Avatar name={u.name} id={u.id} size={22}/>
-                <div style={{flex:1,overflow:"hidden"}}>
-                  <div style={{fontSize:11,color:"#e2e8f0",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{u.name}</div>
-                  <div style={{fontSize:9,fontWeight:700,color:rm?.color||"#7dd3fc"}}>{rm?.label}</div>
-                </div>
-                {isMe&&<span style={{fontSize:9,color:"#7dd3fc"}}>● you</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
+
 
 // ── PASSWORD STORE (separate from user objects) ───────────────────────────────
 function getPasswords() {
@@ -790,8 +777,6 @@ export default function App() {
           ))}
         </div>
 
-        {curUser.role==="admin"&&<DemoSwitcher users={users} curUser={curUser} onSwitch={u=>{setCurUser(u);setPage("dashboard");}}/>}
-
         <div style={{padding:"12px 10px",borderTop:"1px solid rgba(56,189,248,.15)"}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
             <Avatar name={curUser.name} id={curUser.id} size={32}/>
@@ -829,7 +814,7 @@ export default function App() {
           {page==="dashboard"   &&<PageDashboard   tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches}/>}
           {page==="tickets"     &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin}/>}
           {page==="new_ticket"  &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage}/>}
-          {page==="reports"     &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies}/>}
+          {page==="reports"     &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients}/>}
           {page==="users"       &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast}/>}
           {page==="companies"   &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast}/>}
           {page==="clients"     &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast}/>}
@@ -850,7 +835,10 @@ export default function App() {
 function PageDashboard({tickets,users,ticketTypes,companies,clients,setPage,setSelTicket,breaches}) {
   const byStatus=ALL_STATUSES.map(s=>({name:s,value:tickets.filter(t=>t.status===s).length,color:STATUS_META[s].color}));
   const byType=ticketTypes.map((tt,i)=>({name:tt.name,value:tickets.filter(t=>t.typeId===tt.id).length,fill:PAL[i%PAL.length]})).filter(x=>x.value>0);
-  const byPri=Object.entries(PRI_META).map(([k,v])=>({name:v.label,value:tickets.filter(t=>t.priority===k).length,color:v.color}));
+  const byPri = Object.keys(PRI_META).map(k => {
+    const v = PRI_META[k];
+    return { name:v.label, value:tickets.filter(t=>t.priority===k).length, color:v.color };
+  });
   const daily=Array.from({length:7},(_,i)=>{const d=new Date(Date.now()-(6-i)*86400000);return{lbl:d.toLocaleDateString("en",{weekday:"short"}),created:tickets.filter(t=>new Date(t.createdAt).toDateString()===d.toDateString()).length,resolved:tickets.filter(t=>t.resolvedAt&&new Date(t.resolvedAt).toDateString()===d.toDateString()).length};});
   const techs=users.filter(u=>["it_technician","it_manager"].includes(u.role));
   return (
@@ -876,7 +864,7 @@ function PageDashboard({tickets,users,ticketTypes,companies,clients,setPage,setS
       )}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:16}}>
         <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12}}>Tickets by Status</div>
-          <ResponsiveContainer width="100%" height={200}><PieChart><Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({name,value})=>name+":"+value} fontSize={9}>{byStatus.map((e,i)=><Cell key={i} fill={e.color}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={200}>            <PieChart><Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={dashPieLabel} fontSize={9}>{byStatus.map((e,i)=><Cell key={i} fill={e.color}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer>
         </Card>
         <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12}}>7-Day Trend</div>
           <ResponsiveContainer width="100%" height={200}><AreaChart data={daily}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="lbl" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Area type="monotone" dataKey="created" stroke="#6366f1" fill="#eef2ff" name="Created"/><Area type="monotone" dataKey="resolved" stroke="#10b981" fill="#d1fae5" name="Resolved"/></AreaChart></ResponsiveContainer>
@@ -918,7 +906,10 @@ function PageTickets({tickets,users,companies,clients,ticketTypes,curUser,setTic
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search..." style={{flex:1,minWidth:160,padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}/>
         <select value={fStat} onChange={e=>setFStat(e.target.value)} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Statuses</option>{ALL_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}</select>
-        <select value={fPri} onChange={e=>setFPri(e.target.value)} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Priorities</option>{Object.entries(PRI_META).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select>
+        <select value={fPri} onChange={e=>setFPri(e.target.value)} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}>
+          <option value="">All Priorities</option>
+          {Object.keys(PRI_META).map(k=><option key={k} value={k}>{PRI_META[k].label}</option>)}
+        </select>
         <select value={fType} onChange={e=>setFType(e.target.value)} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Types</option>{ticketTypes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>
         <Btn onClick={()=>setPage("new_ticket")}>➕ New Ticket</Btn>
       </div>
@@ -1105,8 +1096,8 @@ function TicketDetail({ticket,setTickets,users,ticketTypes,companies,clients,cur
       </div>}
 
       {tab==="status"&&isTech&&<div>
-        <FSelect label="Update Status" value={status} onChange={e=>setStatus(e.target.value)} options={ALL_STATUSES.map(s=>({value:s,label:s}))}/>
-        <FSelect label="Assign To" value={asgn} onChange={e=>setAsgn(e.target.value)} options={[{value:"",label:"— Unassigned —"},...techs.map(u=>({value:u.id,label:u.name+" ("+ROLE_META[u.role]?.label+")"}))]}/> 
+        <FSelect label="Update Status" value={status} onChange={e=>setStatus(e.target.value)} options={OPT_STATUSES}/>
+        <FSelect label="Assign To" value={asgn} onChange={e=>setAsgn(e.target.value)} options={optTechs(users)}/>
         <FTextarea label="Note" value={note} onChange={e=>setNote(e.target.value)} placeholder="What was done or why?" rows={3}/>
         <Btn onClick={saveStatus}>💾 Save Changes</Btn>
       </div>}
@@ -1171,42 +1162,560 @@ function TicketDetail({ticket,setTickets,users,ticketTypes,companies,clients,cur
 }
 
 // ── REPORTS ───────────────────────────────────────────────────────────────────
-function PageReports({tickets,users,ticketTypes,companies}) {
-  const [view,setView]=useState("overview");
-  const techs=users.filter(u=>["it_technician","it_manager"].includes(u.role));
-  const byComp=companies.map(c=>({name:c.name.split(" ")[0],tickets:tickets.filter(t=>t.companyId===c.id).length}));
-  const byType=ticketTypes.map((tt,i)=>({name:tt.name,value:tickets.filter(t=>t.typeId===tt.id).length,fill:PAL[i%PAL.length]})).filter(x=>x.value>0);
-  const techStats=techs.map(t=>{const mine=tickets.filter(tk=>tk.assignedTo===t.id);const res=mine.filter(tk=>["Resolved","Closed"].includes(tk.status));const brch=mine.filter(tk=>tk.slaBreached).length;const avgH=res.length?Math.round(res.reduce((a,tk)=>a+(new Date(tk.resolvedAt||tk.updatedAt)-new Date(tk.createdAt))/3600000,0)/res.length):0;return{name:t.name.split(" ")[0],total:mine.length,resolved:res.length,breached:brch,avgH,slaRate:mine.length?Math.round((1-brch/mine.length)*100):100};});
+function PageReports({tickets,users,ticketTypes,companies,clients}) {
+  const [view,      setView]      = useState("summary");
+  const [range,     setRange]     = useState("month");
+  const [aiInsight, setAiInsight] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+
+  // ── Date range filter ──
+  const rangeStart = useMemo(() => {
+    const now = new Date();
+    if (range === "day")   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    if (range === "week")  return new Date(now.getTime() - 7  * 86400000).toISOString();
+    if (range === "month") return new Date(now.getTime() - 30 * 86400000).toISOString();
+    if (range === "year")  return new Date(now.getTime() - 365* 86400000).toISOString();
+    return new Date(0).toISOString();
+  }, [range]);
+
+  const rangeLabel = {day:"Today",week:"Last 7 Days",month:"Last 30 Days",year:"Last 12 Months",all:"All Time"};
+  
+
+  const techs   = users.filter(u=>["it_technician","it_manager","admin"].includes(u.role));
+  const active  = tickets.filter(t => !t.deleted && new Date(t.createdAt) >= new Date(rangeStart));
+
+  // helpers
+  const avgH = arr => arr.length ? Math.round(arr.reduce((a,t)=>a+(new Date(t.resolvedAt||t.updatedAt)-new Date(t.createdAt))/3600000,0)/arr.length) : 0;
+  const slaRate = arr => arr.length ? Math.round((1-arr.filter(t=>t.slaBreached).length/arr.length)*100) : 100;
+  const resolved= arr => arr.filter(t=>["Resolved","Closed"].includes(t.status));
+
+  // by type
+  const byType = ticketTypes.map((tt,i)=>{
+    const mine=active.filter(t=>t.typeId===tt.id);
+    const res=resolved(mine);
+    return {id:tt.id,name:tt.name,color:tt.color,priority:tt.priority,slaH:tt.slaHours,total:mine.length,open:mine.filter(t=>t.status==="Open").length,inProg:mine.filter(t=>t.status==="In Progress").length,resolved:res.length,breached:mine.filter(t=>t.slaBreached).length,slaRate:slaRate(mine),avgClose:avgH(res),fill:PAL[i%PAL.length]};
+  }).filter(x=>x.total>0);
+
+  // per user
+  const byUser = techs.map(t=>{
+    const mine=active.filter(tk=>tk.assignedTo===t.id);
+    const res=resolved(mine);
+    const avgStatus = ALL_STATUSES.map(s=>({s,h:mine.filter(tk=>tk.status===s).length?Math.round(mine.filter(tk=>tk.status===s).reduce((a,tk)=>(a+(new Date(tk.updatedAt)-new Date(tk.createdAt))/3600000),0)/Math.max(mine.filter(tk=>tk.status===s).length,1)):0}));
+    return {id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(t=>t.status==="Open").length,inProg:mine.filter(t=>t.status==="In Progress").length,escalated:mine.filter(t=>t.status==="Escalated").length,resolved:res.length,breached:mine.filter(t=>t.slaBreached).length,slaRate:slaRate(mine),avgClose:avgH(res),createMins:Math.round(mine.reduce((a,t)=>a+(t.timeToCreateMins||0),0)/Math.max(mine.length,1)),avgStatus};
+  });
+
+  // per client
+  const byClient = clients.map(cl=>{
+    const mine=active.filter(t=>t.clientId===cl.id);
+    const res=resolved(mine);
+    return {id:cl.id,name:cl.name,industry:cl.industry,total:mine.length,open:mine.filter(t=>t.status==="Open").length,resolved:res.length,breached:mine.filter(t=>t.slaBreached).length,slaRate:slaRate(mine),avgClose:avgH(res)};
+  }).filter(x=>x.total>0);
+
+  // per location
+  const byLocation = clients.flatMap(cl=>cl.locations.map(loc=>{
+    const mine=active.filter(t=>t.locationId===loc.id);
+    const res=resolved(mine);
+    return {id:loc.id,locName:loc.name,clientName:cl.name,address:loc.address,total:mine.length,open:mine.filter(t=>t.status==="Open").length,resolved:res.length,breached:mine.filter(t=>t.slaBreached).length,slaRate:slaRate(mine),avgClose:avgH(res)};
+  })).filter(x=>x.total>0);
+
+  // SLA overall
+  const totalBreached=active.filter(t=>t.slaBreached).length;
+  const totalSlaRate=slaRate(active);
+  const avgCloseAll=avgH(resolved(active));
+  const avgCreateAll=Math.round(active.reduce((a,t)=>a+(t.timeToCreateMins||0),0)/Math.max(active.length,1));
+  const avgPerStatus=ALL_STATUSES.map(s=>{const mine=active.filter(t=>t.status===s);return{status:s,count:mine.length,color:STATUS_META[s].color,avgH:mine.length?Math.round(mine.reduce((a,t)=>(a+(new Date(t.updatedAt)-new Date(t.createdAt))/3600000),0)/mine.length):0};});
+
+  const VIEWS=[{id:"summary",label:"📊 Summary"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"},{id:"per_client",label:"🤝 Per Client"},{id:"per_location",label:"📍 Per Location"},{id:"sla",label:"⏱ SLA & Time"}];
+
+  const statusPieData = ALL_STATUSES.map(s => ({
+    name: s, value: active.filter(t=>t.status===s).length, color: STATUS_META[s].color,
+  }));
+  const byPriChart = Object.keys(PRI_META).map(k => ({
+    name: PRI_META[k].label, value: active.filter(t=>t.priority===k).length, color: PRI_META[k].color,
+  }));
+  const byTypeVolumeChart  = byType.map(t => ({ name:t.name, total:t.total, color:t.color }));
+  const byTypeSlaChart     = byType.map(t => ({ name:t.name, slaRate:t.slaRate, color:t.color }));
+  const byUserStackChart   = byUser.filter(u=>u.total>0).map(u => ({ name:u.name.split(" ")[0], resolved:u.resolved, open:u.open, inProg:u.inProg }));
+  const byUserSlaChart     = byUser.filter(u=>u.total>0).map(u => ({ name:u.name.split(" ")[0], slaRate:u.slaRate, color:slaColor(u.slaRate) }));
+  const byUserCloseChart   = byUser.filter(u=>u.total>0).map(u => ({ name:u.name.split(" ")[0], avgClose:u.avgClose }));
+  const byClientVolChart   = byClient.map(c => ({ name:c.name.split(" ")[0], total:c.total }));
+  const byClientSlaChart   = byClient.map(c => ({ name:c.name.split(" ")[0], slaRate:c.slaRate, color:slaColor(c.slaRate) }));
+  const byLocVolChart      = byLocation.map(l => ({ name:l.locName, total:l.total }));
+  const byLocSlaChart      = byLocation.map(l => ({ name:l.locName, slaRate:l.slaRate, color:slaColor(l.slaRate) }));
+  const byTypeSlaOverall   = byType.map(t => ({ name:t.name, slaRate:t.slaRate, color:slaColor(t.slaRate) }));
+
+  // ── 12-week trend (always uses all tickets regardless of range filter) ──
+  const allActive = tickets.filter(t => !t.deleted);
+  const weeklyTrend = useMemo(() => {
+    return Array.from({length:12}, (_,i) => {
+      const weekEnd   = new Date(Date.now() - (11-i)*7*86400000);
+      const weekStart = new Date(weekEnd.getTime() - 7*86400000);
+      const wTickets  = allActive.filter(t => {
+        const d = new Date(t.createdAt);
+        return d >= weekStart && d < weekEnd;
+      });
+      const label = "W"+(i+1)+" "+weekEnd.toLocaleDateString("en",{month:"short",day:"numeric"});
+      const byT = {};
+      ticketTypes.forEach(tt => { byT[tt.name] = wTickets.filter(t=>t.typeId===tt.id).length; });
+      return { label, total:wTickets.length, resolved:wTickets.filter(t=>["Resolved","Closed"].includes(t.status)).length, breached:wTickets.filter(t=>t.slaBreached).length, ...byT };
+    });
+  }, [allActive, ticketTypes]);
+
+  const top3Types = useMemo(() => {
+    return ticketTypes.map(tt => ({ name:tt.name, color:tt.color, total:allActive.filter(t=>t.typeId===tt.id).length }))
+      .sort((a,b)=>b.total-a.total).slice(0,3);
+  }, [allActive, ticketTypes]);
+
+  // ── AI Insight Generator ──
+  const generateInsight = async () => {
+    setAiLoading(true); setAiInsight("");
+    const summary = {
+      totalTickets:  allActive.length,
+      slaRate:       slaRate(allActive),
+      avgClose:      avgH(resolved(allActive)),
+      topTypes:      top3Types.map(t=>t.name+" ("+t.total+")"),
+      breached:      allActive.filter(t=>t.slaBreached).length,
+      openCount:     allActive.filter(t=>t.status==="Open").length,
+      escalated:     allActive.filter(t=>t.status==="Escalated").length,
+      weeklyVolume:  weeklyTrend.map(w=>w.label+": "+w.total),
+      byType:        byType.map(t=>t.name+": "+t.total+" tickets, SLA "+t.slaRate+"%"),
+      byUser:        byUser.map(u=>u.name+": "+u.total+" tickets, SLA "+u.slaRate+"%, avg close "+u.avgClose+"h"),
+    };
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:1000,
+          messages:[{
+            role:"user",
+            content:`You are an IT helpdesk analyst. Analyze this ticketing data and provide:
+1. Top 3 issues and their business impact
+2. SLA performance analysis with specific concerns
+3. Workload distribution observations
+4. 3 actionable recommendations to improve response times and reduce ticket volume
+5. Trend analysis from the 12-week data
+
+Keep the tone professional and concise. Use bullet points. Data:
+${JSON.stringify(summary, null, 2)}`
+          }]
+        })
+      });
+      const data = await res.json();
+      setAiInsight(data.content?.[0]?.text || "Unable to generate insight.");
+    } catch(e) {
+      setAiInsight("Error generating insight: "+e.message);
+    }
+    setAiLoading(false);
+  };
+
+  const periodButtons = ["day","week","month","year","all"].map(r => (
+    <button key={r} onClick={()=>setRange(r)}
+      style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+      {rangeLabel[r]}
+    </button>
+  ));
+
+  const trendLines = top3Types.map(tt => (
+    <Line key={tt.name} type="monotone" dataKey={tt.name} stroke={tt.color} strokeWidth={2} dot={false} name={tt.name}/>
+  ));
+
+  const statusPieLabel = (props) => props.value > 0 ? props.name + ": " + props.value : "";
+  const typePieLabel   = (props) => props.name + ": " + (props.percent * 100).toFixed(0) + "%";
+
+  const TH = ({children}) => <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:.4,borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{children}</th>;
+  const TD = ({children,bold}) => <td style={{padding:"9px 12px",fontSize:12,fontWeight:bold?700:400,color:"#1e293b"}}>{children}</td>;
+  const slaColor = r => r>=90?"#10b981":r>=75?"#f59e0b":"#ef4444";
+
   return (
     <div>
-      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-        {["overview","per_user","sla","by_type"].map(v=><Btn key={v} variant={view===v?"primary":"ghost"} onClick={()=>setView(v)}>{v==="overview"?"📊 Overview":v==="per_user"?"👤 Per User":v==="sla"?"⏱ SLA":"🏷️ By Type"}</Btn>)}
+      {/* View selector */}
+      <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
+        {VIEWS.map(v=><Btn key={v.id} variant={view===v.id?"primary":"ghost"} onClick={()=>setView(v.id)} size="sm">{v.label}</Btn>)}
       </div>
-      {view==="overview"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16}}>
-        <Card><div style={{fontWeight:700,marginBottom:12}}>By Company</div><ResponsiveContainer width="100%" height={220}><BarChart data={byComp}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Bar dataKey="tickets" fill="#6366f1" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></Card>
-        <Card><div style={{fontWeight:700,marginBottom:12}}>Type Distribution</div><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={byType} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({name,percent})=>name+": "+(percent*100).toFixed(0)+"%"} fontSize={9}>{byType.map((e,i)=><Cell key={i} fill={e.fill}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
-        <Card><div style={{fontWeight:700,marginBottom:12}}>Resolution by Tech</div><ResponsiveContainer width="100%" height={220}><BarChart data={techStats}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Bar dataKey="total" fill="#e2e8f0" name="Total" radius={[4,4,0,0]}/><Bar dataKey="resolved" fill="#10b981" name="Resolved" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></Card>
-      </div>}
-      {view==="per_user"&&<Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
-        <thead><tr style={{background:"#f8fafc"}}>{["Technician","Total","Open","In Prog","Resolved","Breached","Avg Res","SLA Rate"].map(h=><th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>{h}</th>)}</tr></thead>
-        <tbody>{techs.map(t=>{const mine=tickets.filter(tk=>tk.assignedTo===t.id);const res=mine.filter(tk=>["Resolved","Closed"].includes(tk.status));const brch=mine.filter(tk=>tk.slaBreached).length;const avgH=res.length?Math.round(res.reduce((a,tk)=>a+(new Date(tk.resolvedAt||tk.updatedAt)-new Date(tk.createdAt))/3600000,0)/res.length):0;const rate=mine.length?Math.round((1-brch/mine.length)*100):100;return(
-          <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9"}}><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:8,alignItems:"center"}}><Avatar name={t.name} id={t.id} size={26}/><div><div style={{fontWeight:600,fontSize:12}}>{t.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[t.role]?.label}</div></div></div></td><td style={{padding:"10px 12px",fontWeight:700,fontSize:12}}>{mine.length}</td><td style={{padding:"10px 12px"}}><Badge label={mine.filter(t=>t.status==="Open").length} color="#f59e0b"/></td><td style={{padding:"10px 12px"}}><Badge label={mine.filter(t=>t.status==="In Progress").length} color="#6366f1"/></td><td style={{padding:"10px 12px"}}><Badge label={res.length} color="#10b981"/></td><td style={{padding:"10px 12px"}}><Badge label={brch} color={brch>0?"#ef4444":"#10b981"}/></td><td style={{padding:"10px 12px",fontSize:12}}>{avgH}h</td><td style={{padding:"10px 12px"}}><Badge label={rate+"%"} color={rate>=80?"#10b981":rate>=60?"#f59e0b":"#ef4444"}/></td>
-          </tr>);})}
-        </tbody></table></Card>}
-      {view==="sla"&&<div>
-        <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
-          <Stat label="Overall SLA Rate" value={Math.round((1-tickets.filter(t=>t.slaBreached).length/Math.max(tickets.length,1))*100)+"%"} icon="⏱" color="#10b981"/>
-          <Stat label="SLA Breaches" value={tickets.filter(t=>t.slaBreached).length} icon="🚨" color="#ef4444"/>
-          <Stat label="Avg Create Time" value={Math.round(tickets.reduce((a,t)=>a+(t.timeToCreateMins||0),0)/Math.max(tickets.length,1))+"m"} icon="⏱" color="#6366f1"/>
+
+      {/* ── SUMMARY ── */}
+      {view==="summary"&&<div>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
+          <Stat label="Total Tickets"    value={active.length}                          icon="🎫" color="#6366f1"/>
+          <Stat label="Overall SLA Rate" value={totalSlaRate+"%"}                       icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"}/>
+          <Stat label="Avg Close Time"   value={avgCloseAll+"h"}                        icon="⏱" color="#0ea5e9"/>
+          <Stat label="Avg Create Time"  value={avgCreateAll+"m"}                       icon="📝" color="#8b5cf6"/>
+          <Stat label="Resolved"         value={resolved(active).length}               icon="✅" color="#10b981" sub={Math.round(resolved(active).length/Math.max(active.length,1)*100)+"%  rate"}/>
+          <Stat label="Escalated"        value={active.filter(t=>t.status==="Escalated").length} icon="🚨" color="#ef4444"/>
         </div>
-        <Card><div style={{fontWeight:700,marginBottom:12}}>SLA per Technician</div><ResponsiveContainer width="100%" height={280}><BarChart data={techStats}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} domain={[0,100]}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Bar dataKey="slaRate" fill="#10b981" name="SLA Rate %" radius={[4,4,0,0]}/><Bar dataKey="avgH" fill="#6366f1" name="Avg Res (h)" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></Card>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>Tickets by Status</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={statusPieLabel} fontSize={9}>
+                  {statusPieData.map((e,i)=><Cell key={i} fill={e.color}/>)}
+                </Pie>
+                <Tooltip/>
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>Tickets by Priority</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={byPriChart}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/>
+                <Bar dataKey="value" radius={[4,4,0,0]}>{byPriChart.map((e,i)=><Cell key={i} fill={e.color}/>)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>Average Time per Status (hours)</div>
+            {avgPerStatus.map(s=>(
+              <div key={s.status} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:s.color,flexShrink:0}}/>
+                <div style={{flex:1,fontSize:12}}>{s.status}</div>
+                <Badge label={s.count+" tickets"} color={s.color}/>
+                <div style={{fontSize:12,fontWeight:700,color:"#1e293b",minWidth:40,textAlign:"right"}}>{s.avgH}h</div>
+              </div>
+            ))}
+          </Card>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>Top Ticket Types</div>
+            {byType.slice(0,6).map((t,i)=>(
+              <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f1f5f9"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:t.color}}/><span style={{fontSize:12}}>{t.name}</span></div>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}><Badge label={t.total+" tickets"} color={t.color}/><Badge label={t.slaRate+"%"} color={slaColor(t.slaRate)}/></div>
+              </div>
+            ))}
+          </Card>
+        </div>
       </div>}
-      {view==="by_type"&&<Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:650}}>
-        <thead><tr style={{background:"#f8fafc"}}>{["Type","Priority","SLA","Total","Open","Resolved","Breached","Default Assignee"].map(h=><th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>{h}</th>)}</tr></thead>
-        <tbody>{ticketTypes.map(tt=>{const mine=tickets.filter(t=>t.typeId===tt.id);const asgn=users.find(u=>u.id===tt.defaultAssignee);return(
-          <tr key={tt.id} style={{borderBottom:"1px solid #f1f5f9"}}><td style={{padding:"10px 12px"}}><Badge label={tt.name} color={tt.color}/></td><td style={{padding:"10px 12px"}}><Badge label={PRI_META[tt.priority]?.label} color={PRI_META[tt.priority]?.color}/></td><td style={{padding:"10px 12px",fontSize:12}}>{tt.slaHours}h</td><td style={{padding:"10px 12px",fontWeight:700,fontSize:12}}>{mine.length}</td><td style={{padding:"10px 12px"}}><Badge label={mine.filter(t=>t.status==="Open").length} color="#f59e0b"/></td><td style={{padding:"10px 12px"}}><Badge label={mine.filter(t=>["Resolved","Closed"].includes(t.status)).length} color="#10b981"/></td><td style={{padding:"10px 12px"}}><Badge label={mine.filter(t=>t.slaBreached).length} color="#ef4444"/></td><td style={{padding:"10px 12px",fontSize:11}}>{asgn?.name||"Auto-assign"}</td>
-          </tr>);})}
-        </tbody></table></Card>}
+
+      {/* ── TREND ── */}
+      {view==="trend"&&<div>
+        <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>📈 12-Week Ticket Trend</div>
+          <span style={{fontSize:11,color:"#64748b"}}>(Always shows full 12-week history regardless of period filter)</span>
+        </div>
+
+        {/* Volume trend */}
+        <Card style={{marginBottom:16}}>
+          <div style={{fontWeight:700,marginBottom:12}}>Weekly Ticket Volume — Last 12 Weeks</div>
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={weeklyTrend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="label" tick={{fontSize:9}} angle={-25} textAnchor="end" height={50}/>
+              <YAxis tick={{fontSize:10}}/>
+              <Tooltip/>
+              <Legend wrapperStyle={{fontSize:11}}/>
+              <Area type="monotone" dataKey="total"    stroke="#6366f1" fill="#eef2ff" name="Total"    strokeWidth={2}/>
+              <Area type="monotone" dataKey="resolved" stroke="#10b981" fill="#d1fae5" name="Resolved" strokeWidth={2}/>
+              <Area type="monotone" dataKey="breached" stroke="#ef4444" fill="#fee2e2" name="Breached" strokeWidth={2}/>
+            </AreaChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* Per-type trend lines */}
+        <Card style={{marginBottom:16}}>
+          <div style={{fontWeight:700,marginBottom:12}}>Issue Type Trend — Top 3 Categories</div>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={weeklyTrend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="label" tick={{fontSize:9}} angle={-25} textAnchor="end" height={50}/>
+              <YAxis tick={{fontSize:10}}/>
+              <Tooltip/>
+              <Legend wrapperStyle={{fontSize:11}}/>
+              {trendLines}
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* AI Insight Panel */}
+        <Card style={{borderLeft:"4px solid #6366f1"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>🤖 AI-Generated Insights</div>
+              <div style={{fontSize:11,color:"#64748b",marginTop:2}}>Analyzes your ticket trends and generates actionable recommendations</div>
+            </div>
+            <button onClick={generateInsight} disabled={aiLoading}
+              style={{padding:"9px 18px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:aiLoading?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 2px 8px rgba(99,102,241,.3)"}}>
+              {aiLoading ? <><span style={{display:"inline-block",width:14,height:14,border:"2px solid #fff",borderTop:"2px solid transparent",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> Analyzing…</> : "✨ Generate Insights"}
+            </button>
+          </div>
+
+          {!aiInsight && !aiLoading && (
+            <div style={{background:"#f8fafc",borderRadius:10,padding:20,textAlign:"center",color:"#94a3b8"}}>
+              <div style={{fontSize:32,marginBottom:8}}>🧠</div>
+              <div style={{fontSize:13,fontWeight:600,color:"#475569",marginBottom:4}}>Ready to analyze your data</div>
+              <div style={{fontSize:12}}>Click "Generate Insights" to get AI-powered analysis of your top issues, SLA performance, and actionable recommendations based on your 12-week trend.</div>
+            </div>
+          )}
+
+          {aiLoading && (
+            <div style={{background:"#f8fafc",borderRadius:10,padding:24,textAlign:"center"}}>
+              <div style={{fontSize:13,color:"#6366f1",fontWeight:600,marginBottom:8}}>🤖 Analyzing your ticket data…</div>
+              <div style={{fontSize:12,color:"#94a3b8"}}>Reviewing trends, SLA performance, workload distribution and generating recommendations</div>
+            </div>
+          )}
+
+          {aiInsight && !aiLoading && (
+            <div style={{background:"#f8fafc",borderRadius:10,padding:20}}>
+              <div style={{fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>
+              <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:10,color:"#94a3b8"}}>Generated {new Date().toLocaleString()} · Based on {allActive.length} tickets</span>
+                <button onClick={generateInsight} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 10px",fontSize:11,color:"#6366f1",cursor:"pointer",fontWeight:600}}>↻ Refresh</button>
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>}
+
+      {/* ── BY TYPE ── */}
+      {view==="by_type"&&<div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:16}}>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>Ticket Volume by Type</div>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={byTypeVolumeChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:9}} angle={-20} textAnchor="end" height={40}/><YAxis tick={{fontSize:10}}/><Tooltip/>
+                <Bar dataKey="total" radius={[4,4,0,0]}>{byTypeVolumeChart.map((e,i)=><Cell key={i} fill={e.color}/>)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>SLA Rate by Type</div>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={byTypeSlaChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:9}} angle={-20} textAnchor="end" height={40}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip formatter={v=>v+"%"}/>
+                <Bar dataKey="slaRate" name="SLA Rate %" radius={[4,4,0,0]}>{byTypeSlaChart.map((e,i)=><Cell key={i} fill={e.color}/>)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+        <Card style={{padding:0,overflow:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:750}}>
+            <thead><tr style={{background:"#f8fafc"}}><TH>Type</TH><TH>Priority</TH><TH>SLA Limit</TH><TH>Total</TH><TH>Open</TH><TH>In Progress</TH><TH>Resolved</TH><TH>Breached</TH><TH>SLA Rate</TH><TH>Avg Close</TH></tr></thead>
+            <tbody>{byType.map(t=>(
+              <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9"}}>
+                <TD><Badge label={t.name} color={t.color}/></TD>
+                <TD><Badge label={PRI_META[t.priority]?.label} color={PRI_META[t.priority]?.color}/></TD>
+                <TD>{t.slaH}h</TD><TD bold>{t.total}</TD>
+                <TD><Badge label={t.open} color="#f59e0b"/></TD>
+                <TD><Badge label={t.inProg} color="#6366f1"/></TD>
+                <TD><Badge label={t.resolved} color="#10b981"/></TD>
+                <TD><Badge label={t.breached} color={t.breached>0?"#ef4444":"#10b981"}/></TD>
+                <TD><Badge label={t.slaRate+"%"} color={slaColor(t.slaRate)}/></TD>
+                <TD>{t.avgClose}h</TD>
+              </tr>
+            ))}</tbody>
+          </table>
+        </Card>
+      </div>}
+
+      {/* ── PER USER ── */}
+      {view==="per_user"&&<div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:16}}>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>Tickets Assigned per Technician</div>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={byUserStackChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/>
+                <Bar dataKey="resolved" fill="#10b981" name="Resolved" radius={[4,4,0,0]} stackId="a"/>
+                <Bar dataKey="open"     fill="#f59e0b" name="Open"     stackId="a"/>
+                <Bar dataKey="inProg"   fill="#6366f1" name="In Prog"  stackId="a"/>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>SLA Rate per Technician</div>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={byUserSlaChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip formatter={v=>v+"%"}/>
+                <Bar dataKey="slaRate" name="SLA %" radius={[4,4,0,0]}>{byUserSlaChart.map((e,i)=><Cell key={i} fill={e.color}/>)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+        <Card style={{padding:0,overflow:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:850}}>
+            <thead><tr style={{background:"#f8fafc"}}><TH>Technician</TH><TH>Total</TH><TH>Open</TH><TH>In Prog</TH><TH>Escalated</TH><TH>Resolved</TH><TH>Breached</TH><TH>SLA Rate</TH><TH>Avg Close</TH><TH>Avg Create</TH></tr></thead>
+            <tbody>{byUser.map(t=>(
+              <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9"}}>
+                <TD><div style={{display:"flex",gap:8,alignItems:"center"}}><Avatar name={t.name} id={t.id} size={26}/><div><div style={{fontWeight:600,fontSize:12}}>{t.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[t.role]?.label}</div></div></div></TD>
+                <TD bold>{t.total}</TD>
+                <TD><Badge label={t.open} color="#f59e0b"/></TD>
+                <TD><Badge label={t.inProg} color="#6366f1"/></TD>
+                <TD><Badge label={t.escalated} color="#ef4444"/></TD>
+                <TD><Badge label={t.resolved} color="#10b981"/></TD>
+                <TD><Badge label={t.breached} color={t.breached>0?"#ef4444":"#10b981"}/></TD>
+                <TD><Badge label={t.slaRate+"%"} color={slaColor(t.slaRate)}/></TD>
+                <TD>{t.avgClose}h</TD>
+                <TD>{t.createMins}m</TD>
+              </tr>
+            ))}</tbody>
+          </table>
+        </Card>
+        {/* Per-user status breakdown */}
+        <div style={{marginTop:16,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
+          {byUser.filter(u=>u.total>0).map(u=>(
+            <Card key={u.id}>
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
+                <Avatar name={u.name} id={u.id} size={28}/>
+                <div><div style={{fontWeight:700,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>Avg time per status</div></div>
+              </div>
+              {u.avgStatus.map(s=>(
+                <div key={s.s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:"1px solid #f8fafc"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:STATUS_META[s.s].color}}/><span style={{fontSize:11,color:"#475569"}}>{s.s}</span></div>
+                  <span style={{fontSize:11,fontWeight:600,color:"#1e293b"}}>{s.h}h</span>
+                </div>
+              ))}
+            </Card>
+          ))}
+        </div>
+      </div>}
+
+      {/* ── PER CLIENT ── */}
+      {view==="per_client"&&<div>
+        {byClient.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No client ticket data yet.</div></Card>}
+        {byClient.length>0&&<>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:16}}>
+            <Card>
+              <div style={{fontWeight:700,marginBottom:12}}>Tickets per Client</div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={byClientVolChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/>
+                  <Bar dataKey="total" fill="#6366f1" radius={[4,4,0,0]}>{byClientVolChart.map((_,i)=><Cell key={i} fill={PAL[i%PAL.length]}/>)}</Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+            <Card>
+              <div style={{fontWeight:700,marginBottom:12}}>SLA Rate per Client</div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={byClientSlaChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip formatter={v=>v+"%"}/>
+                  <Bar dataKey="slaRate" name="SLA %" radius={[4,4,0,0]}>{byClientSlaChart.map((e,i)=><Cell key={i} fill={e.color}/>)}</Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          </div>
+          <Card style={{padding:0,overflow:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:650}}>
+              <thead><tr style={{background:"#f8fafc"}}><TH>Client</TH><TH>Industry</TH><TH>Total</TH><TH>Open</TH><TH>Resolved</TH><TH>Breached</TH><TH>SLA Rate</TH><TH>Avg Close</TH></tr></thead>
+              <tbody>{byClient.map((c,i)=>(
+                <tr key={c.id} style={{borderBottom:"1px solid #f1f5f9"}}>
+                  <TD><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:28,height:28,borderRadius:6,background:PAL[i%PAL.length],display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:12}}>{c.name[0]}</div><span style={{fontWeight:600}}>{c.name}</span></div></TD>
+                  <TD>{c.industry||"—"}</TD><TD bold>{c.total}</TD>
+                  <TD><Badge label={c.open} color="#f59e0b"/></TD>
+                  <TD><Badge label={c.resolved} color="#10b981"/></TD>
+                  <TD><Badge label={c.breached} color={c.breached>0?"#ef4444":"#10b981"}/></TD>
+                  <TD><Badge label={c.slaRate+"%"} color={slaColor(c.slaRate)}/></TD>
+                  <TD>{c.avgClose}h</TD>
+                </tr>
+              ))}</tbody>
+            </table>
+          </Card>
+        </>}
+      </div>}
+
+      {/* ── PER LOCATION ── */}
+      {view==="per_location"&&<div>
+        {byLocation.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No location ticket data yet.</div></Card>}
+        {byLocation.length>0&&<>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:16}}>
+            <Card>
+              <div style={{fontWeight:700,marginBottom:12}}>Tickets per Location</div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={byLocVolChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:9}} angle={-15} textAnchor="end" height={45}/><YAxis tick={{fontSize:10}}/><Tooltip/>
+                  <Bar dataKey="total" fill="#8b5cf6" radius={[4,4,0,0]}>{byLocVolChart.map((_,i)=><Cell key={i} fill={PAL[i%PAL.length]}/>)}</Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+            <Card>
+              <div style={{fontWeight:700,marginBottom:12}}>SLA Rate per Location</div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={byLocSlaChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:9}} angle={-15} textAnchor="end" height={45}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip formatter={v=>v+"%"}/>
+                  <Bar dataKey="slaRate" name="SLA %" radius={[4,4,0,0]}>{byLocSlaChart.map((e,i)=><Cell key={i} fill={e.color}/>)}</Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          </div>
+          <Card style={{padding:0,overflow:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+              <thead><tr style={{background:"#f8fafc"}}><TH>Location</TH><TH>Client</TH><TH>Address</TH><TH>Total</TH><TH>Open</TH><TH>Resolved</TH><TH>Breached</TH><TH>SLA Rate</TH><TH>Avg Close</TH></tr></thead>
+              <tbody>{byLocation.map((l,i)=>(
+                <tr key={l.id} style={{borderBottom:"1px solid #f1f5f9"}}>
+                  <TD><div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{fontSize:14}}>📍</span><span style={{fontWeight:600}}>{l.locName}</span></div></TD>
+                  <TD>{l.clientName}</TD>
+                  <td style={{padding:"9px 12px",fontSize:11,color:"#64748b",maxWidth:180,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.address}</td>
+                  <TD bold>{l.total}</TD>
+                  <TD><Badge label={l.open} color="#f59e0b"/></TD>
+                  <TD><Badge label={l.resolved} color="#10b981"/></TD>
+                  <TD><Badge label={l.breached} color={l.breached>0?"#ef4444":"#10b981"}/></TD>
+                  <TD><Badge label={l.slaRate+"%"} color={slaColor(l.slaRate)}/></TD>
+                  <TD>{l.avgClose}h</TD>
+                </tr>
+              ))}</tbody>
+            </table>
+          </Card>
+        </>}
+      </div>}
+
+      {/* ── SLA & TIME ── */}
+      {view==="sla"&&<div>
+        {/* Overall KPIs */}
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
+          <Stat label="Overall SLA Rate"    value={totalSlaRate+"%"}  icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breaches"}/>
+          <Stat label="Avg Close Time"      value={avgCloseAll+"h"}   icon="⏱" color="#0ea5e9" sub="from open to closed"/>
+          <Stat label="Avg Ticket Create"   value={avgCreateAll+"m"}  icon="📝" color="#8b5cf6" sub="time to fill form"/>
+          <Stat label="SLA Met"             value={active.length-totalBreached} icon="✅" color="#10b981" sub="out of "+active.length+" tickets"/>
+          <Stat label="Critical Breaches"   value={active.filter(t=>t.slaBreached&&t.priority==="critical").length} icon="🚨" color="#dc2626"/>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>SLA Rate Trend — by Type</div>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={byTypeSlaOverall}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:9}} angle={-15} textAnchor="end" height={45}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip formatter={v=>v+"%"}/>
+                <Bar dataKey="slaRate" name="SLA %" radius={[4,4,0,0]}>{byTypeSlaOverall.map((e,i)=><Cell key={i} fill={e.color}/>)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+          <Card>
+            <div style={{fontWeight:700,marginBottom:12}}>SLA Rate per Technician</div>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={byUserSlaChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip formatter={v=>v+"%"}/>
+                <Bar dataKey="slaRate" name="SLA %" radius={[4,4,0,0]}>{byUserSlaChart.map((e,i)=><Cell key={i} fill={e.color}/>)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
+
+        {/* Avg close time per user */}
+        <Card style={{marginBottom:16}}>
+          <div style={{fontWeight:700,marginBottom:12}}>Average Close Time per Technician</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={byUser.filter(u=>u.total>0)}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip formatter={v=>v+"h"}/><Bar dataKey="avgClose" name="Avg Close (h)" fill="#0ea5e9" radius={[4,4,0,0]}/></BarChart>
+          </ResponsiveContainer>
+        </Card>
+
+        {/* SLA per location */}
+        {byLocation.length>0&&<Card style={{marginBottom:16}}>
+          <div style={{fontWeight:700,marginBottom:12}}>SLA Rate per Location</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={byLocation}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="locName" tick={{fontSize:9}} angle={-15} textAnchor="end" height={45}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip formatter={v=>v+"%"}/><Bar dataKey="slaRate" name="SLA %" radius={[4,4,0,0]}>{byLocation.map((e,i)=><Cell key={i} fill={slaColor(e.slaRate)}/>)}</Bar></BarChart>
+          </ResponsiveContainer>
+        </Card>}
+
+        {/* Time per status */}
+        <Card>
+          <div style={{fontWeight:700,marginBottom:14}}>Average Time per Status</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10}}>
+            {avgPerStatus.map(s=>(
+              <div key={s.status} style={{background:STATUS_META[s.status].bg,border:"1px solid "+STATUS_META[s.status].color+"44",borderRadius:10,padding:14,textAlign:"center"}}>
+                <div style={{fontSize:11,fontWeight:700,color:STATUS_META[s.status].color,textTransform:"uppercase",marginBottom:4}}>{s.status}</div>
+                <div style={{fontSize:24,fontWeight:800,color:"#1e293b"}}>{s.avgH}<span style={{fontSize:12,fontWeight:400,color:"#64748b"}}>h</span></div>
+                <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{s.count} tickets</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>}
     </div>
   );
 }
@@ -1259,8 +1768,8 @@ function PageUsers({users,companies,setUsers,curUser,addLog,showToast}) {
       </Card>
       {modal&&<Modal title={modal==="new"?"Add User":"Edit User"} onClose={()=>setModal(null)}>
         <FInput label="Full Name *" value={form.name||""} onChange={e=>fld("name",e.target.value)}/><FInput label="Email *" value={form.email||""} onChange={e=>fld("email",e.target.value)} type="email"/><FInput label="Phone" value={form.phone||""} onChange={e=>fld("phone",e.target.value)}/><FInput label="Department" value={form.dept||""} onChange={e=>fld("dept",e.target.value)}/>
-        <FSelect label="Role" value={form.role||"end_user"} onChange={e=>fld("role",e.target.value)} options={Object.entries(ROLE_META).map(([k,v])=>({value:k,label:v.label}))}/>
-        <FSelect label="Company" value={form.companyId||""} onChange={e=>fld("companyId",e.target.value)} options={companies.map(c=>({value:c.id,label:c.name}))}/>
+        <FSelect label="Role" value={form.role||"end_user"} onChange={e=>fld("role",e.target.value)} options={OPT_ROLES}/>
+        <FSelect label="Company" value={form.companyId||""} onChange={e=>fld("companyId",e.target.value)} options={optCompanies(companies)}/>
         <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={()=>setModal(null)}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div>
       </Modal>}
     </div>
@@ -1327,7 +1836,7 @@ function PageClients({clients,setClients,companies,addLog,showToast}) {
       </div>
       {(modal==="newCl"||modal==="editCl")&&<Modal title={modal==="newCl"?"Add Client":"Edit Client"} onClose={()=>setModal(null)}>
         <FInput label="Client Name *" value={form.name||""} onChange={e=>fld("name",e.target.value)}/><FInput label="Email" value={form.email||""} onChange={e=>fld("email",e.target.value)} type="email"/><FInput label="Phone" value={form.phone||""} onChange={e=>fld("phone",e.target.value)}/><FInput label="Industry" value={form.industry||""} onChange={e=>fld("industry",e.target.value)}/>
-        <FSelect label="Associated Company" value={form.companyId||""} onChange={e=>fld("companyId",e.target.value)} options={[{value:"",label:"— None —"},...companies.map(c=>({value:c.id,label:c.name}))]}/>
+                  <FSelect label="Associated Company" value={form.companyId||""} onChange={e=>fld("companyId",e.target.value)} options={[{value:"",label:"— None —"},...optCompanies(companies)]}/>
         <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={()=>setModal(null)}>Cancel</Btn><Btn onClick={saveCl}>{modal==="newCl"?"Add Client":"Save"}</Btn></div>
       </Modal>}
       {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={()=>setModal(null)}>
@@ -1360,7 +1869,7 @@ function PageTicketTypes({ticketTypes,users,setTicketTypes,addLog,showToast}) {
       </div>
       {modal&&<Modal title={modal==="new"?"Add Ticket Type":"Edit Ticket Type"} onClose={()=>setModal(null)}>
         <FInput label="Type Name *" value={form.name||""} onChange={e=>fld("name",e.target.value)}/>
-        <FSelect label="Priority" value={form.priority||"medium"} onChange={e=>fld("priority",e.target.value)} options={Object.entries(PRI_META).map(([k,v])=>({value:k,label:v.label}))}/>
+        <FSelect label="Priority" value={form.priority||"medium"} onChange={e=>fld("priority",e.target.value)} options={Object.keys(PRI_META).map(k=>({value:k,label:PRI_META[k].label}))}/>
         <FInput label="SLA Hours" value={form.slaHours||24} onChange={e=>fld("slaHours",Number(e.target.value))} type="number" min={1}/>
         <FInput label="Color" value={form.color||"#6366f1"} onChange={e=>fld("color",e.target.value)} type="color"/>
         <FSelect label="Default Assignee" value={form.defaultAssignee||""} onChange={e=>fld("defaultAssignee",e.target.value)} options={[{value:"",label:"— Auto-assign —"},...techs.map(u=>({value:u.id,label:u.name+" ("+ROLE_META[u.role]?.label+")"}))]}/> 
@@ -1383,7 +1892,10 @@ function PageActivityLog({logs,users}) {
   return(
     <div>
       <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div>
-        <select value={filter} onChange={e=>setFilter(e.target.value)} style={{padding:"7px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.entries(ACTION_META).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select>
+        <select value={filter} onChange={e=>setFilter(e.target.value)} style={{padding:"7px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}>
+          <option value="">All Actions</option>
+          {Object.keys(ACTION_META).map(k=><option key={k} value={k}>{ACTION_META[k].label}</option>)}
+        </select>
       </div>
       <Card style={{padding:0}}>
         {filtered.map((log,i)=>{const am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action};const actor=fu(log.userId);return(
