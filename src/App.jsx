@@ -98,22 +98,20 @@ function getStatusSla(ticket, slaConfig, schedules){
 
 async function callSendEmail(opts) {
   try {
-    // Call the local Vercel serverless proxy — avoids CORS and keeps API key server-side
     var res = await fetch("/api/send-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         to:      opts.to,
         subject: opts.subject || "(no subject)",
-        text:    opts.body || opts.message || "",
-        from:    opts.from || null
+        text:    opts.body || opts.message || ""
       })
     });
     var data = await res.json();
-    if (res.ok && data.id) return { success: true, provider: "Resend", id: data.id };
+    if (res.ok && data.id) return { success: true, provider: "Gmail", id: data.id };
     throw new Error(data.error || ("Status " + res.status));
   } catch(e) {
-    return { success: false, error: e.message, provider: "Resend" };
+    return { success: false, error: e.message, provider: "Gmail" };
   }
 }
 function aiAssign(title,desc,typeId,users,types) {
@@ -1245,18 +1243,16 @@ function PageIntegrations(p){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:20}}>📧</span>
-            <span style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>Brevo Email</span>
-            <span style={{background:apiKey?"#d1fae5":"#fef3c7",color:apiKey?"#065f46":"#92400e",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>
-              {apiKey?"✓ Configured":"⚠ Not set"}
-            </span>
+            <span style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>Gmail (App Password)</span>
+            <span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>✓ Active</span>
           </div>
-          <a href="https://brevo.com" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>brevo.com ↗</a>
+          <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>Google App Passwords ↗</a>
         </div>
-        <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#0369a1",lineHeight:1.8}}>
-          1. Sign up at brevo.com → <strong>Settings → Senders</strong> → verify your sender email<br/>
-          2. Go to <strong>SMTP &amp; API → API Keys</strong> → create a key<br/>
-          3. Add <strong>BREVO_API_KEY</strong> and <strong>BREVO_FROM_EMAIL</strong> to Vercel env variables<br/>
-          4. 300 free emails/day — sends to <strong>any</strong> email address
+        <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#0369a1",lineHeight:1.9}}>
+          Email is sent via Gmail SMTP using an App Password stored securely in Vercel.<br/>
+          <strong>To update credentials:</strong> Go to Vercel → Settings → Environment Variables<br/>
+          • <strong>GMAIL_USER</strong> — your Gmail address<br/>
+          • <strong>GMAIL_APP_PASSWORD</strong> — 16-char app password from myaccount.google.com/apppasswords
         </div>
         <div style={{marginBottom:14}}><label style={lbl}>API Key</label><input type="password" value={apiKey} onChange={function(e){setApiKey(e.target.value);}} placeholder="re_xxxxxxxxxxxxxxxx" style={inp}/></div>
         <div style={{marginBottom:20}}><label style={lbl}>From Address</label><input type="text" value={fromAddr} onChange={function(e){setFromAddr(e.target.value);}} placeholder="Hoptix IT <onboarding@resend.dev>" style={inp}/></div>
