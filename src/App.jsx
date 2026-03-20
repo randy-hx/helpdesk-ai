@@ -195,9 +195,10 @@ function TicketChat(p){
     if(!trimmed||sending)return;
     setSending(true);
     var msg={id:uid(),ticket_id:ticketId,user_id:curUser.id,message:trimmed,created_at:new Date().toISOString()};
-    await dbSaveChat(msg);
+    setMsgs(function(prev){return prev.concat([msg]);});
     setText("");
     setSending(false);
+    await dbSaveChat(msg);
   }
 
   function fu(id){return users.find(function(u){return u.id===id;});}
