@@ -1245,16 +1245,18 @@ function PageIntegrations(p){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:20}}>📧</span>
-            <span style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>Resend Email</span>
+            <span style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>Brevo Email</span>
             <span style={{background:apiKey?"#d1fae5":"#fef3c7",color:apiKey?"#065f46":"#92400e",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>
               {apiKey?"✓ Configured":"⚠ Not set"}
             </span>
           </div>
-          <a href="https://resend.com" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>resend.com ↗</a>
+          <a href="https://brevo.com" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>brevo.com ↗</a>
         </div>
         <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#0369a1",lineHeight:1.8}}>
-          1. Sign up at resend.com → <strong>API Keys</strong> → create key with Sending access<br/>
-          2. Use <strong>onboarding@resend.dev</strong> as From (free plan), or verify your own domain
+          1. Sign up at brevo.com → <strong>Settings → Senders</strong> → verify your sender email<br/>
+          2. Go to <strong>SMTP &amp; API → API Keys</strong> → create a key<br/>
+          3. Add <strong>BREVO_API_KEY</strong> and <strong>BREVO_FROM_EMAIL</strong> to Vercel env variables<br/>
+          4. 300 free emails/day — sends to <strong>any</strong> email address
         </div>
         <div style={{marginBottom:14}}><label style={lbl}>API Key</label><input type="password" value={apiKey} onChange={function(e){setApiKey(e.target.value);}} placeholder="re_xxxxxxxxxxxxxxxx" style={inp}/></div>
         <div style={{marginBottom:20}}><label style={lbl}>From Address</label><input type="text" value={fromAddr} onChange={function(e){setFromAddr(e.target.value);}} placeholder="Hoptix IT <onboarding@resend.dev>" style={inp}/></div>
