@@ -34,7 +34,7 @@ const fmtHour = function(h){ if(h===0)return"12:00 AM"; if(h<12)return h+":00 AM
 const fmtSchedule = function(sch){ if(!sch||!sch.days||!sch.days.length)return"No schedule (24/7)"; var d=sch.days.slice().sort(function(a,b){return a-b;}).map(function(d){return DOW_LABELS[d];}).join(", "); return d+" · "+fmtHour(sch.startHour)+" – "+fmtHour(sch.endHour); };
 
 // ── Schedule helpers ──────────────────────────────────────────────────────────
-function loadSchedules(){ try{var s=localStorage.getItem("hd_schedules");return s?JSON.parse(s):{};} catch(e){return{};}
+function loadSchedules(){ try{var s=localStorage.getItem("hd_schedules");return s?JSON.parse(s):{};} catch(e){return{};}}
 function saveSchedules(v){ try{localStorage.setItem("hd_schedules",JSON.stringify(v));}catch(e){}}
 function calcBusinessHoursElapsed(startMs,endMs,schedule){
   if(!schedule||!schedule.days||!schedule.days.length)return(endMs-startMs)/3600000;
