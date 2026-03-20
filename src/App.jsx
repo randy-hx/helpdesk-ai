@@ -716,6 +716,7 @@ function TicketDetail(p){
     var allOk=results.every(function(r){return r.success;});
     var failMsg=!allOk?results.filter(function(r){return !r.success;}).map(function(r){return r.error;}).join(", "):"";
     setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;return Object.assign({},t,{conversations:(t.conversations||[]).map(function(c){return c.id===msgId?Object.assign({},c,{status:allOk?"sent":"failed",failReason:failMsg}):c;})});});});
+    var updatedConvs=(ticket.conversations||[]).concat([msg]).map(function(c){return c.id===msgId?Object.assign({},c,{status:allOk?"sent":"failed",failReason:failMsg}):c;});await dbSaveTicket(Object.assign({},ticket,{conversations:updatedConvs}));
     addLog("EMAIL_SENT",ticket.id,"Email to "+msgTo+(allOk?"":" [FAILED: "+failMsg+"]"));
     showToast(allOk?"📧 Email sent!":"⚠️ Failed: "+failMsg,allOk?"ok":"error");
     setEmailSending(false);
