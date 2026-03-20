@@ -380,14 +380,16 @@ export default function App(){
   var [breaches,setBreaches]    = useState([]);
   var [showProfile,setShowProfile] = useState(false);
 
-  function setUsers(v){       var n=typeof v==="function"?v(users):v;       saveState("hd_users",n);       setUsersR(n); }
-  function setCompanies(v){   var n=typeof v==="function"?v(companies):v;   saveState("hd_companies",n);   setCompR(n); }
-  function setClients(v){     var n=typeof v==="function"?v(clients):v;     saveState("hd_clients",n);     setClientsR(n); }
-  function setTickets(v){     var n=typeof v==="function"?v(tickets):v;     saveState("hd_tickets",n);     setTicketsR(n); }
-  function setTicketTypes(v){ var n=typeof v==="function"?v(ticketTypes):v; saveState("hd_ticketTypes",n); setTTR(n); }
-  function setStatusSla(v){   var n=typeof v==="function"?v(statusSla):v;   saveStatusSlaStore(n);          setStatusSlaR(n); }
-  function setSchedules(v){   var n=typeof v==="function"?v(schedules):v;   saveSchedules(n);               setSchedulesR(n); }
-  function setLogs(v){        var n=typeof v==="function"?v(logs):v;        saveState("hd_logs",n);        setLogsR(n); }
+  // Use functional setState so chained updates always see the latest state,
+  // and localStorage stays in sync with what React actually committed.
+  function setUsers(v){       setUsersR(function(prev){ var n=typeof v==="function"?v(prev):v; saveState("hd_users",n);       return n; }); }
+  function setCompanies(v){   setCompR(function(prev){  var n=typeof v==="function"?v(prev):v; saveState("hd_companies",n);   return n; }); }
+  function setClients(v){     setClientsR(function(prev){var n=typeof v==="function"?v(prev):v; saveState("hd_clients",n);     return n; }); }
+  function setTickets(v){     setTicketsR(function(prev){var n=typeof v==="function"?v(prev):v; saveState("hd_tickets",n);     return n; }); }
+  function setTicketTypes(v){ setTTR(function(prev){    var n=typeof v==="function"?v(prev):v; saveState("hd_ticketTypes",n); return n; }); }
+  function setStatusSla(v){   setStatusSlaR(function(prev){var n=typeof v==="function"?v(prev):v; saveStatusSlaStore(n);      return n; }); }
+  function setSchedules(v){   setSchedulesR(function(prev){var n=typeof v==="function"?v(prev):v; saveSchedules(n);           return n; }); }
+  function setLogs(v){        setLogsR(function(prev){  var n=typeof v==="function"?v(prev):v; saveState("hd_logs",n);        return n; }); }
   function setCurUser(u){     if(u)saveState("hd_curUser",u); else clearAuth(); setCurUserR(u); }
   function setPage(v){
     // Never persist integrations as the last page — if it crashes on load the whole app goes blank
@@ -678,14 +680,33 @@ function TicketDetail(p){
   }
 
   async function sendEmail(){
-    if(!msgTo.trim()||!msgBody.trim()){showToast("Recipient and body required","error");return;} setEmailSending(true);
-    var toList=msgTo.split(",").map(function(e){return e.trim();}); var ccList=msgCC?msgCC.split(",").map(function(e){return e.trim();}):[]; 
-    var msg={id:uid(),from:curUser.id,fromEmail:curUser.email,to:[],toEmails:toList,cc:ccList,subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false,status:"sending"};
-    setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{conversations:(t.conversations||[]).concat([msg])}):t;});});
-    var results=await Promise.all(toList.concat(ccList).map(function(email){return callSendEmail({to:email,cc:ccList,subject:msgSubj,body:msgBody,ticketId:ticket.id});}));
+    if(!msgTo.trim()||!msgBody.trim()){showToast("Recipient and body required","error");return;}
+    setEmailSending(true);
+    var toList=msgTo.split(",").map(function(e){return e.trim();});
+    var ccList=msgCC?msgCC.split(",").map(function(e){return e.trim();}).filter(Boolean):[];
+    var msgId=uid();
+    var msg={id:msgId,from:curUser.id,fromEmail:curUser.email,to:[],toEmails:toList,cc:ccList,subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false,status:"sending"};
+    // Add message to conversation immediately so trail shows it straight away
+    setTickets(function(prev){return prev.map(function(t){
+      return t.id===ticket.id?Object.assign({},t,{conversations:(t.conversations||[]).concat([msg])}):t;
+    });});
+    // Send and wait for result
+    var results=await Promise.all(toList.map(function(email){
+      return callSendEmail({to:email,subject:msgSubj,body:msgBody});
+    }));
     var allOk=results.every(function(r){return r.success;});
-    setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{conversations:(t.conversations||[]).map(function(c){return c.id===msg.id?Object.assign({},c,{status:allOk?"sent":"failed"}):c;})}):t;});});
-    addLog("EMAIL_SENT",ticket.id,"Email sent to "+msgTo+(allOk?"":" [FAILED]")); showToast(allOk?"📧 Email sent!":"⚠️ Some emails failed",allOk?"ok":"error"); setEmailSending(false); if(allOk){setMsgTo("");setMsgCC("");setMsgBody("");}
+    var failMsg=!allOk?results.filter(function(r){return !r.success;}).map(function(r){return r.error;}).join(", "):"";
+    // Single update: set final status on the message we already added
+    setTickets(function(prev){return prev.map(function(t){
+      if(t.id!==ticket.id) return t;
+      return Object.assign({},t,{conversations:(t.conversations||[]).map(function(c){
+        return c.id===msgId?Object.assign({},c,{status:allOk?"sent":"failed",failReason:failMsg}):c;
+      })});
+    });});
+    addLog("EMAIL_SENT",ticket.id,"Email to "+msgTo+(allOk?"":" [FAILED: "+failMsg+"]"));
+    showToast(allOk?"📧 Email sent!":"⚠️ Failed: "+failMsg, allOk?"ok":"error");
+    setEmailSending(false);
+    if(allOk){setMsgTo("");setMsgCC("");setMsgBody("");}
   }
 
   async function sendSms(){
@@ -794,7 +815,7 @@ function TicketDetail(p){
       <hr style={{margin:"14px 0",border:"none",borderTop:"1px solid #e2e8f0"}}/>
       <div style={{fontWeight:700,color:"#1e293b",marginBottom:10}}>📬 Conversation Trail ({(ticket.conversations||[]).length})</div>
       {(ticket.conversations||[]).length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No messages yet.</div>}
-      {(ticket.conversations||[]).map(function(m){ return <div key={m.id} style={{background:m.isExternal?"#fff7ed":"#f8fafc",border:"1px solid "+(m.isExternal?"#fed7aa":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><div style={{fontWeight:700,fontSize:12,color:m.isExternal?"#ea580c":"#1e293b"}}>{m.isExternal?"📬 EXTERNAL":"📧"} {m.fromEmail}{m.toEmails&&m.toEmails.length>0&&<span style={{color:"#64748b",fontWeight:400}}> → {m.toEmails.join(", ")}</span>}</div><div style={{display:"flex",gap:4,alignItems:"center"}}>{m.status==="sending"&&<span style={{fontSize:10,color:"#f59e0b"}}>⏳</span>}{m.status==="sent"&&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}{m.status==="failed"&&<span style={{fontSize:10,color:"#ef4444"}}>❌</span>}<span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div></div>{m.cc&&m.cc.length>0&&<div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>CC: {m.cc.join(", ")}</div>}<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div><div style={{fontSize:12,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div></div>; })}
+      {(ticket.conversations||[]).map(function(m){ return <div key={m.id} style={{background:m.isExternal?"#fff7ed":"#f8fafc",border:"1px solid "+(m.isExternal?"#fed7aa":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><div style={{fontWeight:700,fontSize:12,color:m.isExternal?"#ea580c":"#1e293b"}}>{m.isExternal?"📬 EXTERNAL":"📧"} {m.fromEmail}{m.toEmails&&m.toEmails.length>0&&<span style={{color:"#64748b",fontWeight:400}}> → {m.toEmails.join(", ")}</span>}</div><div style={{display:"flex",gap:4,alignItems:"center"}}>{m.status==="sending"&&<span style={{fontSize:10,color:"#f59e0b"}}>⏳</span>}{m.status==="sent"&&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}{m.status==="failed"&&<span style={{fontSize:10,color:"#ef4444"}} title={m.failReason||"Failed"}>❌</span>}<span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div></div>{m.cc&&m.cc.length>0&&<div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>CC: {m.cc.join(", ")}</div>}<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div><div style={{fontSize:12,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>{m.status==="failed"&&m.failReason&&<div style={{marginTop:6,fontSize:11,color:"#dc2626",background:"#fef2f2",borderRadius:6,padding:"4px 8px"}}>⚠️ {m.failReason}</div>}</div>; })}
     </div>}
 
     {tab==="history"&&<div>
