@@ -34,8 +34,8 @@ const fmtHour = function(h){ if(h===0)return"12:00 AM"; if(h<12)return h+":00 AM
 const fmtSchedule = function(sch){ if(!sch||!sch.days||!sch.days.length)return"No schedule (24/7)"; var d=sch.days.slice().sort(function(a,b){return a-b;}).map(function(d){return DOW_LABELS[d];}).join(", "); return d+" · "+fmtHour(sch.startHour)+" – "+fmtHour(sch.endHour); };
 
 // ── Schedule helpers ──────────────────────────────────────────────────────────
-function loadSchedules(){ try{var s=localStorage.getItem("hd_schedules");return s?JSON.parse(s):{};} catch{return{};}}
-function saveSchedules(v){ try{localStorage.setItem("hd_schedules",JSON.stringify(v));}catch{}}
+function loadSchedules(){ try{var s=localStorage.getItem("hd_schedules");return s?JSON.parse(s):{};} catch(e){return{};}}
+function saveSchedules(v){ try{localStorage.setItem("hd_schedules",JSON.stringify(v));}catch(e){}}
 function calcBusinessHoursElapsed(startMs,endMs,schedule){
   if(!schedule||!schedule.days||!schedule.days.length)return(endMs-startMs)/3600000;
   var total=0,cur=startMs;
@@ -48,8 +48,8 @@ function isCurrentlyOnShift(schedule){ if(!schedule||!schedule.days||!schedule.d
 function calcSlaRate(arr){ return arr.length?Math.round((1-arr.filter(function(t){return t.slaBreached;}).length/arr.length)*100):100; }
 function calcAvgClose(arr){ return arr.length?Math.round(arr.reduce(function(a,t){return a+(new Date(t.closedAt||t.updatedAt)-new Date(t.createdAt))/3600000;},0)/arr.length):0; }
 function calcClosed(arr){ return arr.filter(function(t){return t.status==="Closed";}); }
-function loadStatusSla(){ try{var s=localStorage.getItem("hd_statusSla");return s?JSON.parse(s):DEFAULT_STATUS_SLA;}catch{return DEFAULT_STATUS_SLA;} }
-function saveStatusSlaStore(v){ try{localStorage.setItem("hd_statusSla",JSON.stringify(v));}catch{} }
+function loadStatusSla(){ try{var s=localStorage.getItem("hd_statusSla");return s?JSON.parse(s):DEFAULT_STATUS_SLA;}catch(e){return DEFAULT_STATUS_SLA;} }
+function saveStatusSlaStore(v){ try{localStorage.setItem("hd_statusSla",JSON.stringify(v));}catch(e){} }
 function getStatusSla(ticket,slaConfig,schedules){
   var cfg=slaConfig||loadStatusSla();var allowed=cfg[ticket.status];
   if(allowed===null||allowed===undefined)return null;
@@ -71,13 +71,13 @@ async function callSendEmail(opts){
     throw new Error(data.error||("Status "+res.status));
   }catch(e){return{success:false,error:e.message,provider:"Gmail"};}
 }
-function loadIntegrations(){try{return JSON.parse(localStorage.getItem("hd_integrations")||"{}");}catch{return{};}}
-function getPasswords(){try{return JSON.parse(localStorage.getItem("hd_passwords")||"{}");}catch{return{};}}
+function loadIntegrations(){try{return JSON.parse(localStorage.getItem("hd_integrations")||"{}");}catch(e){return{};}}
+function getPasswords(){try{return JSON.parse(localStorage.getItem("hd_passwords")||"{}");}catch(e){return{};}}
 function getPassword(id){return getPasswords()[id]||"password123";}
-function setPassword(id,pw){try{var p=getPasswords();p[id]=pw;localStorage.setItem("hd_passwords",JSON.stringify(p));}catch{}}
-function loadState(key,fb){try{var s=localStorage.getItem(key);return s?JSON.parse(s):fb;}catch{return fb;}}
-function saveState(key,v){try{localStorage.setItem(key,JSON.stringify(v));}catch{}}
-function clearAuth(){try{localStorage.removeItem("hd_curUser");}catch{}}
+function setPassword(id,pw){try{var p=getPasswords();p[id]=pw;localStorage.setItem("hd_passwords",JSON.stringify(p));}catch(e){}}
+function loadState(key,fb){try{var s=localStorage.getItem(key);return s?JSON.parse(s):fb;}catch(e){return fb;}}
+function saveState(key,v){try{localStorage.setItem(key,JSON.stringify(v));}catch(e){}}
+function clearAuth(){try{localStorage.removeItem("hd_curUser");}catch(e){}}
 
 // ── Seed Data ─────────────────────────────────────────────────────────────────
 const SEED_COMPANIES=[];
