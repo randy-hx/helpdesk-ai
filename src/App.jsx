@@ -405,10 +405,39 @@ export default function App(){
     setTimeout(function(){setToast(null);},3000);
   },[]);
 
+  var [inboxAlerts,setInboxAlerts] = useState([]);
+
+  // Poll for email replies every 60 seconds
   useEffect(function(){
-    function check(){ setBreaches(tickets.filter(function(t){ return !t.deleted&&t.status!=="Closed"&&t.slaDeadline&&Date.now()>new Date(t.slaDeadline).getTime(); })); }
-    check(); var iv=setInterval(check,30000); return function(){clearInterval(iv);};
-  },[tickets]);
+    if(!curUser) return;
+    async function fetchReplies(){
+      try{
+        var res=await fetch("/api/fetch-replies");
+        if(!res.ok) return;
+        var data=await res.json();
+        if(!data.replies||!data.replies.length) return;
+        // Inject into ticket conversations
+        setTickets(function(prev){
+          var updated=prev.slice();
+          data.replies.forEach(function(reply){
+            var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});
+            if(idx<0) return;
+            var ticket=updated[idx];
+            var dupId="reply_"+reply.uid;
+            if((ticket.conversations||[]).some(function(c){return c.id===dupId;})) return;
+            var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};
+            updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});
+          });
+          return updated;
+        });
+        setInboxAlerts(function(prev){return prev.concat(data.replies);});
+        showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");
+      }catch(e){}
+    }
+    fetchReplies();
+    var iv=setInterval(fetchReplies,60000);
+    return function(){clearInterval(iv);};
+  },[curUser]);
 
   var isAdmin=["admin","it_manager"].includes(curUser?.role);
   var isTech =IT_ROLES.includes(curUser?.role);
@@ -451,6 +480,12 @@ export default function App(){
           <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{curNav.icon} {curNav.label}</div>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             {breaches.length>0&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:20,padding:"4px 12px",color:"#dc2626",fontSize:11,fontWeight:700}}>⚠️ {breaches.length} SLA Breach{breaches.length>1?"es":""}</div>}
+            {inboxAlerts.length>0&&<div style={{position:"relative",cursor:"pointer"}} onClick={function(){setPage("tickets");}}>
+              <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:20,padding:"4px 12px",color:"#0369a1",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                📬 {inboxAlerts.length} new repl{inboxAlerts.length>1?"ies":"y"}
+                <button onClick={function(e){e.stopPropagation();setInboxAlerts([]);}} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:12,padding:0,lineHeight:1}}>✕</button>
+              </div>
+            </div>}
             <button onClick={function(){setShowProfile(true);}} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"5px 12px 5px 6px",cursor:"pointer"}}><Avatar name={curUser.name} id={curUser.id} size={28}/><div style={{textAlign:"left"}}><div style={{fontWeight:700,fontSize:12}}>{curUser.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[curUser.role]?.label}</div></div><span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>▼</span></button>
           </div>
         </div>
@@ -813,7 +848,32 @@ function TicketDetail(p){
       <hr style={{margin:"14px 0",border:"none",borderTop:"1px solid #e2e8f0"}}/>
       <div style={{fontWeight:700,color:"#1e293b",marginBottom:10}}>📬 Conversation Trail ({(ticket.conversations||[]).length})</div>
       {(ticket.conversations||[]).length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No messages yet.</div>}
-      {(ticket.conversations||[]).map(function(m){ return <div key={m.id} style={{background:m.isExternal?"#fff7ed":"#f8fafc",border:"1px solid "+(m.isExternal?"#fed7aa":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><div style={{fontWeight:700,fontSize:12,color:m.isExternal?"#ea580c":"#1e293b"}}>{m.isExternal?"📬 EXTERNAL":"📧"} {m.fromEmail}{m.toEmails&&m.toEmails.length>0&&<span style={{color:"#64748b",fontWeight:400}}> → {m.toEmails.join(", ")}</span>}</div><div style={{display:"flex",gap:4,alignItems:"center"}}>{m.status==="sending"&&<span style={{fontSize:10,color:"#f59e0b"}}>⏳</span>}{m.status==="sent"&&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}{m.status==="failed"&&<span style={{fontSize:10,color:"#ef4444"}} title={m.failReason||"Failed"}>❌</span>}<span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div></div>{m.cc&&m.cc.length>0&&<div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>CC: {m.cc.join(", ")}</div>}<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div><div style={{fontSize:12,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>{m.status==="failed"&&m.failReason&&<div style={{marginTop:6,fontSize:11,color:"#dc2626",background:"#fef2f2",borderRadius:6,padding:"4px 8px"}}>⚠️ {m.failReason}</div>}</div>; })}
+      {(ticket.conversations||[]).map(function(m){
+        var isReply=m.isExternal||m.status==="received";
+        var bg=isReply?"#f0fdf4":"#f8fafc";
+        var border=isReply?"#bbf7d0":"#e2e8f0";
+        var icon=isReply?"📬 REPLY":"📧";
+        var nameColor=isReply?"#166534":"#1e293b";
+        return <div key={m.id} style={{background:bg,border:"1px solid "+border,borderRadius:10,padding:12,marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+            <div style={{fontWeight:700,fontSize:12,color:nameColor}}>
+              {icon} {isReply?(m.fromName?m.fromName+" <"+m.fromEmail+">":m.fromEmail):m.fromEmail}
+              {!isReply&&m.toEmails&&m.toEmails.length>0&&<span style={{color:"#64748b",fontWeight:400}}> → {m.toEmails.join(", ")}</span>}
+            </div>
+            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+              {m.status==="sending"  &&<span style={{fontSize:10,color:"#f59e0b"}}>⏳</span>}
+              {m.status==="sent"     &&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}
+              {m.status==="received" &&<span style={{fontSize:10,color:"#10b981"}}>📩</span>}
+              {m.status==="failed"   &&<span style={{fontSize:10,color:"#ef4444"}} title={m.failReason||"Failed"}>❌</span>}
+              <span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span>
+            </div>
+          </div>
+          {m.cc&&m.cc.length>0&&<div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>CC: {m.cc.join(", ")}</div>}
+          <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div>
+          <div style={{fontSize:12,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>
+          {m.status==="failed"&&m.failReason&&<div style={{marginTop:6,fontSize:11,color:"#dc2626",background:"#fef2f2",borderRadius:6,padding:"4px 8px"}}>⚠️ {m.failReason}</div>}
+        </div>;
+      })}
     </div>}
 
     {tab==="history"&&<div>
