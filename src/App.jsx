@@ -158,7 +158,14 @@ class ErrorBoundary extends React.Component {
   constructor(props){super(props);this.state={error:null};}
   static getDerivedStateFromError(e){return{error:e.message};}
   render(){
-    if(this.state.error) return <div style={{padding:40,fontFamily:"monospace",background:"#fef2f2",minHeight:"100vh"}}><div style={{fontSize:20,fontWeight:700,color:"#dc2626",marginBottom:16}}>⚠️ App Error</div><pre style={{background:"#fff",padding:20,borderRadius:8,border:"1px solid #fecaca",fontSize:13,whiteSpace:"pre-wrap",color:"#7f1d1d"}}>{this.state.error}</pre><button onClick={function(){this.setState({error:null});}.bind(this)} style={{marginTop:16,padding:"10px 20px",background:"#dc2626",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>Try Again</button></div>;
+    if(this.state.error) return (
+      <div style={{padding:40,fontFamily:"system-ui,sans-serif",background:"#fef2f2",minHeight:"100vh"}}>
+        <div style={{fontSize:20,fontWeight:700,color:"#dc2626",marginBottom:16}}>⚠️ Something went wrong</div>
+        <pre style={{background:"#fff",padding:20,borderRadius:8,border:"1px solid #fecaca",fontSize:13,whiteSpace:"pre-wrap",color:"#7f1d1d",marginBottom:16}}>{this.state.error}</pre>
+        <button onClick={function(){ try{localStorage.removeItem("hd_page");}catch(e){} window.location.href="/"; }} style={{padding:"10px 20px",background:"#dc2626",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8}}>🏠 Go to Dashboard</button>
+        <button onClick={function(){ try{localStorage.clear();}catch(e){} window.location.href="/"; }} style={{padding:"10px 20px",background:"#7f1d1d",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>🗑 Clear Data &amp; Restart</button>
+      </div>
+    );
     return this.props.children;
   }
 }
@@ -343,7 +350,11 @@ export default function App(){
   function setSchedules(v){   var n=typeof v==="function"?v(schedules):v;   saveSchedules(n);               setSchedulesR(n); }
   function setLogs(v){        var n=typeof v==="function"?v(logs):v;        saveState("hd_logs",n);        setLogsR(n); }
   function setCurUser(u){     if(u)saveState("hd_curUser",u); else clearAuth(); setCurUserR(u); }
-  function setPage(v){        saveState("hd_page",v); setPageR(v); }
+  function setPage(v){
+    // Never persist integrations as the last page — if it crashes on load the whole app goes blank
+    if(v!=="integrations") saveState("hd_page",v);
+    setPageR(v);
+  }
 
   var addLog = useCallback(function(action,target,detail,uId){
     var entry={id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};
