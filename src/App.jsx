@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import React from "react";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, LineChart, Line } from "recharts";
+import { supabase } from './supabase.js';
+import { dbGetUsers, dbSaveUser, dbDeleteUser, dbGetPassword, dbSetPassword, dbGetCompanies, dbSaveCompany, dbDeleteCompany, dbGetClients, dbSaveClient, dbDeleteClient, dbGetTicketTypes, dbSaveTicketType, dbDeleteTicketType, dbGetTickets, dbSaveTicket, dbGetLogs, dbAddLog, dbGetSchedules, dbSaveSchedule } from './db.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const PAL = ["#6366f1","#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ef4444","#ec4899","#f97316"];
@@ -34,8 +36,6 @@ const fmtHour = function(h){ if(h===0)return"12:00 AM"; if(h<12)return h+":00 AM
 const fmtSchedule = function(sch){ if(!sch||!sch.days||!sch.days.length)return"No schedule (24/7)"; var d=sch.days.slice().sort(function(a,b){return a-b;}).map(function(d){return DOW_LABELS[d];}).join(", "); return d+" · "+fmtHour(sch.startHour)+" – "+fmtHour(sch.endHour); };
 
 // ── Schedule helpers ──────────────────────────────────────────────────────────
-function loadSchedules(){ try{var s=localStorage.getItem("hd_schedules");return s?JSON.parse(s):{};} catch(e){return{};}}
-function saveSchedules(v){ try{localStorage.setItem("hd_schedules",JSON.stringify(v));}catch(e){}}
 function calcBusinessHoursElapsed(startMs,endMs,schedule){
   if(!schedule||!schedule.days||!schedule.days.length)return(endMs-startMs)/3600000;
   var total=0,cur=startMs;
@@ -62,7 +62,7 @@ function getStatusSla(ticket,slaConfig,schedules){
   return{hoursAllowed:allowed,hoursSpent:parseFloat(spent.toFixed(2)),pct,breached,remaining:parseFloat(remaining.toFixed(2)),enteredAt:entry,onShift,hasSchedule:!!schedule,schedule};
 }
 
-// ── Email / localStorage ──────────────────────────────────────────────────────
+// ── Email ─────────────────────────────────────────────────────────────────────
 async function callSendEmail(opts){
   try{
     var res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:opts.to,subject:opts.subject||"(no subject)",text:opts.body||opts.message||""})});
@@ -71,21 +71,13 @@ async function callSendEmail(opts){
     throw new Error(data.error||("Status "+res.status));
   }catch(e){return{success:false,error:e.message,provider:"Gmail"};}
 }
-function loadIntegrations(){try{return JSON.parse(localStorage.getItem("hd_integrations")||"{}");}catch(e){return{};}}
-function getPasswords(){try{return JSON.parse(localStorage.getItem("hd_passwords")||"{}");}catch(e){return{};}}
-function getPassword(id){return getPasswords()[id]||"password123";}
-function setPassword(id,pw){try{var p=getPasswords();p[id]=pw;localStorage.setItem("hd_passwords",JSON.stringify(p));}catch(e){}}
+
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+function getPassword(id){try{var p=JSON.parse(localStorage.getItem("hd_pw_cache")||"{}");return p[id]||null;}catch(e){return null;}}
+function cachePassword(id,pw){try{var p=JSON.parse(localStorage.getItem("hd_pw_cache")||"{}");p[id]=pw;localStorage.setItem("hd_pw_cache",JSON.stringify(p));}catch(e){}}
 function loadState(key,fb){try{var s=localStorage.getItem(key);return s?JSON.parse(s):fb;}catch(e){return fb;}}
 function saveState(key,v){try{localStorage.setItem(key,JSON.stringify(v));}catch(e){}}
 function clearAuth(){try{localStorage.removeItem("hd_curUser");}catch(e){}}
-
-// ── Seed Data ─────────────────────────────────────────────────────────────────
-const SEED_COMPANIES=[];
-const SEED_CLIENTS=[];
-const SEED_USERS=[{id:"u1",name:"Randy Admin",email:"randy@omnisecurityinc.com",role:"admin",companyId:"",phone:"",dept:"IT Administration",active:true,createdAt:new Date().toISOString(),lastLogin:null}];
-const SEED_TYPES=[];
-const SEED_TICKETS=[];
-const SEED_LOGS=[];
 
 // ── Option builders ───────────────────────────────────────────────────────────
 function mkOpt(v,l){return{value:v,label:l};}
@@ -180,16 +172,31 @@ function LoginPage(p){
   async function doLogin(e){
     if(e&&e.preventDefault)e.preventDefault();setLoginErr("");
     if(!loginEmail.trim()||!loginPass.trim()){setLoginErr("Please enter your email and password.");return;}
-    setLoading(true);await new Promise(function(r){setTimeout(r,700);});
+    setLoading(true);
     var user=users.find(function(u){return u.email.toLowerCase()===loginEmail.toLowerCase().trim();});
     if(!user){setLoginErr("No account found with that email.");setLoading(false);return;}
     if(!user.active){setLoginErr("Your account is pending admin approval.");setLoading(false);return;}
-    if(loginPass!==getPassword(user.id)){setLoginErr("Incorrect password.");setLoading(false);return;}
+    var pw=await dbGetPassword(user.id);
+    if(loginPass!==pw){setLoginErr("Incorrect password.");setLoading(false);return;}
     try{if(rememberMe){localStorage.setItem("hd_savedCreds",JSON.stringify({email:loginEmail.trim(),pass:loginPass}));localStorage.setItem("hd_rememberMe","true");}else{localStorage.removeItem("hd_savedCreds");localStorage.setItem("hd_rememberMe","false");}}catch(ex){}
     setLoading(false);onLogin(user);
   }
   async function doForgot(e){e.preventDefault();setResetErr("");if(!resetEmail.trim()){setResetErr("Please enter your email.");return;}setLoading(true);await new Promise(function(r){setTimeout(r,900);});setLoading(false);setView("sent");}
-  async function doSignup(e){e.preventDefault();setSigErr("");if(!sigName.trim()){setSigErr("Full name is required.");return;}if(!sigEmail.trim()){setSigErr("Email is required.");return;}if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sigEmail.trim())){setSigErr("Enter a valid email.");return;}if(users.find(function(u){return u.email.toLowerCase()===sigEmail.toLowerCase().trim();})){setSigErr("An account with this email already exists.");return;}if(sigPass.length<8){setSigErr("Password must be at least 8 characters.");return;}if(sigPass!==sigConf){setSigErr("Passwords do not match.");return;}setLoading(true);await new Promise(function(r){setTimeout(r,900);});var nu={id:uid(),name:sigName.trim(),email:sigEmail.trim().toLowerCase(),role:"end_user",companyId:companies&&companies[0]?companies[0].id:"",phone:sigPhone.trim(),dept:sigDept.trim(),active:false,createdAt:new Date().toISOString(),lastLogin:null};setUsers(function(prev){return prev.concat([nu]);});setLoading(false);setView("pending");}
+  async function doSignup(e){
+    e.preventDefault();setSigErr("");
+    if(!sigName.trim()){setSigErr("Full name is required.");return;}
+    if(!sigEmail.trim()){setSigErr("Email is required.");return;}
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sigEmail.trim())){setSigErr("Enter a valid email.");return;}
+    if(users.find(function(u){return u.email.toLowerCase()===sigEmail.toLowerCase().trim();})){setSigErr("An account with this email already exists.");return;}
+    if(sigPass.length<8){setSigErr("Password must be at least 8 characters.");return;}
+    if(sigPass!==sigConf){setSigErr("Passwords do not match.");return;}
+    setLoading(true);
+    var nu={id:uid(),name:sigName.trim(),email:sigEmail.trim().toLowerCase(),role:"end_user",companyId:companies&&companies[0]?companies[0].id:"",phone:sigPhone.trim(),dept:sigDept.trim(),active:false,createdAt:new Date().toISOString(),lastLogin:null};
+    await dbSaveUser(nu);
+    await dbSetPassword(nu.id,sigPass);
+    setUsers(function(prev){return prev.concat([nu]);});
+    setLoading(false);setView("pending");
+  }
 
   function PBtn(bp){return<button type={bp.type||"button"} onClick={bp.onClick} disabled={bp.disabled} style={{width:"100%",padding:"12px",background:bp.disabled?"#7dd3fc":"linear-gradient(135deg,#0369a1,#0ea5e9)",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:bp.disabled?"not-allowed":"pointer",marginTop:4}}>{bp.children}</button>;}
   function BackBtn(bp){return<button type="button" onClick={bp.onClick} style={{background:"none",border:"none",color:"#0369a1",fontSize:13,fontWeight:600,cursor:"pointer",padding:"0 0 16px 0",display:"flex",alignItems:"center",gap:4}}>← Back to Sign In</button>;}
@@ -240,8 +247,8 @@ function ProfileModal(p){
   function pwStr(pw){if(!pw||pw.length<8)return 1;if(pw.length>=12&&/[A-Z]/.test(pw)&&/[0-9]/.test(pw)&&/[^A-Za-z0-9]/.test(pw))return 4;if(pw.length>=10&&/[A-Z]/.test(pw)&&/[0-9]/.test(pw))return 3;return 2;}
   var strC=["","#ef4444","#f59e0b","#3b82f6","#10b981"];var strL=["","Too short","Weak","Good","Strong ✅"];var str=pwStr(newPw);
   var inp={width:"100%",padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
-  async function saveProfile(){if(!name.trim()){showToast("Name cannot be empty","error");return;}setSaving(true);await new Promise(function(r){setTimeout(r,400);});var updated=Object.assign({},curUser,{name:name.trim(),phone:phone.trim(),dept:dept.trim()});setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?updated:u;});});setCurUser(updated);addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile");showToast("✅ Profile updated!");setSaving(false);onClose();}
-  async function changePw(){setPwErr("");setPwOk("");if(!curPw){setPwErr("Enter your current password.");return;}if(curPw!==getPassword(curUser.id)){setPwErr("Current password is incorrect.");return;}if(newPw.length<8){setPwErr("New password must be at least 8 characters.");return;}if(newPw!==confPw){setPwErr("Passwords do not match.");return;}if(newPw===curPw){setPwErr("New password must differ from current.");return;}setSaving(true);await new Promise(function(r){setTimeout(r,500);});setPassword(curUser.id,newPw);addLog("PASSWORD_CHANGED",curUser.id,curUser.name+" changed password");setSaving(false);setCurPw("");setNewPw("");setConfPw("");setPwOk("✅ Password changed!");showToast("Password updated!");onClose();}
+  async function saveProfile(){if(!name.trim()){showToast("Name cannot be empty","error");return;}setSaving(true);var updated=Object.assign({},curUser,{name:name.trim(),phone:phone.trim(),dept:dept.trim()});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?updated:u;});});setCurUser(updated);addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile");showToast("✅ Profile updated!");setSaving(false);onClose();}
+  async function changePw(){setPwErr("");setPwOk("");if(!curPw){setPwErr("Enter your current password.");return;}var existingPw=await dbGetPassword(curUser.id);if(curPw!==existingPw){setPwErr("Current password is incorrect.");return;}if(newPw.length<8){setPwErr("New password must be at least 8 characters.");return;}if(newPw!==confPw){setPwErr("Passwords do not match.");return;}if(newPw===curPw){setPwErr("New password must differ from current.");return;}setSaving(true);await dbSetPassword(curUser.id,newPw);addLog("PASSWORD_CHANGED",curUser.id,curUser.name+" changed password");setSaving(false);setCurPw("");setNewPw("");setConfPw("");setPwOk("✅ Password changed!");showToast("Password updated!");onClose();}
   return<Modal title="My Profile" onClose={onClose}>
     <div style={{display:"flex",alignItems:"center",gap:16,padding:"0 0 20px",borderBottom:"1px solid #e2e8f0",marginBottom:20}}><div style={{width:64,height:64,borderRadius:"50%",background:avCol(curUser.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:24,fontWeight:800}}>{inits(curUser.name)}</div><div><div style={{fontWeight:700,fontSize:16}}>{curUser.name}</div><div style={{fontSize:12,color:"#64748b"}}>{curUser.email}</div><div style={{marginTop:4}}><Badge label={ROLE_META[curUser.role]?.label||curUser.role} color={ROLE_META[curUser.role]?.color||"#6366f1"}/></div></div></div>
     <div style={{display:"flex",gap:6,marginBottom:20}}>{["profile","password"].map(function(t){return<button key={t} onClick={function(){setTab(t);}} style={{background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"6px 18px",cursor:"pointer",fontSize:12,fontWeight:700}}>{t==="profile"?"👤 Profile":"🔑 Change Password"}</button>;})}</div>
@@ -252,14 +259,14 @@ function ProfileModal(p){
 
 // ── Root App ──────────────────────────────────────────────────────────────────
 export default function App(){
-  var[users,setUsersR]        =useState(function(){return loadState("hd_users",SEED_USERS);});
-  var[companies,setCompR]     =useState(function(){return loadState("hd_companies",SEED_COMPANIES);});
-  var[clients,setClientsR]    =useState(function(){return loadState("hd_clients",SEED_CLIENTS);});
-  var[tickets,setTicketsR]    =useState(function(){return loadState("hd_tickets",SEED_TICKETS);});
-  var[ticketTypes,setTTR]     =useState(function(){return loadState("hd_ticketTypes",SEED_TYPES);});
-  var[statusSla,setStatusSlaR]=useState(function(){return loadStatusSla();});
-  var[schedules,setSchedulesR]=useState(function(){return loadSchedules();});
-  var[logs,setLogsR]          =useState(function(){return loadState("hd_logs",SEED_LOGS);});
+  var[users,setUsers]         =useState([]);
+  var[companies,setCompanies] =useState([]);
+  var[clients,setClients]     =useState([]);
+  var[tickets,setTicketsR]    =useState([]);
+  var[ticketTypes,setTTR]     =useState([]);
+  var[statusSla,setStatusSlaR]=useState(DEFAULT_STATUS_SLA);
+  var[schedules,setSchedulesR]=useState({});
+  var[logs,setLogsR]          =useState([]);
   var[curUser,setCurUserR]    =useState(function(){return loadState("hd_curUser",null);});
   var[page,setPageR]          =useState(function(){try{var s=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
   var[selTicket,setSelTicket] =useState(null);
@@ -267,35 +274,71 @@ export default function App(){
   var[breaches,setBreaches]   =useState([]);
   var[inboxAlerts,setInboxAlerts]=useState([]);
   var[showProfile,setShowProfile]=useState(false);
+  var[loading,setLoading]     =useState(true);
 
-  function setUsers(v){setUsersR(function(prev){var n=typeof v==="function"?v(prev):v;saveState("hd_users",n);return n;});}
-  function setCompanies(v){setCompR(function(prev){var n=typeof v==="function"?v(prev):v;saveState("hd_companies",n);return n;});}
-  function setClients(v){setClientsR(function(prev){var n=typeof v==="function"?v(prev):v;saveState("hd_clients",n);return n;});}
-  function setTickets(v){setTicketsR(function(prev){var n=typeof v==="function"?v(prev):v;saveState("hd_tickets",n);return n;});}
-  function setTicketTypes(v){setTTR(function(prev){var n=typeof v==="function"?v(prev):v;saveState("hd_ticketTypes",n);return n;});}
-  function setStatusSla(v){setStatusSlaR(function(prev){var n=typeof v==="function"?v(prev):v;saveStatusSlaStore(n);return n;});}
-  function setSchedules(v){setSchedulesR(function(prev){var n=typeof v==="function"?v(prev):v;saveSchedules(n);return n;});}
-  function setLogs(v){setLogsR(function(prev){var n=typeof v==="function"?v(prev):v;saveState("hd_logs",n);return n;});}
+  // Load all data from Supabase on startup
+  useEffect(function(){
+    async function loadAll(){
+      setLoading(true);
+      var[u,co,cl,tt,tkt,lg,sch]=await Promise.all([
+        dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),
+        dbGetTickets(),dbGetLogs(),dbGetSchedules()
+      ]);
+      setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);
+      setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);
+      setLoading(false);
+    }
+    loadAll();
+  },[]);
+
+  // Realtime subscription for tickets
+  useEffect(function(){
+    var sub=supabase.channel('tickets-changes')
+      .on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(){
+        dbGetTickets().then(function(t){setTicketsR(t);});
+      })
+      .on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){
+        dbGetUsers().then(function(u){setUsers(u);});
+      })
+      .subscribe();
+    return function(){supabase.removeChannel(sub);};
+  },[]);
+
+  async function setTickets(updater){
+    var prev=tickets;
+    var next=typeof updater==="function"?updater(prev):updater;
+    setTicketsR(next);
+    // Find changed tickets and save them
+    var changed=next.filter(function(t){
+      var old=prev.find(function(p){return p.id===t.id;});
+      return !old||JSON.stringify(old)!==JSON.stringify(t);
+    });
+    for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}
+  }
+
   function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
   function setPage(v){if(v!=="integrations")saveState("hd_page",v);setPageR(v);}
 
   var addLog=useCallback(function(action,target,detail,uId){
     var entry={id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};
-    setLogsR(function(p){var n=[entry].concat(p).slice(0,500);saveState("hd_logs",n);return n;});
+    setLogsR(function(p){return[entry].concat(p).slice(0,500);});
+    dbAddLog(entry);
   },[curUser]);
 
   var showToast=useCallback(function(msg,type){setToast({msg,type:type||"ok"});setTimeout(function(){setToast(null);},3500);},[]);
 
   useEffect(function(){
-    function check(){setBreaches(tickets.filter(function(t){if(t.deleted||t.status==="Closed")return false;var s=getStatusSla(t,loadStatusSla(),loadSchedules());return s&&s.breached;}));}
+    function check(){setBreaches(tickets.filter(function(t){if(t.deleted||t.status==="Closed")return false;var s=getStatusSla(t,statusSla,schedules);return s&&s.breached;}));}
     check();var iv=setInterval(check,30000);return function(){clearInterval(iv);};
-  },[tickets]);
+  },[tickets,statusSla,schedules]);
 
   useEffect(function(){
     if(!curUser)return;
     async function fetchReplies(){
       try{var res=await fetch("/api/fetch-replies");if(!res.ok)return;var data=await res.json();if(!data.replies||!data.replies.length)return;
-        setTickets(function(prev){var updated=prev.slice();data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});return updated;});
+        var updated=tickets.slice();
+        data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});
+        setTickets(function(){return updated;});
         setInboxAlerts(function(prev){return prev.concat(data.replies);});
         showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");
       }catch(e){}
@@ -307,6 +350,8 @@ export default function App(){
   var isTech=IT_ROLES.includes(curUser?.role);
   var visible=useMemo(function(){return tickets.filter(function(t){return !t.deleted&&(isTech||t.submittedBy===curUser?.id||t.assignedTo===curUser?.id);});},[tickets,curUser,isTech]);
   var allNonDeleted=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
+
+  if(loading)return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#062d6b)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #0ea5e9",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"#7dd3fc",fontSize:14,fontWeight:600}}>Loading Hoptix…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
   if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
 
@@ -355,10 +400,10 @@ export default function App(){
           {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage}/>}
           {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket}/>}
           {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules}/>}
-          {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedules}/>}
-          {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast}/>}
-          {page==="clients"      &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast}/>}
-          {page==="ticket_types" &&<PageTicketTypes ticketTypes={ticketTypes} users={users} setTicketTypes={setTicketTypes} statusSla={statusSla} setStatusSla={setStatusSla} addLog={addLog} showToast={showToast}/>}
+          {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule}/>}
+          {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast} dbSaveCompany={dbSaveCompany} dbDeleteCompany={dbDeleteCompany}/>}
+          {page==="clients"      &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast} dbSaveClient={dbSaveClient} dbDeleteClient={dbDeleteClient}/>}
+          {page==="ticket_types" &&<PageTicketTypes ticketTypes={ticketTypes} users={users} setTicketTypes={setTTR} statusSla={statusSla} setStatusSla={setStatusSlaR} addLog={addLog} showToast={showToast} dbSaveTicketType={dbSaveTicketType} dbDeleteTicketType={dbDeleteTicketType}/>}
           {page==="activity_log" &&<PageActivityLog logs={logs} users={users}/>}
           {page==="integrations" &&<PageIntegrations showToast={showToast} addLog={addLog}/>}
         </div>
@@ -797,6 +842,7 @@ function PageReports(p){
 // ── Users ─────────────────────────────────────────────────────────────────────
 function PageUsers(p){
   var users=p.users;var companies=p.companies;var setUsers=p.setUsers;var curUser=p.curUser;var addLog=p.addLog;var showToast=p.showToast;var schedules=p.schedules||{};var setSchedules=p.setSchedules;
+  var dbSaveUser=p.dbSaveUser;var dbDeleteUser=p.dbDeleteUser;var dbSetPassword=p.dbSetPassword;var dbSaveSchedule=p.dbSaveSchedule;
   var[modal,setModal]=useState(null);var[form,setForm]=useState({});
   var[emailStatus,setEmailStatus]=useState(null);
   var[pwModal,setPwModal]=useState(null);var[newPw,setNewPw]=useState("");var[pwErr,setPwErr]=useState("");
@@ -827,16 +873,25 @@ function PageUsers(p){
     syncRoles(next);addLog("ROLE_DELETED",key,"Role \""+key+"\" deleted");showToast("Role deleted!");
   }
 
-  function resetPassword(){
+  async function resetPassword(){
     if(!newPw||newPw.length<6){setPwErr("Minimum 6 characters");return;}
-    setPassword(pwModal.id,newPw);
+    await dbSetPassword(pwModal.id,newPw);
     addLog("PASSWORD_RESET",pwModal.id,"Password reset for "+pwModal.name+" by admin");
     showToast("✅ Password reset for "+pwModal.name);
     setPwModal(null);setNewPw("");setPwErr("");
   }
 
-  function approveUser(u){setUsers(function(prev){return prev.map(function(x){return x.id===u.id?Object.assign({},x,{active:true}):x;});});addLog("USER_APPROVED",u.id,u.name+" approved");showToast("✅ Account approved!");}
-  function handleScheduleChange(userId,sch){setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});}
+  async function approveUser(u){
+    var updated=Object.assign({},u,{active:true});
+    await dbSaveUser(updated);
+    setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});
+    addLog("USER_APPROVED",u.id,u.name+" approved");showToast("✅ Account approved!");
+  }
+
+  function handleScheduleChange(userId,sch){
+    setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});
+    dbSaveSchedule(userId,sch);
+  }
 
   var allRoleOpts=Object.keys(roles).map(function(k){return mkOpt(k,roles[k].label);});
   var pendingUsers=users.filter(function(u){return !u.active;});
@@ -846,17 +901,19 @@ function PageUsers(p){
     if(!form.name||!form.email){showToast("Name and email required","error");return;}
     if(modal==="new"){
       var nu=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString(),lastLogin:null});
+      await dbSaveUser(nu);
+      await dbSetPassword(nu.id,"password123");
       setUsers(function(prev){return prev.concat([nu]);});
       addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");showToast("User created");
       setEmailStatus("sending");
-      var defaultPw=getPassword(nu.id);
-      var emailBody=["Hi "+nu.name+",","","An account has been created for you on the Hoptix IT Helpdesk portal.","","📧 Email: "+nu.email,"🔑 Password: "+defaultPw,"","⚠️ Please sign in and change your password immediately.","","— The Hoptix IT Team"].join("\n");
+      var emailBody=["Hi "+nu.name+",","","An account has been created for you on the Hoptix IT Helpdesk portal.","","📧 Email: "+nu.email,"🔑 Temporary Password: password123","","⚠️ Please sign in and change your password immediately.","","— The Hoptix IT Team"].join("\n");
       var result=await callSendEmail({to:nu.email,subject:"🎉 Your Hoptix IT Helpdesk account is ready",body:emailBody});
       setEmailStatus(result.success?"sent":"failed");
       if(result.success)addLog("EMAIL_SENT",nu.id,"Welcome email sent to "+nu.email);
       else showToast("⚠️ Welcome email failed","error");
     }else{
       var old=users.find(function(u){return u.id===form.id;});
+      await dbSaveUser(form);
       setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});
       if(old&&old.role!==form.role)addLog("USER_ROLE_CHANGE",form.id,"Role: "+(roles[old.role]?.label||old.role)+" → "+(roles[form.role]?.label||form.role));
       showToast("User updated");
@@ -869,7 +926,7 @@ function PageUsers(p){
       <div style={{fontWeight:700,color:"#92400e",marginBottom:10,fontSize:13}}>⏳ {pendingUsers.length} Account{pendingUsers.length>1?"s":""} Awaiting Approval</div>
       {pendingUsers.map(function(u){return<div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 14px",borderRadius:8,border:"1px solid #fde68a",marginBottom:6}}>
         <div style={{display:"flex",gap:10,alignItems:"center"}}><Avatar name={u.name} id={u.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{u.name}</div><div style={{fontSize:11,color:"#64748b"}}>{u.email}</div></div></div>
-        <div style={{display:"flex",gap:6}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅ Approve</Btn><Btn size="sm" variant="danger" onClick={function(){setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Account rejected");}}>✕ Reject</Btn></div>
+        <div style={{display:"flex",gap:6}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅ Approve</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Account rejected");}}>✕ Reject</Btn></div>
       </div>;})}
     </div>}
 
@@ -893,8 +950,8 @@ function PageUsers(p){
             <td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
               <Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️</Btn>
               <Btn size="sm" variant="ghost" onClick={function(){setPwModal(u);setNewPw("");setPwErr("");}}>🔑</Btn>
-              <Btn size="sm" variant={u.active?"warning":"success"} onClick={function(){setUsers(function(prev){return prev.map(function(x){return x.id===u.id?Object.assign({},x,{active:!x.active}):x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>
-              {u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={function(){setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}
+              <Btn size="sm" variant={u.active?"warning":"success"} onClick={async function(){var updated=Object.assign({},u,{active:!u.active});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>
+              {u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}
             </div></td>
           </tr>;
         })}</tbody>
@@ -957,14 +1014,15 @@ function PageUsers(p){
 // ── Companies ─────────────────────────────────────────────────────────────────
 function PageCompanies(p){
   var companies=p.companies;var users=p.users;var setCompanies=p.setCompanies;var addLog=p.addLog;var showToast=p.showToast;
+  var dbSaveCompany=p.dbSaveCompany;var dbDeleteCompany=p.dbDeleteCompany;
   var[modal,setModal]=useState(null);var[form,setForm]=useState({});
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nc=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString()});setCompanies(function(prev){return prev.concat([nc]);});addLog("COMPANY_CREATED",nc.id,'"'+nc.name+'" created');showToast("Created");}else{setCompanies(function(prev){return prev.map(function(c){return c.id===form.id?Object.assign({},form):c;});});showToast("Updated");}setModal(null);}
+  async function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nc=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString()});await dbSaveCompany(nc);setCompanies(function(prev){return prev.concat([nc]);});addLog("COMPANY_CREATED",nc.id,'"'+nc.name+'" created');showToast("Created");}else{await dbSaveCompany(form);setCompanies(function(prev){return prev.map(function(c){return c.id===form.id?Object.assign({},form):c;});});showToast("Updated");}setModal(null);}
   return<div>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>Company Profiles ({companies.length})</div><Btn onClick={function(){setForm({name:"",domain:"",address:"",phone:"",industry:"",size:""});setModal("new");}}>➕ Add Company</Btn></div>
-    {companies.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No companies yet. Add your first company to get started.</div></Card>}
+    {companies.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No companies yet.</div></Card>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
-      {companies.map(function(c){var members=users.filter(function(u){return u.companyId===c.id;});return<Card key={c.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><div style={{width:44,height:44,borderRadius:10,background:avCol(c.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16}}>{c.name[0]}</div><div style={{display:"flex",gap:6}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},c));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){setCompanies(function(prev){return prev.filter(function(x){return x.id!==c.id;});});addLog("COMPANY_DELETED",c.id,'"'+c.name+'" deleted');showToast("Deleted");}}>🗑</Btn></div></div><div style={{fontWeight:700,color:"#1e293b",marginBottom:4}}>{c.name}</div><div style={{fontSize:11,color:"#64748b"}}>🌐 {c.domain||"—"}</div><div style={{fontSize:11,color:"#64748b"}}>📍 {c.address||"—"}</div><div style={{fontSize:11,color:"#64748b"}}>📞 {c.phone||"—"}</div><div style={{fontSize:11,color:"#64748b",marginBottom:10}}>🏭 {c.industry||"—"} · {c.size||"—"}</div><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{members.slice(0,5).map(function(m){return<Avatar key={m.id} name={m.name} id={m.id} size={24}/>;})}{members.length>5&&<div style={{fontSize:10,color:"#94a3b8",alignSelf:"center"}}>+{members.length-5}</div>}</div></Card>;})}
+      {companies.map(function(c){var members=users.filter(function(u){return u.companyId===c.id;});return<Card key={c.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><div style={{width:44,height:44,borderRadius:10,background:avCol(c.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16}}>{c.name[0]}</div><div style={{display:"flex",gap:6}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},c));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteCompany(c.id);setCompanies(function(prev){return prev.filter(function(x){return x.id!==c.id;});});addLog("COMPANY_DELETED",c.id,'"'+c.name+'" deleted');showToast("Deleted");}}>🗑</Btn></div></div><div style={{fontWeight:700,color:"#1e293b",marginBottom:4}}>{c.name}</div><div style={{fontSize:11,color:"#64748b"}}>🌐 {c.domain||"—"}</div><div style={{fontSize:11,color:"#64748b"}}>📍 {c.address||"—"}</div><div style={{fontSize:11,color:"#64748b"}}>📞 {c.phone||"—"}</div><div style={{fontSize:11,color:"#64748b",marginBottom:10}}>🏭 {c.industry||"—"} · {c.size||"—"}</div><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{members.slice(0,5).map(function(m){return<Avatar key={m.id} name={m.name} id={m.id} size={24}/>;})}{members.length>5&&<div style={{fontSize:10,color:"#94a3b8",alignSelf:"center"}}>+{members.length-5}</div>}</div></Card>;})}
     </div>
     {modal&&<Modal title={modal==="new"?"Add Company":"Edit Company"} onClose={function(){setModal(null);}}>
       <FInput label="Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Domain" value={form.domain||""} onChange={function(e){fld("domain",e.target.value);}}/><FInput label="Address" value={form.address||""} onChange={function(e){fld("address",e.target.value);}}/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FInput label="Size" value={form.size||""} onChange={function(e){fld("size",e.target.value);}}/>
@@ -976,19 +1034,20 @@ function PageCompanies(p){
 // ── Clients ───────────────────────────────────────────────────────────────────
 function PageClients(p){
   var clients=p.clients;var setClients=p.setClients;var companies=p.companies;var addLog=p.addLog;var showToast=p.showToast;
+  var dbSaveClient=p.dbSaveClient;var dbDeleteClient=p.dbDeleteClient;
   var[modal,setModal]=useState(null);var[selCl,setSelCl]=useState(null);var[form,setForm]=useState({});var[lForm,setLForm]=useState({});
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}function lfld(k,v){setLForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function saveCl(){if(!form.name){showToast("Name required","error");return;}if(modal==="newCl"){var nc=Object.assign({},form,{id:uid(),locations:[]});setClients(function(prev){return prev.concat([nc]);});addLog("CLIENT_CREATED",nc.id,"Client \""+nc.name+"\" added");showToast("Client added");}else{setClients(function(prev){return prev.map(function(c){return c.id===form.id?Object.assign({},form,{locations:c.locations}):c;});});showToast("Updated");}setModal(null);}
-  function saveLoc(){if(!lForm.name||!lForm.address){showToast("Name and address required","error");return;}if(modal==="newLoc"){var nl=Object.assign({},lForm,{id:uid()});setClients(function(prev){return prev.map(function(c){return c.id===selCl?Object.assign({},c,{locations:c.locations.concat([nl])}):c;});});addLog("LOCATION_ADDED",selCl,"Location \""+nl.name+"\" added");showToast("Location added");}else{setClients(function(prev){return prev.map(function(c){return c.id===selCl?Object.assign({},c,{locations:c.locations.map(function(l){return l.id===lForm.id?Object.assign({},lForm):l;})}):c;});});showToast("Updated");}setModal(null);}
+  async function saveCl(){if(!form.name){showToast("Name required","error");return;}if(modal==="newCl"){var nc=Object.assign({},form,{id:uid(),locations:[]});await dbSaveClient(nc);setClients(function(prev){return prev.concat([nc]);});addLog("CLIENT_CREATED",nc.id,"Client \""+nc.name+"\" added");showToast("Client added");}else{var updated=Object.assign({},form,{locations:clients.find(function(c){return c.id===form.id;})?.locations||[]});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===form.id?updated:c;});});showToast("Updated");}setModal(null);}
+  async function saveLoc(){if(!lForm.name||!lForm.address){showToast("Name and address required","error");return;}var cl=clients.find(function(c){return c.id===selCl;});if(!cl)return;var newLocs;if(modal==="newLoc"){var nl=Object.assign({},lForm,{id:uid()});newLocs=cl.locations.concat([nl]);}else{newLocs=cl.locations.map(function(l){return l.id===lForm.id?Object.assign({},lForm):l;});}var updated=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===selCl?updated:c;});});showToast(modal==="newLoc"?"Location added":"Updated");setModal(null);}
   return<div>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>Clients &amp; Locations</div><Btn onClick={function(){setForm({name:"",email:"",phone:"",industry:"",companyId:companies[0]?.id||""});setModal("newCl");}}>➕ Add Client</Btn></div>
     {clients.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No clients yet.</div></Card>}
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>{clients.map(function(cl){var co=companies.find(function(c){return c.id===cl.companyId;});return<Card key={cl.id}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}><div style={{display:"flex",gap:14,alignItems:"center"}}><div style={{width:48,height:48,borderRadius:12,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:18}}>{cl.name[0]}</div><div><div style={{fontWeight:700,color:"#1e293b",fontSize:14}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {cl.email} · 📞 {cl.phone}</div><div style={{fontSize:11,color:"#64748b"}}>🏭 {cl.industry}{co?" · "+co.name:""}</div></div></div><div style={{display:"flex",gap:6}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},cl));setModal("editCl");}}>✏️ Edit</Btn><Btn size="sm" variant="danger" onClick={function(){setClients(function(prev){return prev.filter(function(x){return x.id!==cl.id;});});addLog("CLIENT_DELETED",cl.id,"\""+cl.name+"\" removed");showToast("Removed");}}>🗑 Remove</Btn></div></div>
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>{clients.map(function(cl){var co=companies.find(function(c){return c.id===cl.companyId;});return<Card key={cl.id}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}><div style={{display:"flex",gap:14,alignItems:"center"}}><div style={{width:48,height:48,borderRadius:12,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:18}}>{cl.name[0]}</div><div><div style={{fontWeight:700,color:"#1e293b",fontSize:14}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {cl.email} · 📞 {cl.phone}</div><div style={{fontSize:11,color:"#64748b"}}>🏭 {cl.industry}{co?" · "+co.name:""}</div></div></div><div style={{display:"flex",gap:6}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},cl));setModal("editCl");}}>✏️ Edit</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteClient(cl.id);setClients(function(prev){return prev.filter(function(x){return x.id!==cl.id;});});addLog("CLIENT_DELETED",cl.id,"\""+cl.name+"\" removed");showToast("Removed");}}>🗑 Remove</Btn></div></div>
       <div style={{background:"#f8fafc",borderRadius:10,padding:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div><Btn size="sm" variant="primary" onClick={function(){setSelCl(cl.id);setLForm({name:"",address:"",floor:"",contact:""});setModal("newLoc");}}>➕ Add Location</Btn></div>
       {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"12px 0"}}>No locations added yet.</div>}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10}}>{cl.locations.map(function(loc){return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:12}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}><div style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>📍 {loc.name}</div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelCl(cl.id);setLForm(Object.assign({},loc));setModal("editLoc");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){setClients(function(prev){return prev.map(function(c){return c.id===cl.id?Object.assign({},c,{locations:c.locations.filter(function(l){return l.id!==loc.id;})}):c;});});addLog("LOCATION_REMOVED",cl.id,"\""+loc.name+"\" removed");showToast("Removed");}}>🗑</Btn></div></div><div style={{fontSize:11,color:"#64748b"}}>📮 {loc.address}</div>{loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}{loc.contact&&<div style={{fontSize:11,color:"#64748b"}}>👤 {loc.contact}</div>}</div>;})}</div></div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10}}>{cl.locations.map(function(loc){return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:12}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}><div style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>📍 {loc.name}</div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelCl(cl.id);setLForm(Object.assign({},loc));setModal("editLoc");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){var newLocs=cl.locations.filter(function(l){return l.id!==loc.id;});var updated=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===cl.id?updated:c;});});addLog("LOCATION_REMOVED",cl.id,"\""+loc.name+"\" removed");showToast("Removed");}}>🗑</Btn></div></div><div style={{fontSize:11,color:"#64748b"}}>📮 {loc.address}</div>{loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}{loc.contact&&<div style={{fontSize:11,color:"#64748b"}}>👤 {loc.contact}</div>}</div>;})}</div>
+      </div>
     </Card>;})}
-    </div>
     {(modal==="newCl"||modal==="editCl")&&<Modal title={modal==="newCl"?"Add Client":"Edit Client"} onClose={function(){setModal(null);}}><FInput label="Client Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Email" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FSelect label="Associated Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompaniesNone(companies)}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveCl}>{modal==="newCl"?"Add Client":"Save"}</Btn></div></Modal>}
     {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={function(){setModal(null);}}><FInput label="Location Name *" value={lForm.name||""} onChange={function(e){lfld("name",e.target.value);}} placeholder="e.g. HQ — New York"/><FInput label="Address *" value={lForm.address||""} onChange={function(e){lfld("address",e.target.value);}}/><FInput label="Floor / Area" value={lForm.floor||""} onChange={function(e){lfld("floor",e.target.value);}}/><FInput label="On-site Contact" value={lForm.contact||""} onChange={function(e){lfld("contact",e.target.value);}}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save"}</Btn></div></Modal>}
   </div>;
@@ -997,18 +1056,19 @@ function PageClients(p){
 // ── Ticket Types ──────────────────────────────────────────────────────────────
 function PageTicketTypes(p){
   var ticketTypes=p.ticketTypes;var users=p.users;var setTicketTypes=p.setTicketTypes;var statusSla=p.statusSla;var setStatusSla=p.setStatusSla;var addLog=p.addLog;var showToast=p.showToast;
+  var dbSaveTicketType=p.dbSaveTicketType;var dbDeleteTicketType=p.dbDeleteTicketType;
   var[modal,setModal]=useState(null);var[form,setForm]=useState({});var[kwInput,setKwInput]=useState("");
   var[slaEdit,setSlaEdit]=useState(function(){return Object.assign({},statusSla);});var[slaChanged,setSlaChanged]=useState(false);
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nt=Object.assign({},form,{id:uid(),keywords:form.keywords||[]});setTicketTypes(function(prev){return prev.concat([nt]);});addLog("TICKET_TYPE_CREATED",nt.id,"Type \""+nt.name+"\" created");showToast("Created");}else{setTicketTypes(function(prev){return prev.map(function(t){return t.id===form.id?Object.assign({},form):t;});});showToast("Updated");}setModal(null);}
+  async function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nt=Object.assign({},form,{id:uid(),keywords:form.keywords||[]});await dbSaveTicketType(nt);setTicketTypes(function(prev){return prev.concat([nt]);});addLog("TICKET_TYPE_CREATED",nt.id,"Type \""+nt.name+"\" created");showToast("Created");}else{await dbSaveTicketType(form);setTicketTypes(function(prev){return prev.map(function(t){return t.id===form.id?Object.assign({},form):t;});});showToast("Updated");}setModal(null);}
   function addKw(){if(kwInput.trim()){fld("keywords",(form.keywords||[]).concat([kwInput.trim()]));setKwInput("");}}
   function updateSlaField(status,val){var n=Object.assign({},slaEdit);n[status]=val===""||val===null?null:parseFloat(val);setSlaEdit(n);setSlaChanged(true);}
-  function saveSla(){setStatusSla(slaEdit);addLog("SLA_UPDATED","system","SLA thresholds updated");showToast("✅ SLA settings saved!");setSlaChanged(false);}
+  function saveSla(){setStatusSla(slaEdit);saveStatusSlaStore(slaEdit);addLog("SLA_UPDATED","system","SLA thresholds updated");showToast("✅ SLA settings saved!");setSlaChanged(false);}
   var SLA_DESC={"Open":"Time before a ticket must be acknowledged","In Progress":"Time to resolve once work begins","Pending":"Time while waiting for requester","Escalated":"Time for senior staff after escalation","Closed":"No SLA"};
   return<div>
     <Card style={{marginBottom:24,borderTop:"3px solid #6366f1"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div><div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>⏱ Status SLA Thresholds</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>Hours allowed per status. SLA only counts during assignee's scheduled shift hours.</div></div>
+        <div><div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>⏱ Status SLA Thresholds</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>Hours allowed per status.</div></div>
         <div style={{display:"flex",gap:8}}><Btn size="sm" variant="ghost" onClick={function(){setSlaEdit(Object.assign({},DEFAULT_STATUS_SLA));setSlaChanged(true);}}>↺ Reset</Btn><Btn size="sm" variant={slaChanged?"primary":"ghost"} onClick={saveSla} style={{opacity:slaChanged?1:0.5}}>💾 Save SLA</Btn></div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
@@ -1017,9 +1077,9 @@ function PageTicketTypes(p){
       {slaChanged&&<div style={{marginTop:14,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e"}}>⚠️ Unsaved changes. Click <strong>Save SLA</strong> to apply.</div>}
     </Card>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>Ticket Types ({ticketTypes.length})</div><Btn onClick={function(){setForm({name:"",priority:"medium",slaHours:24,color:"#6366f1",keywords:[],defaultAssignee:""});setModal("new");}}>➕ Add Type</Btn></div>
-    {ticketTypes.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No ticket types yet. Add your first type to start creating tickets.</div></Card>}
+    {ticketTypes.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No ticket types yet.</div></Card>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:14}}>
-      {ticketTypes.map(function(tt){var asgn=users.find(function(u){return u.id===tt.defaultAssignee;});return<Card key={tt.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:tt.color}}/><span style={{fontWeight:700,color:"#1e293b"}}>{tt.name}</span></div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},tt,{keywords:(tt.keywords||[]).slice()}));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){setTicketTypes(function(prev){return prev.filter(function(t){return t.id!==tt.id;});});addLog("TICKET_TYPE_DELETED",tt.id,"Type \""+tt.name+"\" deleted");showToast("Deleted");}}>🗑</Btn></div></div><div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}><Badge label={PRI_META[tt.priority]?.label||tt.priority} color={PRI_META[tt.priority]?.color||"#6366f1"}/><Badge label={"SLA "+tt.slaHours+"h"} color="#0ea5e9"/></div>{asgn&&<div style={{fontSize:11,color:"#64748b",marginBottom:6}}>👤 {asgn.name}</div>}<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(tt.keywords||[]).slice(0,5).map(function(k){return<span key={k} style={{background:"#f1f5f9",color:"#475569",fontSize:10,padding:"2px 6px",borderRadius:4}}>{k}</span>;})}{(tt.keywords||[]).length>5&&<span style={{fontSize:10,color:"#94a3b8"}}>+{(tt.keywords||[]).length-5}</span>}</div></Card>;})}
+      {ticketTypes.map(function(tt){var asgn=users.find(function(u){return u.id===tt.defaultAssignee;});return<Card key={tt.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:tt.color}}/><span style={{fontWeight:700,color:"#1e293b"}}>{tt.name}</span></div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},tt,{keywords:(tt.keywords||[]).slice()}));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteTicketType(tt.id);setTicketTypes(function(prev){return prev.filter(function(t){return t.id!==tt.id;});});addLog("TICKET_TYPE_DELETED",tt.id,"Type \""+tt.name+"\" deleted");showToast("Deleted");}}>🗑</Btn></div></div><div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}><Badge label={PRI_META[tt.priority]?.label||tt.priority} color={PRI_META[tt.priority]?.color||"#6366f1"}/><Badge label={"SLA "+tt.slaHours+"h"} color="#0ea5e9"/></div>{asgn&&<div style={{fontSize:11,color:"#64748b",marginBottom:6}}>👤 {asgn.name}</div>}<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(tt.keywords||[]).slice(0,5).map(function(k){return<span key={k} style={{background:"#f1f5f9",color:"#475569",fontSize:10,padding:"2px 6px",borderRadius:4}}>{k}</span>;})}{(tt.keywords||[]).length>5&&<span style={{fontSize:10,color:"#94a3b8"}}>+{(tt.keywords||[]).length-5}</span>}</div></Card>;})}
     </div>
     {modal&&<Modal title={modal==="new"?"Add Ticket Type":"Edit Ticket Type"} onClose={function(){setModal(null);}}><FInput label="Type Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FSelect label="Priority" value={form.priority||"medium"} onChange={function(e){fld("priority",e.target.value);}} options={OPT_PRIORITY}/><FInput label="SLA Hours" value={form.slaHours||24} onChange={function(e){fld("slaHours",Number(e.target.value));}} type="number" min={1}/><FInput label="Color" value={form.color||"#6366f1"} onChange={function(e){fld("color",e.target.value);}} type="color"/><FSelect label="Default Assignee" value={form.defaultAssignee||""} onChange={function(e){fld("defaultAssignee",e.target.value);}} options={optAssignees(users)}/><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Keywords</label><div style={{display:"flex",gap:6,marginBottom:6}}><input value={kwInput} onChange={function(e){setKwInput(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addKw();}} placeholder="e.g. printer" style={{flex:1,padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,outline:"none"}}/><Btn size="sm" onClick={addKw}>Add</Btn></div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(form.keywords||[]).map(function(k,i){return<span key={i} onClick={function(){fld("keywords",(form.keywords||[]).filter(function(_,j){return j!==i;}));}} style={{background:"#eef2ff",color:"#4338ca",fontSize:11,padding:"2px 8px",borderRadius:4,cursor:"pointer"}}>{k} ×</span>;})}</div></div><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div></Modal>}
   </div>;
