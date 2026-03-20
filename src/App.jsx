@@ -368,7 +368,14 @@ export default function App(){
   var [schedules,setSchedulesR] = useState(function(){ return loadSchedules(); });
   var [logs,setLogsR]           = useState(function(){ return loadState("hd_logs",SEED_LOGS); });
   var [curUser,setCurUserR]     = useState(function(){ return loadState("hd_curUser",null); });
-  var [page,setPageR]           = useState(function(){ return loadState("hd_page","dashboard"); });
+  var [page,setPageR] = useState(function(){
+    try{
+      var saved = localStorage.getItem("hd_page");
+      // safe pages — if a crash left an invalid page in storage, fall back to dashboard
+      var safe = ["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations"];
+      return (saved && safe.includes(saved)) ? saved : "dashboard";
+    }catch(e){ return "dashboard"; }
+  });
   var [selTicket,setSelTicket]  = useState(null);
   var [toast,setToast]          = useState(null);
   var [breaches,setBreaches]    = useState([]);
