@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import React from "react";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, LineChart, Line } from "recharts";
 import { supabase } from './supabase.js';
-import { dbGetUsers, dbSaveUser, dbDeleteUser, dbGetPassword, dbSetPassword, dbGetCompanies, dbSaveCompany, dbDeleteCompany, dbGetClients, dbSaveClient, dbDeleteClient, dbGetTicketTypes, dbSaveTicketType, dbDeleteTicketType, dbGetTickets, dbSaveTicket, dbGetLogs, dbAddLog, dbGetSchedules, dbSaveSchedule } from './db.js';
+import { dbGetUsers, dbSaveUser, dbDeleteUser, dbGetPassword, dbSetPassword, dbGetCompanies, dbSaveCompany, dbDeleteCompany, dbGetClients, dbSaveClient, dbDeleteClient, dbGetTicketTypes, dbSaveTicketType, dbDeleteTicketType, dbGetTickets, dbSaveTicket, dbGetLogs, dbAddLog, dbGetSchedules, dbSaveSchedule, dbGetEmailTemplates, dbSaveEmailTemplate, dbDeleteEmailTemplate } from './db.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const PAL = ["#6366f1","#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ef4444","#ec4899","#f97316"];
@@ -381,6 +381,7 @@ export default function App(){
   var[statusSla,setStatusSlaR]=useState(DEFAULT_STATUS_SLA);
   var[schedules,setSchedulesR]=useState({});
   var[logs,setLogsR]          =useState([]);
+  var[emailTemplates,setEmailTemplates]=useState([]);
   var[curUser,setCurUserR]    =useState(function(){return loadState("hd_curUser",null);});
   var[page,setPageR]          =useState(function(){try{var s=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
   var[selTicket,setSelTicket] =useState(null);
@@ -395,10 +396,10 @@ export default function App(){
       setLoading(true);
       var[u,co,cl,tt,tkt,lg,sch]=await Promise.all([
         dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),
-        dbGetTickets(),dbGetLogs(),dbGetSchedules()
+        dbGetTickets(),dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates()
       ]);
       setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);
-      setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);
+      setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);
       setLoading(false);
     }
     loadAll();
@@ -518,10 +519,10 @@ export default function App(){
           {page==="clients"      &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast} dbSaveClient={dbSaveClient} dbDeleteClient={dbDeleteClient}/>}
           {page==="ticket_types" &&<PageTicketTypes ticketTypes={ticketTypes} users={users} setTicketTypes={setTTR} statusSla={statusSla} setStatusSla={setStatusSlaR} addLog={addLog} showToast={showToast} dbSaveTicketType={dbSaveTicketType} dbDeleteTicketType={dbDeleteTicketType}/>}
           {page==="activity_log" &&<PageActivityLog logs={logs} users={users}/>}
-          {page==="integrations" &&<PageIntegrations showToast={showToast} addLog={addLog}/>}
+          {page==="integrations" &&<PageIntegrations showToast={showToast} addLog={addLog} emailTemplates={emailTemplates} setEmailTemplates={setEmailTemplates} curUser={curUser} isAdmin={isAdmin}/>}
         </div>
       </div>
-      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} onClose={function(){setSelTicket(null);}}/>}
+      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}}/>}
       {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
@@ -763,7 +764,7 @@ function TicketDetail(p){
   var companies=p.companies;var clients=p.clients;var curUser=p.curUser;var isAdmin=p.isAdmin;var isTech=p.isTech;
   var addLog=p.addLog;var showToast=p.showToast;var onClose=p.onClose;var statusSla=p.statusSla;var schedules=p.schedules||{};
   var[tab,setTab]=useState("details");var[status,setStatus]=useState(ticket.status);var[asgn,setAsgn]=useState(ticket.assignedTo||"");var[note,setNote]=useState("");var[typeId,setTypeId]=useState(ticket.typeId||"");
-  var[msgTo,setMsgTo]=useState("");var[msgCC,setMsgCC]=useState("");var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);var[msgBody,setMsgBody]=useState("");
+  var[msgTo,setMsgTo]=useState("");var[msgCC,setMsgCC]=useState("");var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);var[msgBody,setMsgBody]=useState("");var emailTemplates=p.emailTemplates||[];var clients2=p.clients||[];var assignedUser=users.find(function(u){return u.id===ticket.assignedTo;});function applyTemplate(tid){var tmpl=emailTemplates.find(function(t){return t.id===tid;});if(!tmpl)return;var cl=clients2.find(function(c){return c.id===ticket.clientId;});var body=tmpl.body.replace(/{{client_name}}/g,cl?cl.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");var subj=tmpl.subject.replace(/{{client_name}}/g,cl?cl.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");setMsgSubj(subj);setMsgBody(body);}
   var[emailSending,setEmailSending]=useState(false);
   function fu(id){return users.find(function(x){return x.id===id;});}
   var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;});var co=companies.find(function(c){return c.id===ticket.companyId;});var client=clients.find(function(c){return c.id===ticket.clientId;});var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
@@ -874,7 +875,7 @@ function TicketDetail(p){
     </div>}
 
     {tab==="email"&&<div>
-      <div style={{fontWeight:700,color:"#1e293b",marginBottom:10}}>📧 Send Email</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{fontWeight:700,color:"#1e293b"}}>📧 Send Email</div>{emailTemplates.length>0&&<div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:"#64748b",fontWeight:600}}>Use template:</span><select onChange={function(e){if(e.target.value)applyTemplate(e.target.value);e.target.value="";}} style={{padding:"5px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#f8fafc"}}><option value="">— Select —</option>{emailTemplates.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select></div>}</div>
       <FInput label="To (comma-separated)" value={msgTo} onChange={function(e){setMsgTo(e.target.value);}} placeholder="john@client.com"/>
       <FInput label="CC" value={msgCC} onChange={function(e){setMsgCC(e.target.value);}} placeholder="manager@company.com"/>
       <FInput label="Subject" value={msgSubj} onChange={function(e){setMsgSubj(e.target.value);}}/>
@@ -1292,9 +1293,27 @@ function PageActivityLog(p){
 
 // ── Integrations ──────────────────────────────────────────────────────────────
 function PageIntegrations(p){
+  var emailTemplates=p.emailTemplates||[];var setEmailTemplates=p.setEmailTemplates||function(){};var isAdmin=p.isAdmin;var showToast=p.showToast;
   var[testTo,setTestTo]=useState("");
   var[sending,setSending]=useState(false);
   var[status,setStatus]=useState("");
+  var[tmplModal,setTmplModal]=useState(false);
+  var[tmplForm,setTmplForm]=useState({name:"",subject:"",body:""});
+  var[tmplEdit,setTmplEdit]=useState(null);
+  function openNew(){setTmplForm({name:"",subject:"",body:""});setTmplEdit(null);setTmplModal(true);}
+  function openEdit(t){setTmplForm({name:t.name,subject:t.subject,body:t.body});setTmplEdit(t.id);setTmplModal(true);}
+  async function saveTmpl(){
+    if(!tmplForm.name.trim()||!tmplForm.subject.trim()||!tmplForm.body.trim()){showToast("All fields required","error");return;}
+    var t={id:tmplEdit||uid(),name:tmplForm.name.trim(),subject:tmplForm.subject.trim(),body:tmplForm.body.trim(),createdAt:new Date().toISOString()};
+    await dbSaveEmailTemplate(t);
+    setEmailTemplates(function(prev){return tmplEdit?prev.map(function(x){return x.id===tmplEdit?t:x;}):prev.concat([t]);});
+    showToast(tmplEdit?"Template updated!":"Template created!");setTmplModal(false);
+  }
+  async function deleteTmpl(id){
+    await dbDeleteEmailTemplate(id);
+    setEmailTemplates(function(prev){return prev.filter(function(x){return x.id!==id;});});
+    showToast("Template deleted");
+  }
 
   async function runTest(){
     if(!testTo.trim()){if(p.showToast)p.showToast("Enter a recipient email","error");return;}
@@ -1341,6 +1360,37 @@ function PageIntegrations(p){
           🔒 Credentials live in Vercel environment variables — never exposed to the browser.
         </div>
       </Card>
+      {isAdmin&&<Card style={{marginTop:24,borderTop:"3px solid #6366f1"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div><div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>📝 Email Templates</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>Reusable templates for ticket emails. Supports <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code>.</div></div>
+          <Btn onClick={openNew}>➕ Add Template</Btn>
+        </div>
+        {emailTemplates.length===0&&<div style={{textAlign:"center",padding:"24px 0",color:"#94a3b8",fontSize:13}}>No templates yet. Add one to get started.</div>}
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 16px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:4}}>{t.name}</div>
+                <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subject: {t.subject}</div>
+                <div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"6px 10px",border:"1px solid #e2e8f0",whiteSpace:"pre-wrap",maxHeight:60,overflow:"hidden"}}>{t.body.slice(0,150)}{t.body.length>150?"…":""}</div>
+              </div>
+              <div style={{display:"flex",gap:6,marginLeft:12,flexShrink:0}}>
+                <Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️ Edit</Btn>
+                <Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn>
+              </div>
+            </div>
+          </div>;})}
+        </div>
+      </Card>}
+      {tmplModal&&<Modal title={tmplEdit?"Edit Template":"New Email Template"} onClose={function(){setTmplModal(false);}}>
+        <FInput label="Template Name *" value={tmplForm.name} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{name:e.target.value});});}} placeholder="e.g. Initial Response"/>
+        <FInput label="Subject *" value={tmplForm.subject} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{subject:e.target.value});});}} placeholder="e.g. Re: Your IT Request"/>
+        <FTextarea label="Body *" value={tmplForm.body} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{body:e.target.value});});}} rows={8} placeholder={"Hi {{client_name}},\n\nThank you for reaching out...\n\nBest regards,\n{{agent_name}}"}/>
+        <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>
+          💡 Use <strong>{"{{client_name}}"}</strong> and <strong>{"{{agent_name}}"}</strong> — they will be auto-filled when the template is selected on a ticket.
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setTmplModal(false);}}>Cancel</Btn><Btn onClick={saveTmpl}>{tmplEdit?"Save Changes":"Create Template"}</Btn></div>
+      </Modal>}
     </div>
   );
 }

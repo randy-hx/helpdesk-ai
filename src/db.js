@@ -168,3 +168,16 @@ export function appTicketToDb(t){
     updated_at:t.updatedAt||t.createdAt||null
   };
 }
+// ── Email Templates ────────────────────────────────────────────────────────
+export async function dbGetEmailTemplates(){
+  var r=await supabase.from('email_templates').select('*').order('created_at',{ascending:true});
+  if(r.error){console.error('dbGetEmailTemplates',r.error);return[];}
+  return r.data||[];
+}
+export async function dbSaveEmailTemplate(t){
+  var r=await supabase.from('email_templates').upsert({id:t.id,name:t.name,subject:t.subject,body:t.body,created_at:t.createdAt||new Date().toISOString()});
+  if(r.error)console.error('dbSaveEmailTemplate',r.error);
+}
+export async function dbDeleteEmailTemplate(id){
+  await supabase.from('email_templates').delete().eq('id',id);
+}
