@@ -1122,6 +1122,111 @@ function PageTicketTypes(p){
   </div>;
 }
 
+// ── INTEGRATIONS ──────────────────────────────────────────────────────────────
+function PageIntegrations(p){
+  var [apiKey,  setApiKey]  = useState("");
+  var [fromAddr,setFromAddr]= useState("");
+  var [testTo,  setTestTo]  = useState("");
+  var [sending, setSending] = useState(false);
+  var [status,  setStatus]  = useState("");
+
+  useEffect(function(){
+    try{
+      var raw=localStorage.getItem("hd_integrations");
+      if(raw){
+        var obj=JSON.parse(raw);
+        if(obj&&obj.resend){
+          if(obj.resend.apiKey)  setApiKey(obj.resend.apiKey);
+          if(obj.resend.from)    setFromAddr(obj.resend.from);
+        }
+      }
+    }catch(e){}
+  },[]);
+
+  function save(){
+    try{
+      var cur={};
+      try{cur=JSON.parse(localStorage.getItem("hd_integrations")||"{}");}catch(e){}
+      cur.resend={apiKey:apiKey.trim(),from:fromAddr.trim()};
+      localStorage.setItem("hd_integrations",JSON.stringify(cur));
+      setStatus("saved");
+      if(p.showToast) p.showToast("✅ Settings saved!");
+      if(p.addLog) try{p.addLog("INTEGRATIONS_UPDATED","system","Resend settings saved");}catch(e){}
+    }catch(e){
+      setStatus("error");
+      if(p.showToast) p.showToast("Save failed: "+e.message,"error");
+    }
+  }
+
+  async function runTest(){
+    if(!testTo.trim()){if(p.showToast)p.showToast("Enter a recipient email","error");return;}
+    setSending(true);setStatus("");
+    try{
+      var cfg={};
+      try{cfg=JSON.parse(localStorage.getItem("hd_integrations")||"{}");}catch(e){}
+      var key=(cfg.resend||{}).apiKey||"";
+      var from=(cfg.resend||{}).from||"Hoptix IT <onboarding@resend.dev>";
+      if(!key){if(p.showToast)p.showToast("Save your API key first","error");setSending(false);return;}
+      var res=await fetch("https://api.resend.com/emails",{
+        method:"POST",
+        headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
+        body:JSON.stringify({from:from,to:[testTo.trim()],subject:"Hoptix Test",text:"Your Resend integration is working!"})
+      });
+      var data=await res.json();
+      if(res.ok&&data.id){setStatus("ok");if(p.showToast)p.showToast("📧 Test sent!");}
+      else{setStatus("fail");if(p.showToast)p.showToast("⚠️ "+(data.message||data.name||"Failed"),"error");}
+    }catch(e){
+      setStatus("fail");if(p.showToast)p.showToast("⚠️ "+e.message,"error");
+    }
+    setSending(false);
+  }
+
+  var inp={width:"100%",padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
+  var lbl={display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4};
+
+  return (
+    <div style={{maxWidth:600}}>
+      <div style={{fontWeight:800,fontSize:18,color:"#1e293b",marginBottom:4}}>🔌 Integrations</div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:24}}>Configure your email provider. Credentials are stored in your browser.</div>
+      <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:24,borderTop:"3px solid #6366f1",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:20}}>📧</span>
+            <span style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>Resend Email</span>
+            <span style={{background:apiKey?"#d1fae5":"#fef3c7",color:apiKey?"#065f46":"#92400e",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>
+              {apiKey?"✓ Configured":"⚠ Not set"}
+            </span>
+          </div>
+          <a href="https://resend.com" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>resend.com ↗</a>
+        </div>
+        <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#0369a1",lineHeight:1.8}}>
+          1. Sign up at resend.com → <strong>API Keys</strong> → create key with Sending access<br/>
+          2. Use <strong>onboarding@resend.dev</strong> as From (free plan), or verify your own domain
+        </div>
+        <div style={{marginBottom:14}}><label style={lbl}>API Key</label><input type="password" value={apiKey} onChange={function(e){setApiKey(e.target.value);}} placeholder="re_xxxxxxxxxxxxxxxx" style={inp}/></div>
+        <div style={{marginBottom:20}}><label style={lbl}>From Address</label><input type="text" value={fromAddr} onChange={function(e){setFromAddr(e.target.value);}} placeholder="Hoptix IT <onboarding@resend.dev>" style={inp}/></div>
+        <button onClick={save} style={{padding:"9px 22px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:16}}>💾 Save Settings</button>
+        {status==="saved"&&<div style={{marginBottom:16,padding:"8px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,fontSize:12,color:"#166534"}}>✅ Settings saved.</div>}
+        {status==="error"&&<div style={{marginBottom:16,padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:12,color:"#dc2626"}}>❌ Failed to save.</div>}
+        <div style={{borderTop:"1px solid #f1f5f9",paddingTop:16}}>
+          <label style={lbl}>Send Test Email</label>
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
+            <input type="email" value={testTo} onChange={function(e){setTestTo(e.target.value);}} placeholder="recipient@example.com" style={{flex:1,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}/>
+            <button onClick={runTest} disabled={sending||!apiKey} style={{padding:"9px 18px",background:apiKey?"#6366f1":"#e2e8f0",color:apiKey?"#fff":"#94a3b8",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:apiKey?"pointer":"not-allowed",flexShrink:0}}>
+              {sending?"⏳ Sending…":"📤 Test"}
+            </button>
+          </div>
+          {status==="ok"  &&<div style={{padding:"8px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,fontSize:12,color:"#166534"}}>✅ Test email delivered!</div>}
+          {status==="fail"&&<div style={{padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:12,color:"#dc2626"}}>❌ Send failed — check your API key and From address.</div>}
+        </div>
+        <div style={{marginTop:16,padding:"10px 14px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,fontSize:12,color:"#92400e"}}>
+          🔒 API key stored in browser localStorage. Use server-side env variables for production.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── ACTIVITY LOG ──────────────────────────────────────────────────────────────
 function PageActivityLog(p){ var logs=p.logs; var users=p.users;
   var [filter,setFilter]=useState("");
