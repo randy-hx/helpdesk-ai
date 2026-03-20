@@ -82,7 +82,10 @@ function getStatusSla(ticket, slaConfig, schedules){
   if(allowed===null||allowed===undefined) return null;
   var hist=(ticket.statusHistory||[]);
   var entry=null;
-  for(var i=hist.length-1;i>=0;i--){ if(hist[i].status===ticket.status){entry=hist[i].timestamp;break;} }
+  // Find the most recent history entry that actually SET this status (ignore _noSlaReset updates)
+  for(var i=hist.length-1;i>=0;i--){
+    if(hist[i].status===ticket.status && !hist[i]._noSlaReset){entry=hist[i].timestamp;break;}
+  }
   if(!entry) entry=ticket.updatedAt||ticket.createdAt;
   var schedule=(schedules&&ticket.assignedTo)?schedules[ticket.assignedTo]:null;
   var spent=schedule
@@ -633,15 +636,35 @@ function TicketDetail(p){
   var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;}); var co=companies.find(function(c){return c.id===ticket.companyId;}); var client=clients.find(function(c){return c.id===ticket.clientId;}); var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
 
   function saveStatus(){
+    var statusChanged = status !== ticket.status;
     var hist={status,assignedTo:asgn||null,timestamp:new Date().toISOString(),changedBy:curUser.id,note:note||"Status changed to "+status};
     var newTT=ticketTypes.find(function(t){return t.id===typeId;});
     var typeChanged=typeId&&typeId!==ticket.typeId;
     var newSlaDeadline=typeChanged&&newTT?new Date(new Date(ticket.createdAt).getTime()+newTT.slaHours*3600000).toISOString():ticket.slaDeadline;
     var newPriority=typeChanged&&newTT?newTT.priority:ticket.priority;
     if(typeChanged) hist.note=(note||"")+(note?" | ":"")+"Type changed to: "+newTT.name;
-    setTickets(function(prev){return prev.map(function(t){return t.id!==ticket.id?t:Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:new Date().toISOString(),slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",closedAt:status==="Closed"&&!t.closedAt?new Date().toISOString():t.closedAt,statusHistory:(t.statusHistory||[]).concat([hist])});});});
+    if(!statusChanged) hist.note=(note||"")+(note?" | ":"")+"Details updated (status unchanged)";
+    setTickets(function(prev){return prev.map(function(t){
+      if(t.id!==ticket.id) return t;
+      // Only append a history entry that would reset the SLA timer if the status actually changed
+      var newHistory=statusChanged
+        ? (t.statusHistory||[]).concat([hist])
+        : (t.statusHistory||[]).concat([Object.assign({},hist,{_noSlaReset:true})]);
+      return Object.assign({},t,{
+        status,
+        assignedTo:asgn||null,
+        typeId:typeId||t.typeId,
+        priority:newPriority,
+        slaDeadline:newSlaDeadline,
+        updatedAt:new Date().toISOString(),
+        slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",
+        closedAt:status==="Closed"&&!t.closedAt?new Date().toISOString():t.closedAt,
+        statusHistory:newHistory
+      });
+    });});
     if(typeChanged) addLog("TICKET_TYPE_CHANGE",ticket.id,"Type changed to: "+newTT.name);
-    addLog("TICKET_STATUS",ticket.id,"Status → "+status+". Assigned: "+(fu(asgn)?.name||"nobody")); showToast("Ticket updated"); setNote(""); onClose();
+    addLog("TICKET_STATUS",ticket.id,(statusChanged?"Status → "+status:("Details updated, status kept as "+status))+". Assigned: "+(fu(asgn)?.name||"nobody"));
+    showToast("Ticket updated"); setNote(""); onClose();
   }
 
   async function sendEmail(){
