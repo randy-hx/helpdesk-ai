@@ -1,5 +1,7 @@
 {
   "dependencies": {
-    "nodemailer": "^6.9.9"
+    "nodemailer": "^6.9.9",
+    "imapflow": "^1.0.162",
+    "mailparser": "^3.6.9"
   }
 }
