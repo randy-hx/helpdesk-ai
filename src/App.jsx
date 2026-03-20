@@ -578,7 +578,15 @@ function PageTickets(p){
             var sSla=getStatusSla(t,statusSla,schedules);
             return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
               <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id}</td>
-              <td style={{padding:"9px 12px",maxWidth:180}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div></td>
+              <td style={{padding:"9px 12px",maxWidth:180}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <div>
+                    <div style={{fontWeight:600,color:"#1e293b",fontSize:12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div>
+                    <div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div>
+                  </div>
+                  {t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700,flexShrink:0}}>📬 New Reply</span>}
+                </div>
+              </td>
               <td style={{padding:"9px 12px"}}><Badge label={type?.name||"—"} color={type?.color||"#94a3b8"}/></td>
               <td style={{padding:"9px 12px"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/></td>
               <td style={{padding:"9px 12px"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/></td>
@@ -599,7 +607,14 @@ function PageTickets(p){
                   <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{sSla.hoursSpent}h / {sSla.hoursAllowed}h {sSla.hasSchedule?"(shift hrs)":""}</div>
                 </div>:<span style={{fontSize:10,color:"#94a3b8"}}>— closed</span>}
               </td>
-              <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn>{isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}</div></td>
+              <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}>
+                <Btn size="sm" variant="ghost" onClick={function(){
+                  // Clear unread reply badge when ticket is opened
+                  if(t.hasUnreadReply) setTickets(function(prev){return prev.map(function(tk){return tk.id===t.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});
+                  setSelTicket(t.id);
+                }}>View</Btn>
+                {isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}
+              </div></td>
             </tr>;
           })}
         </tbody>
@@ -766,8 +781,23 @@ function TicketDetail(p){
 
   return <Modal title={"Ticket #"+ticket.id+" — "+ticket.title} onClose={onClose} wide>
     <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-      {TABS.map(function(t){ return <button key={t} onClick={function(){setTab(t);}} style={{background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>{tabLabels[t]}</button>; })}
+      {TABS.map(function(t){ return <button key={t} onClick={function(){
+        // Clear unread reply when Email tab is opened
+        if(t==="email"&&ticket.hasUnreadReply) setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});
+        setTab(t);
+      }} style={{background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"5px 14px",cursor:"pointer",fontSize:12,fontWeight:700,position:"relative"}}>
+        {tabLabels[t]}
+        {t==="email"&&ticket.hasUnreadReply&&<span style={{position:"absolute",top:-4,right:-4,background:"#10b981",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>!</span>}
+      </button>; })}
     </div>
+    {ticket.hasUnreadReply&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:18}}>📬</span>
+      <div>
+        <div style={{fontWeight:700,color:"#166534",fontSize:13}}>New reply received</div>
+        <div style={{fontSize:12,color:"#15803d"}}>A response has been received on this ticket — open the Email tab to view it.</div>
+      </div>
+      <button onClick={function(){setTab("email");setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});}} style={{marginLeft:"auto",padding:"6px 14px",background:"#10b981",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0}}>View Reply</button>
+    </div>}
 
     {tab==="details"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{detailRows.map(function(pair){ var l=pair[0]; var v=pair[1]; return <div key={l} style={{background:"#f8fafc",padding:10,borderRadius:8}}><div style={{color:"#64748b",fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>{l}</div><div style={{fontWeight:600,color:"#1e293b",fontSize:12}}>{v}</div></div>; })}</div>
