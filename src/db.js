@@ -6,7 +6,7 @@ export async function dbGetUsers(){
   return (r.data||[]).map(dbUserToApp);
 }
 export async function dbSaveUser(u){
-  await supabase.from('users').upsert({id:u.id,name:u.name,email:u.email,role:u.role,company_id:u.companyId||'',phone:u.phone||'',dept:u.dept||'',active:u.active,created_at:u.createdAt,last_login:u.lastLogin});
+  await supabase.from('users').upsert({id:u.id,name:u.name,email:u.email,role:u.role,company_id:u.companyId||null,phone:u.phone||'',dept:u.dept||'',active:u.active,created_at:u.createdAt,last_login:u.lastLogin});
 }
 export async function dbDeleteUser(id){
   await supabase.from('users').delete().eq('id',id);
@@ -37,7 +37,7 @@ export async function dbGetClients(){
   return (r.data||[]).map(dbClientToApp);
 }
 export async function dbSaveClient(c){
-  await supabase.from('clients').upsert({id:c.id,name:c.name,email:c.email||'',phone:c.phone||'',industry:c.industry||'',company_id:c.companyId||'',locations:c.locations||[]});
+  await supabase.from('clients').upsert({id:c.id,name:c.name,email:c.email||'',phone:c.phone||'',industry:c.industry||'',company_id:c.companyId||null,locations:c.locations||[]});
 }
 export async function dbDeleteClient(id){
   await supabase.from('clients').delete().eq('id',id);
@@ -49,7 +49,7 @@ export async function dbGetTicketTypes(){
   return (r.data||[]).map(dbTicketTypeToApp);
 }
 export async function dbSaveTicketType(t){
-  await supabase.from('ticket_types').upsert({id:t.id,name:t.name,priority:t.priority,sla_hours:t.slaHours,color:t.color||'#6366f1',keywords:t.keywords||[],default_assignee:t.defaultAssignee||''});
+  await supabase.from('ticket_types').upsert({id:t.id,name:t.name,priority:t.priority,sla_hours:t.slaHours,color:t.color||'#6366f1',keywords:t.keywords||[],default_assignee:t.defaultAssignee||null});
 }
 export async function dbDeleteTicketType(id){
   await supabase.from('ticket_types').delete().eq('id',id);
@@ -57,11 +57,14 @@ export async function dbDeleteTicketType(id){
 
 // ── Tickets ────────────────────────────────────────────────────────────────
 export async function dbGetTickets(){
-  var r=await supabase.from('tickets').select('*');
+  var r=await supabase.from('tickets').select('*').order('created_at',{ascending:false});
+  if(r.error){console.error('dbGetTickets error',r.error);return[];}
   return (r.data||[]).map(dbTicketToApp);
 }
 export async function dbSaveTicket(t){
-  await supabase.from('tickets').upsert(appTicketToDb(t));
+  var row=appTicketToDb(t);
+  var r=await supabase.from('tickets').upsert(row);
+  if(r.error)console.error('dbSaveTicket error',r.error,row);
 }
 export async function dbDeleteTicket(id){
   await supabase.from('tickets').update({deleted:true}).eq('id',id);
@@ -73,7 +76,7 @@ export async function dbGetLogs(){
   return r.data||[];
 }
 export async function dbAddLog(l){
-  await supabase.from('logs').insert({id:l.id,action:l.action,user_id:l.userId||'',target:l.target||'',detail:l.detail||'',timestamp:l.timestamp});
+  await supabase.from('logs').insert({id:l.id,action:l.action,user_id:l.userId||null,target:l.target||'',detail:l.detail||'',timestamp:l.timestamp});
 }
 
 // ── Schedules ──────────────────────────────────────────────────────────────
@@ -89,6 +92,8 @@ export async function dbSaveSchedule(userId,sch){
 }
 
 // ── Converters ─────────────────────────────────────────────────────────────
+function uuid(v){return(v&&v.trim&&v.trim()&&v!=='')?v:null;}
+
 export function dbUserToApp(u){
   return {id:u.id,name:u.name,email:u.email,role:u.role,companyId:u.company_id||'',phone:u.phone||'',dept:u.dept||'',active:u.active,createdAt:u.created_at,lastLogin:u.last_login};
 }
@@ -102,8 +107,64 @@ export function dbTicketTypeToApp(t){
   return {id:t.id,name:t.name,priority:t.priority,slaHours:t.sla_hours,color:t.color||'#6366f1',keywords:t.keywords||[],defaultAssignee:t.default_assignee||''};
 }
 export function dbTicketToApp(t){
-  return {id:t.id,title:t.title,description:t.description,typeId:t.type_id,companyId:t.company_id,clientId:t.client_id,locationId:t.location_id,status:t.status,priority:t.priority,submittedBy:t.submitted_by,assignedTo:t.assigned_to,externalEmail:t.external_email,customTypeName:t.custom_type_name,slaDeadline:t.sla_deadline,slaBreached:t.sla_breached,timeToCreateMins:t.time_to_create_mins,statusHistory:t.status_history||[],conversations:t.conversations||[],attachments:t.attachments||[],aiReason:t.ai_reason,hasUnreadReply:t.has_unread_reply,deleted:t.deleted,closedAt:t.closed_at,submittedAt:t.submitted_at,formOpenedAt:t.form_opened_at,createdAt:t.created_at,updatedAt:t.updated_at};
+  return {
+    id:t.id,
+    title:t.title||'',
+    description:t.description||'',
+    typeId:t.type_id||'',
+    companyId:t.company_id||'',
+    clientId:t.client_id||'',
+    locationId:t.location_id||'',
+    status:t.status||'Open',
+    priority:t.priority||'medium',
+    submittedBy:t.submitted_by||'',
+    assignedTo:t.assigned_to||'',
+    externalEmail:t.external_email||'',
+    customTypeName:t.custom_type_name||'',
+    slaDeadline:t.sla_deadline||null,
+    slaBreached:t.sla_breached||false,
+    timeToCreateMins:t.time_to_create_mins||0,
+    statusHistory:t.status_history||[],
+    conversations:t.conversations||[],
+    attachments:t.attachments||[],
+    aiReason:t.ai_reason||'',
+    hasUnreadReply:t.has_unread_reply||false,
+    deleted:t.deleted||false,
+    closedAt:t.closed_at||null,
+    submittedAt:t.submitted_at||t.created_at,
+    formOpenedAt:t.form_opened_at||t.created_at,
+    createdAt:t.created_at,
+    updatedAt:t.updated_at||t.created_at
+  };
 }
 export function appTicketToDb(t){
-  return {id:t.id,title:t.title,description:t.description||'',type_id:t.typeId||'',company_id:t.companyId||'',client_id:t.clientId||'',location_id:t.locationId||'',status:t.status,priority:t.priority,submitted_by:t.submittedBy||'',assigned_to:t.assignedTo||'',external_email:t.externalEmail||'',custom_type_name:t.customTypeName||'',sla_deadline:t.slaDeadline,sla_breached:t.slaBreached||false,time_to_create_mins:t.timeToCreateMins||0,status_history:t.statusHistory||[],conversations:t.conversations||[],attachments:t.attachments||[],ai_reason:t.aiReason||'',has_unread_reply:t.hasUnreadReply||false,deleted:t.deleted||false,closed_at:t.closedAt||null,submitted_at:t.submittedAt||t.createdAt,form_opened_at:t.formOpenedAt||t.createdAt,created_at:t.createdAt,updated_at:t.updatedAt||t.createdAt};
+  return {
+    id:t.id,
+    title:t.title||'',
+    description:t.description||'',
+    type_id:uuid(t.typeId),
+    company_id:uuid(t.companyId),
+    client_id:uuid(t.clientId),
+    location_id:uuid(t.locationId),
+    status:t.status||'Open',
+    priority:t.priority||'medium',
+    submitted_by:uuid(t.submittedBy),
+    assigned_to:uuid(t.assignedTo),
+    external_email:t.externalEmail||'',
+    custom_type_name:t.customTypeName||'',
+    sla_deadline:t.slaDeadline||null,
+    sla_breached:t.slaBreached||false,
+    time_to_create_mins:t.timeToCreateMins||0,
+    status_history:t.statusHistory||[],
+    conversations:t.conversations||[],
+    attachments:t.attachments||[],
+    ai_reason:t.aiReason||'',
+    has_unread_reply:t.hasUnreadReply||false,
+    deleted:t.deleted||false,
+    closed_at:t.closedAt||null,
+    submitted_at:t.submittedAt||t.createdAt||null,
+    form_opened_at:t.formOpenedAt||t.createdAt||null,
+    created_at:t.createdAt||null,
+    updated_at:t.updatedAt||t.createdAt||null
+  };
 }
