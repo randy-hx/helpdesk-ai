@@ -301,7 +301,7 @@ function LoginPage(p){ var users=p.users; var setUsers=p.setUsers; var companies
 }
 
 // ── PROFILE MODAL ─────────────────────────────────────────────────────────────
-function ProfileModal(p){ var curUser=p.curUser; var setUsers=p.setUsers; var showToast=p.showToast; var addLog=p.addLog; var onClose=p.onClose;
+function ProfileModal(p){ var curUser=p.curUser; var setUsers=p.setUsers; var setCurUser=p.setCurUser; var showToast=p.showToast; var addLog=p.addLog; var onClose=p.onClose;
   var [tab,setTab]=useState("profile"); var [name,setName]=useState(curUser.name); var [phone,setPhone]=useState(curUser.phone||""); var [dept,setDept]=useState(curUser.dept||"");
   var [curPw,setCurPw]=useState(""); var [newPw,setNewPw]=useState(""); var [confPw,setConfPw]=useState("");
   var [showC,setShowC]=useState(false); var [showN,setShowN]=useState(false); var [showK,setShowK]=useState(false);
@@ -309,7 +309,19 @@ function ProfileModal(p){ var curUser=p.curUser; var setUsers=p.setUsers; var sh
   function pwStr(pw){ if(!pw||pw.length<8)return 1; if(pw.length>=12&&/[A-Z]/.test(pw)&&/[0-9]/.test(pw)&&/[^A-Za-z0-9]/.test(pw))return 4; if(pw.length>=10&&/[A-Z]/.test(pw)&&/[0-9]/.test(pw))return 3; return 2; }
   var strC=["","#ef4444","#f59e0b","#3b82f6","#10b981"]; var strL=["","Too short","Weak","Good","Strong ✅"]; var str=pwStr(newPw);
   var inp={width:"100%",padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
-  async function saveProfile(){ if(!name.trim()){showToast("Name cannot be empty","error");return;} setSaving(true); await new Promise(function(r){setTimeout(r,400);}); setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?Object.assign({},u,{name:name.trim(),phone:phone.trim(),dept:dept.trim()}):u;});}); addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile"); showToast("✅ Profile updated!"); setSaving(false); onClose(); }
+  async function saveProfile(){
+    if(!name.trim()){showToast("Name cannot be empty","error");return;}
+    setSaving(true);
+    await new Promise(function(r){setTimeout(r,400);});
+    var updated=Object.assign({},curUser,{name:name.trim(),phone:phone.trim(),dept:dept.trim()});
+    setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?updated:u;});});
+    // Also update the live session so header/sidebar reflect changes immediately
+    setCurUser(updated);
+    addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile");
+    showToast("✅ Profile updated!");
+    setSaving(false);
+    onClose();
+  }
   async function changePw(){ setPwErr(""); setPwOk(""); if(!curPw){setPwErr("Enter your current password.");return;} if(curPw!==getPassword(curUser.id)){setPwErr("Current password is incorrect.");return;} if(newPw.length<8){setPwErr("New password must be at least 8 characters.");return;} if(newPw!==confPw){setPwErr("Passwords do not match.");return;} if(newPw===curPw){setPwErr("New password must differ from current.");return;} setSaving(true); await new Promise(function(r){setTimeout(r,500);}); setPassword(curUser.id,newPw); addLog("PASSWORD_CHANGED",curUser.id,curUser.name+" changed password"); setSaving(false); setCurPw(""); setNewPw(""); setConfPw(""); setPwOk("✅ Password changed!"); showToast("Password updated!"); onClose(); }
   return <Modal title="My Profile" onClose={onClose}>
     <div style={{display:"flex",alignItems:"center",gap:16,padding:"0 0 20px",borderBottom:"1px solid #e2e8f0",marginBottom:20}}><div style={{width:64,height:64,borderRadius:"50%",background:avCol(curUser.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:24,fontWeight:800}}>{inits(curUser.name)}</div><div><div style={{fontWeight:700,fontSize:16}}>{curUser.name}</div><div style={{fontSize:12,color:"#64748b"}}>{curUser.email}</div><div style={{marginTop:4}}><Badge label={ROLE_META[curUser.role]?.label||curUser.role} color={ROLE_META[curUser.role]?.color||"#6366f1"}/></div></div></div>
@@ -433,7 +445,7 @@ export default function App(){
         </div>
       </div>
       {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} onClose={function(){setSelTicket(null);}}/>}
-      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} showToast={showToast} addLog={addLog} onClose={function(){setShowProfile(false);}}/>}
+      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
 }
