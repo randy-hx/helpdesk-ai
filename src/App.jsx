@@ -131,45 +131,23 @@ function loadState(key,fb){ try{var s=localStorage.getItem(key);return s?JSON.pa
 function saveState(key,v){ try{localStorage.setItem(key,JSON.stringify(v));}catch{} }
 function clearAuth(){ try{localStorage.removeItem("hd_curUser");}catch{} }
 
-const SEED_COMPANIES = [
-  {id:"c1",name:"IT Solutions Corp",domain:"itsolutions.com",address:"123 Tech Ave, San Francisco, CA",phone:"+1-555-0100",industry:"Technology",size:"50-100",createdAt:dAgo(100)},
-  {id:"c2",name:"Acme Corp",domain:"acmecorp.com",address:"456 Business Blvd, New York, NY",phone:"+1-555-0200",industry:"Manufacturing",size:"500-1000",createdAt:dAgo(90)},
-  {id:"c3",name:"TechStart Inc",domain:"techstart.com",address:"789 Startup Lane, Austin, TX",phone:"+1-555-0300",industry:"Software",size:"10-50",createdAt:dAgo(85)},
-];
-const SEED_CLIENTS = [
-  {id:"cl1",name:"Globex Corporation",companyId:"c2",email:"contact@globex.com",phone:"+1-555-1001",industry:"Finance",locations:[{id:"loc1",name:"HQ — New York",address:"456 Business Blvd, NY 10001",floor:"Floors 10-15",contact:"Alice Brown"},{id:"loc2",name:"Branch — Chicago",address:"789 Commerce St, Chicago IL 60601",floor:"Floor 3",contact:"Tom Davis"}]},
-  {id:"cl2",name:"Initech Solutions",companyId:"c3",email:"info@initech.com",phone:"+1-555-2001",industry:"Consulting",locations:[{id:"loc4",name:"Main Office — Austin",address:"789 Startup Lane, Austin TX 78701",floor:"Floor 2",contact:"Jane Smith"},{id:"loc5",name:"Remote — Dallas",address:"321 Tech Park, Dallas TX 75201",floor:"Floor 1",contact:"Rick Moore"}]},
-  {id:"cl3",name:"Umbrella IT Services",companyId:"c1",email:"support@umbrella.com",phone:"+1-555-3001",industry:"Technology",locations:[{id:"loc6",name:"SF Headquarters",address:"123 Tech Ave, San Francisco CA 94107",floor:"All Floors",contact:"Sarah Johnson"}]},
-  {id:"cl4",name:"Acme Internal IT",companyId:"c2",email:"itdesk@acmecorp.com",phone:"+1-555-4001",industry:"Manufacturing",locations:[{id:"loc7",name:"Factory Floor — NY",address:"456 Industrial Ave, Brooklyn NY 11201",floor:"Ground",contact:"Bob Wilson"},{id:"loc8",name:"Admin Building",address:"456 Business Blvd, New York NY 10001",floor:"Floor 5",contact:"John Doe"}]},
-];
+const SEED_COMPANIES = [];
+const SEED_CLIENTS   = [];
 const SEED_USERS = [
-  {id:"u1",name:"Randy Admin",email:"randy@omnisecurityinc.com",role:"admin",companyId:"c1",phone:"+1-555-0101",dept:"IT Administration",active:true,createdAt:dAgo(90),lastLogin:hAgo(1)},
-  {id:"u2",name:"Mike Chen",email:"mike@itsolutions.com",role:"it_manager",companyId:"c1",phone:"+1-555-0102",dept:"IT Operations",active:true,createdAt:dAgo(80),lastLogin:hAgo(2)},
-  {id:"u3",name:"Alex Rodriguez",email:"alex@itsolutions.com",role:"it_technician",companyId:"c1",phone:"+1-555-0103",dept:"IT Support",active:true,createdAt:dAgo(75),lastLogin:hAgo(0.5)},
-  {id:"u4",name:"Emma Williams",email:"emma@itsolutions.com",role:"it_technician",companyId:"c1",phone:"+1-555-0104",dept:"IT Support",active:true,createdAt:dAgo(70),lastLogin:hAgo(1)},
-  {id:"u5",name:"John Doe",email:"john@acmecorp.com",role:"end_user",companyId:"c2",phone:"+1-555-0105",dept:"Sales",active:true,createdAt:dAgo(60),lastLogin:hAgo(3)},
-  {id:"u6",name:"Jane Smith",email:"jane@techstart.com",role:"end_user",companyId:"c3",phone:"+1-555-0106",dept:"Engineering",active:true,createdAt:dAgo(55),lastLogin:hAgo(4)},
-  {id:"u7",name:"Bob Wilson",email:"bob@acmecorp.com",role:"end_user",companyId:"c2",phone:"+1-555-0107",dept:"Marketing",active:true,createdAt:dAgo(50),lastLogin:hAgo(8)},
+  {id:"u1",name:"Randy Admin",email:"randy@omnisecurityinc.com",role:"admin",companyId:"",phone:"",dept:"IT Administration",active:true,createdAt:new Date().toISOString(),lastLogin:null},
 ];
 const SEED_TYPES = [
-  {id:"tt1",name:"Hardware Issue",priority:"high",slaHours:8,keywords:["hardware","computer","printer","monitor","keyboard","laptop","screen"],defaultAssignee:"u3",color:"#ef4444"},
-  {id:"tt2",name:"Software Install",priority:"medium",slaHours:24,keywords:["install","software","application","app","program","license"],defaultAssignee:"u4",color:"#f59e0b"},
-  {id:"tt3",name:"Network Problem",priority:"critical",slaHours:4,keywords:["network","internet","wifi","connection","disconnected"],defaultAssignee:"u3",color:"#dc2626"},
-  {id:"tt4",name:"Password Reset",priority:"low",slaHours:4,keywords:["password","reset","locked","login","forgot"],defaultAssignee:"u4",color:"#10b981"},
-  {id:"tt5",name:"Email Issue",priority:"medium",slaHours:8,keywords:["email","outlook","mail","inbox","calendar"],defaultAssignee:"u3",color:"#6366f1"},
-  {id:"tt6",name:"Security Incident",priority:"critical",slaHours:2,keywords:["security","hack","breach","virus","malware","phishing"],defaultAssignee:"u2",color:"#7c3aed"},
-  {id:"tt7",name:"VPN Access",priority:"medium",slaHours:8,keywords:["vpn","remote","tunnel"],defaultAssignee:"u4",color:"#8b5cf6"},
+  {id:"tt1",name:"Hardware Issue",priority:"high",slaHours:8,keywords:["hardware","computer","printer","monitor","keyboard","laptop","screen"],defaultAssignee:null,color:"#ef4444"},
+  {id:"tt2",name:"Software Install",priority:"medium",slaHours:24,keywords:["install","software","application","app","program","license"],defaultAssignee:null,color:"#f59e0b"},
+  {id:"tt3",name:"Network Problem",priority:"critical",slaHours:4,keywords:["network","internet","wifi","connection","disconnected"],defaultAssignee:null,color:"#dc2626"},
+  {id:"tt4",name:"Password Reset",priority:"low",slaHours:4,keywords:["password","reset","locked","login","forgot"],defaultAssignee:null,color:"#10b981"},
+  {id:"tt5",name:"Email Issue",priority:"medium",slaHours:8,keywords:["email","outlook","mail","inbox","calendar"],defaultAssignee:null,color:"#6366f1"},
+  {id:"tt6",name:"Security Incident",priority:"critical",slaHours:2,keywords:["security","hack","breach","virus","malware","phishing"],defaultAssignee:null,color:"#7c3aed"},
+  {id:"tt7",name:"VPN Access",priority:"medium",slaHours:8,keywords:["vpn","remote","tunnel"],defaultAssignee:null,color:"#8b5cf6"},
   {id:"tt8",name:"Others",priority:"low",slaHours:48,keywords:[],defaultAssignee:null,color:"#94a3b8"},
 ];
-function mkT(id,title,desc,typeId,status,sub,asn,co,cl,loc,hrs,msgs,hist){
-  var tt=SEED_TYPES.find(function(t){return t.id===typeId;});
-  var cat=hAgo(hrs);
-  var sla=new Date(new Date(cat).getTime()+(tt?tt.slaHours:24)*3600000).toISOString();
-  var createMins=rnd(2,18);
-  return {id,title,description:desc,typeId,customTypeName:null,status,priority:tt?tt.priority:"medium",submittedBy:sub,assignedTo:asn,companyId:co,clientId:cl||null,locationId:loc||null,createdAt:cat,updatedAt:hAgo(Math.max(0,hrs-1)),slaDeadline:sla,slaBreached:new Date()>new Date(sla)&&status!=="Closed",timeToCreateMins:createMins,submittedAt:cat,formOpenedAt:new Date(new Date(cat).getTime()-createMins*60000).toISOString(),statusHistory:hist&&hist.length?hist:[{status,assignedTo:asn,timestamp:cat,changedBy:sub,note:"Ticket created"}],conversations:msgs||[],externalEmail:null,closedAt:status==="Closed"?hAgo(Math.max(0,hrs-1)):null,deleted:false,aiReason:"Type: "+(tt?tt.name:"Others"),attachments:[]};
-}
-const SEED_TICKETS = [
-  mkT("t1","Laptop screen flickering","Screen flickers on Dell XPS 15.","tt1","In Progress","u5","u3","c2","cl4","loc8",12,[{id:"m1",from:"u5",fromEmail:"john@acmecorp.com",to:["u3"],toEmails:["alex@itsolutions.com"],cc:[],subject:"Re: [#t1]",body:"Flickering every 5 min.",timestamp:hAgo(10),isExternal:false,status:"sent"},{id:"m2",from:"u3",fromEmail:"alex@itsolutions.com",to:["u5"],toEmails:["john@acmecorp.com"],cc:[],subject:"Re: [#t1]",body:"Bring laptop to IT at 2PM.\n\nAlex",timestamp:hAgo(9),isExternal:false,status:"sent"}],[{status:"Open",assignedTo:"u3",timestamp:hAgo(12),changedBy:"u5",note:"Ticket created"},{status:"In Progress",assignedTo:"u3",timestamp:hAgo(10),changedBy:"u3",note:"Diagnostic scheduled"}]),
+const SEED_TICKETS = [];
+const SEED_LOGS    = []; Dell XPS 15.","tt1","In Progress","u5","u3","c2","cl4","loc8",12,[{id:"m1",from:"u5",fromEmail:"john@acmecorp.com",to:["u3"],toEmails:["alex@itsolutions.com"],cc:[],subject:"Re: [#t1]",body:"Flickering every 5 min.",timestamp:hAgo(10),isExternal:false,status:"sent"},{id:"m2",from:"u3",fromEmail:"alex@itsolutions.com",to:["u5"],toEmails:["john@acmecorp.com"],cc:[],subject:"Re: [#t1]",body:"Bring laptop to IT at 2PM.\n\nAlex",timestamp:hAgo(9),isExternal:false,status:"sent"}],[{status:"Open",assignedTo:"u3",timestamp:hAgo(12),changedBy:"u5",note:"Ticket created"},{status:"In Progress",assignedTo:"u3",timestamp:hAgo(10),changedBy:"u3",note:"Diagnostic scheduled"}]),
   mkT("t2","Cannot connect to VPN","Error 789 on VPN. Windows 11.","tt7","Open","u6","u4","c3","cl2","loc4",3,[],[]),
   mkT("t3","Phishing email received","Fake IT domain. Five colleagues affected.","tt6","Escalated","u7","u2","c2","cl1","loc1",6,[{id:"m3",from:"u7",fromEmail:"bob@acmecorp.com",to:["u2"],toEmails:["mike@itsolutions.com"],cc:[],subject:"Re: [#t3]",body:"5 colleagues confirmed.",timestamp:hAgo(5),isExternal:false,status:"sent"},{id:"m4",from:"u2",fromEmail:"mike@itsolutions.com",to:["u7"],toEmails:["bob@acmecorp.com"],cc:[],subject:"Re: [#t3]",body:"Blocking domain now.\n\nMike",timestamp:hAgo(4),isExternal:false,status:"sent"}],[{status:"Open",assignedTo:"u2",timestamp:hAgo(6),changedBy:"u7",note:"Ticket created"},{status:"Escalated",assignedTo:"u2",timestamp:hAgo(4),changedBy:"u2",note:"Escalated"}]),
   mkT("t4","Outlook not syncing","Stopped syncing 3h ago.","tt5","Closed","u5","u4","c2","cl4","loc7",24,[],[]),
