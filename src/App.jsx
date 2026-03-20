@@ -3,8 +3,6 @@ import React from "react";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, LineChart, Line } from "recharts";
 
 const PAL = ["#6366f1","#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ef4444","#ec4899","#f97316"];
-const RESEND_URL = "https://api.resend.com/emails";
-
 function loadIntegrations(){ try{ return JSON.parse(localStorage.getItem("hd_integrations")||"{}"); }catch{ return {}; } }
 function saveIntegrations(v){ try{ localStorage.setItem("hd_integrations",JSON.stringify(v)); }catch{} }
 const STATUS_META = { "Open":{color:"#f59e0b",bg:"#fef3c7"}, "In Progress":{color:"#6366f1",bg:"#eef2ff"}, "Pending":{color:"#0ea5e9",bg:"#e0f2fe"}, "Escalated":{color:"#ef4444",bg:"#fee2e2"}, "Closed":{color:"#94a3b8",bg:"#f1f5f9"} };
@@ -99,20 +97,24 @@ function getStatusSla(ticket, slaConfig, schedules){
 }
 
 async function callSendEmail(opts) {
-  var cfg=loadIntegrations(); var apiKey=(cfg.resend||{}).apiKey;
-  if(apiKey){
-    try{
-      var toArr=Array.isArray(opts.to)?opts.to:[opts.to];
-      var fromAddr=(cfg.resend||{}).from||"Hoptix IT <onboarding@resend.dev>";
-      var body={from:fromAddr,to:toArr,subject:opts.subject||"(no subject)",text:opts.body||opts.message||""};
-      if(opts.cc&&opts.cc.length) body.cc=Array.isArray(opts.cc)?opts.cc:[opts.cc];
-      var res=await fetch(RESEND_URL,{method:"POST",headers:{"Authorization":"Bearer "+apiKey,"Content-Type":"application/json"},body:JSON.stringify(body)});
-      var data=await res.json();
-      if(res.ok&&data.id) return {success:true,provider:"Resend",id:data.id};
-      throw new Error(data.message||data.name||("Status "+res.status));
-    }catch(e){ return {success:false,error:e.message,provider:"Resend"}; }
+  try {
+    // Call the local Vercel serverless proxy — avoids CORS and keeps API key server-side
+    var res = await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to:      opts.to,
+        subject: opts.subject || "(no subject)",
+        text:    opts.body || opts.message || "",
+        from:    opts.from || null
+      })
+    });
+    var data = await res.json();
+    if (res.ok && data.id) return { success: true, provider: "Resend", id: data.id };
+    throw new Error(data.error || ("Status " + res.status));
+  } catch(e) {
+    return { success: false, error: e.message, provider: "Resend" };
   }
-  return {success:false,error:"No email provider configured. Add your Resend API key in Integrations.",provider:"None"};
 }
 function aiAssign(title,desc,typeId,users,types) {
   var tt=types.find(function(t){return t.id===typeId;});
@@ -1164,17 +1166,10 @@ function PageIntegrations(p){
     try{
       var cfg={};
       try{cfg=JSON.parse(localStorage.getItem("hd_integrations")||"{}");}catch(e){}
-      var key=(cfg.resend||{}).apiKey||"";
       var from=(cfg.resend||{}).from||"Hoptix IT <onboarding@resend.dev>";
-      if(!key){if(p.showToast)p.showToast("Save your API key first","error");setSending(false);return;}
-      var res=await fetch("https://api.resend.com/emails",{
-        method:"POST",
-        headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
-        body:JSON.stringify({from:from,to:[testTo.trim()],subject:"Hoptix Test",text:"Your Resend integration is working!"})
-      });
-      var data=await res.json();
-      if(res.ok&&data.id){setStatus("ok");if(p.showToast)p.showToast("📧 Test sent!");}
-      else{setStatus("fail");if(p.showToast)p.showToast("⚠️ "+(data.message||data.name||"Failed"),"error");}
+      var r=await callSendEmail({to:testTo.trim(),subject:"Hoptix Test",body:"Your Resend integration is working!",from:from});
+      if(r.success){setStatus("ok");if(p.showToast)p.showToast("📧 Test sent!");}
+      else{setStatus("fail");if(p.showToast)p.showToast("⚠️ "+r.error,"error");}
     }catch(e){
       setStatus("fail");if(p.showToast)p.showToast("⚠️ "+e.message,"error");
     }
