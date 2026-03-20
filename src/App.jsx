@@ -3,12 +3,17 @@ import React from "react";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, LineChart, Line } from "recharts";
 
 const PAL = ["#6366f1","#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ef4444","#ec4899","#f97316"];
-const FUNCTIONS_URL = "https://byuvyyycweowdupyvjgy.supabase.co/functions/v1";
+const RESEND_URL = "https://api.resend.com/emails";
+
+function loadIntegrations(){ try{ return JSON.parse(localStorage.getItem("hd_integrations")||"{}"); }catch{ return {}; } }
+function saveIntegrations(v){ try{ localStorage.setItem("hd_integrations",JSON.stringify(v)); }catch{} }
 const STATUS_META = { "Open":{color:"#f59e0b",bg:"#fef3c7"}, "In Progress":{color:"#6366f1",bg:"#eef2ff"}, "Pending":{color:"#0ea5e9",bg:"#e0f2fe"}, "Escalated":{color:"#ef4444",bg:"#fee2e2"}, "Closed":{color:"#94a3b8",bg:"#f1f5f9"} };
 const ALL_STATUSES = ["Open","In Progress","Pending","Escalated","Closed"];
-const PRI_META = { critical:{color:"#dc2626",bg:"#fee2e2",label:"Critical",slaHours:1}, high:{color:"#ef4444",bg:"#fef2f2",label:"High",slaHours:4}, medium:{color:"#f59e0b",bg:"#fffbeb",label:"Medium",slaHours:24}, low:{color:"#10b981",bg:"#f0fdf4",label:"Low",slaHours:72} };
+const PRI_META = { critical:{color:"#dc2626",bg:"#fee2e2",label:"Critical"}, high:{color:"#ef4444",bg:"#fef2f2",label:"High"}, medium:{color:"#f59e0b",bg:"#fffbeb",label:"Medium"}, low:{color:"#10b981",bg:"#f0fdf4",label:"Low"} };
 const ROLE_META = { admin:{label:"Administrator",color:"#dc2626"}, it_manager:{label:"IT Manager",color:"#7c3aed"}, it_technician:{label:"IT Technician",color:"#2563eb"}, end_user:{label:"End User",color:"#059669"} };
 const DEFAULT_STATUS_SLA = { "Open":2, "In Progress":8, "Pending":24, "Escalated":1, "Closed":null };
+const DOW_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const IT_ROLES = ["admin","it_manager","it_technician"];
 
 const uid   = function(){ return "id_"+Date.now()+"_"+Math.random().toString(36).slice(2,6); };
 const hAgo  = function(h){ return new Date(Date.now()-h*3600000).toISOString(); };
@@ -28,7 +33,42 @@ const fmtMs = function(mins){
   var h=Math.floor(mins/60); var remMins=mins-h*60; var m2=Math.floor(remMins); var s2=parseFloat(((remMins-m2)*60).toFixed(2)); return h+"h "+m2+"m "+s2+"s";
 };
 const pieLabel = function(p){ return p.value>0?p.name+": "+p.value:""; };
+const fmtHour = function(h){ if(h===0)return"12:00 AM"; if(h<12)return h+":00 AM"; if(h===12)return"12:00 PM"; return (h-12)+":00 PM"; };
 
+// ── Schedule helpers ──────────────────────────────────────────────────────────
+function loadSchedules(){ try{var s=localStorage.getItem("hd_schedules");return s?JSON.parse(s):{};} catch{return{};}}
+function saveSchedules(v){ try{localStorage.setItem("hd_schedules",JSON.stringify(v));}catch{}}
+
+// Calculates hours elapsed counting only time within the assignee's schedule
+function calcBusinessHoursElapsed(startMs, endMs, schedule){
+  if(!schedule||!schedule.days||!schedule.days.length) return (endMs-startMs)/3600000;
+  var total=0; var cur=startMs;
+  while(cur<endMs){
+    var d=new Date(cur); var dow=d.getDay();
+    var dayStart=new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.startHour,0,0,0).getTime();
+    var dayEnd  =new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.endHour,0,0,0).getTime();
+    if(schedule.days.includes(dow)){
+      var os=Math.max(cur,dayStart); var oe=Math.min(endMs,dayEnd);
+      if(oe>os) total+=(oe-os)/3600000;
+    }
+    cur=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1,0,0,0,0).getTime();
+  }
+  return total;
+}
+
+function isCurrentlyOnShift(schedule){
+  if(!schedule||!schedule.days||!schedule.days.length) return true;
+  var now=new Date(); var dow=now.getDay(); var h=now.getHours()+(now.getMinutes()/60);
+  return schedule.days.includes(dow)&&h>=schedule.startHour&&h<schedule.endHour;
+}
+
+function fmtSchedule(sch){
+  if(!sch||!sch.days||!sch.days.length) return "No schedule set (24/7)";
+  var dayNames=sch.days.slice().sort(function(a,b){return a-b;}).map(function(d){return DOW_LABELS[d];}).join(", ");
+  return dayNames+" · "+fmtHour(sch.startHour)+" – "+fmtHour(sch.endHour);
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
 function calcSlaRate(arr){ return arr.length?Math.round((1-arr.filter(function(t){return t.slaBreached;}).length/arr.length)*100):100; }
 function calcAvgClose(arr){ return arr.length?Math.round(arr.reduce(function(a,t){return a+(new Date(t.closedAt||t.updatedAt)-new Date(t.createdAt))/3600000;},0)/arr.length):0; }
 function calcClosed(arr){ return arr.filter(function(t){return t.status==="Closed";}); }
@@ -36,7 +76,7 @@ function calcClosed(arr){ return arr.filter(function(t){return t.status==="Close
 function loadStatusSla(){ try{ var s=localStorage.getItem("hd_statusSla"); return s?JSON.parse(s):DEFAULT_STATUS_SLA; }catch{ return DEFAULT_STATUS_SLA; } }
 function saveStatusSlaStore(v){ try{ localStorage.setItem("hd_statusSla",JSON.stringify(v)); }catch{} }
 
-function getStatusSla(ticket, slaConfig){
+function getStatusSla(ticket, slaConfig, schedules){
   var cfg=slaConfig||loadStatusSla();
   var allowed=cfg[ticket.status];
   if(allowed===null||allowed===undefined) return null;
@@ -44,18 +84,32 @@ function getStatusSla(ticket, slaConfig){
   var entry=null;
   for(var i=hist.length-1;i>=0;i--){ if(hist[i].status===ticket.status){entry=hist[i].timestamp;break;} }
   if(!entry) entry=ticket.updatedAt||ticket.createdAt;
-  var spent=(Date.now()-new Date(entry).getTime())/3600000;
+  var schedule=(schedules&&ticket.assignedTo)?schedules[ticket.assignedTo]:null;
+  var spent=schedule
+    ? calcBusinessHoursElapsed(new Date(entry).getTime(), Date.now(), schedule)
+    : (Date.now()-new Date(entry).getTime())/3600000;
   var pct=Math.min(100,Math.round(spent/allowed*100));
   var breached=spent>allowed;
   var remaining=Math.max(0,allowed-spent);
-  return {hoursAllowed:allowed,hoursSpent:parseFloat(spent.toFixed(1)),pct,breached,remaining:parseFloat(remaining.toFixed(1)),enteredAt:entry};
+  var onShift=isCurrentlyOnShift(schedule);
+  return {hoursAllowed:allowed,hoursSpent:parseFloat(spent.toFixed(2)),pct,breached,remaining:parseFloat(remaining.toFixed(2)),enteredAt:entry,onShift,hasSchedule:!!schedule,schedule};
 }
 
 async function callSendEmail(opts) {
-  try { var res=await fetch(FUNCTIONS_URL+"/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(opts)}); var data=await res.json(); if(!res.ok) throw new Error(data.error||"Failed"); return {success:true}; } catch(e){ return {success:false,error:e.message}; }
-}
-async function callSendSms(opts) {
-  try { var res=await fetch(FUNCTIONS_URL+"/send-sms",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(opts)}); var data=await res.json(); if(!res.ok) throw new Error(data.error||"Failed"); return {success:true}; } catch(e){ return {success:false,error:e.message}; }
+  var cfg=loadIntegrations(); var apiKey=(cfg.resend||{}).apiKey;
+  if(apiKey){
+    try{
+      var toArr=Array.isArray(opts.to)?opts.to:[opts.to];
+      var fromAddr=(cfg.resend||{}).from||"Hoptix IT <onboarding@resend.dev>";
+      var body={from:fromAddr,to:toArr,subject:opts.subject||"(no subject)",text:opts.body||opts.message||""};
+      if(opts.cc&&opts.cc.length) body.cc=Array.isArray(opts.cc)?opts.cc:[opts.cc];
+      var res=await fetch(RESEND_URL,{method:"POST",headers:{"Authorization":"Bearer "+apiKey,"Content-Type":"application/json"},body:JSON.stringify(body)});
+      var data=await res.json();
+      if(res.ok&&data.id) return {success:true,provider:"Resend",id:data.id};
+      throw new Error(data.message||data.name||("Status "+res.status));
+    }catch(e){ return {success:false,error:e.message,provider:"Resend"}; }
+  }
+  return {success:false,error:"No email provider configured. Add your Resend API key in Integrations.",provider:"None"};
 }
 function aiAssign(title,desc,typeId,users,types) {
   var tt=types.find(function(t){return t.id===typeId;});
@@ -140,8 +194,8 @@ function optCompaniesNone(c){ return [mkOpt("","— None —")].concat(c.map(fun
 function optClients(c){ return [mkOpt("","— No Client —")].concat(c.map(function(x){ return mkOpt(x.id,x.name); })); }
 function optLocs(l){ return [mkOpt("","— Select Location —")].concat(l.map(function(x){ return mkOpt(x.id,x.name); })); }
 function optTypes(t){ return t.map(function(x){ return mkOpt(x.id,x.name+" — "+(PRI_META[x.priority]?.label||x.priority)+", SLA "+x.slaHours+"h"); }); }
-function optTechs(u){ return [mkOpt("","— Unassigned —")].concat(u.filter(function(x){ return ["it_technician","it_manager","admin"].includes(x.role)&&x.active; }).map(function(x){ return mkOpt(x.id,x.name+" ("+(ROLE_META[x.role]?.label||x.role)+")"); })); }
-function optAssignees(u){ return [mkOpt("","— Auto-assign —")].concat(u.filter(function(x){ return ["it_technician","it_manager","admin"].includes(x.role)&&x.active; }).map(function(x){ return mkOpt(x.id,x.name+" ("+(ROLE_META[x.role]?.label||x.role)+")"); })); }
+function optTechs(u){ return [mkOpt("","— Unassigned —")].concat(u.filter(function(x){ return IT_ROLES.includes(x.role)&&x.active; }).map(function(x){ return mkOpt(x.id,x.name+" ("+(ROLE_META[x.role]?.label||x.role)+")"); })); }
+function optAssignees(u){ return [mkOpt("","— Auto-assign —")].concat(u.filter(function(x){ return IT_ROLES.includes(x.role)&&x.active; }).map(function(x){ return mkOpt(x.id,x.name+" ("+(ROLE_META[x.role]?.label||x.role)+")"); })); }
 function optTickets(t){ return t.map(function(x){ return mkOpt(x.id,"#"+x.id+" — "+x.title.slice(0,28)); }); }
 
 class ErrorBoundary extends React.Component {
@@ -184,7 +238,66 @@ function FocusInput(p){
   return <input {...rest} onFocus={function(){setFocused(true);}} onBlur={function(){setFocused(false);}} style={{width:"100%",padding:extraPad?"11px 44px 11px 14px":"11px 14px",border:"1.5px solid "+(focused?"#0ea5e9":"#e2e8f0"),borderRadius:10,fontSize:14,outline:"none",boxSizing:"border-box",background:"#f8fafc",transition:"border-color .2s"}}/>;
 }
 
-// ── LOGIN ──────────────────────────────────────────────────────────────────────
+// ── Schedule Editor Component ─────────────────────────────────────────────────
+function ScheduleEditor(p){
+  var userId=p.userId; var schedules=p.schedules; var onChange=p.onChange;
+  var existing=schedules[userId]||null;
+  var [enabled,setEnabled]=useState(!!existing);
+  var [days,setDays]=useState(existing?existing.days:[1,2,3,4,5]);
+  var [startHour,setStartHour]=useState(existing?existing.startHour:9);
+  var [endHour,setEndHour]=useState(existing?existing.endHour:17);
+
+  function toggleDay(d){
+    var nd=days.includes(d)?days.filter(function(x){return x!==d;}):days.concat([d]);
+    setDays(nd); emit(enabled,nd,startHour,endHour);
+  }
+  function emit(en,ds,sh,eh){
+    onChange(userId, en?{days:ds,startHour:sh,endHour:eh}:null);
+  }
+  function handleEnable(v){ setEnabled(v); emit(v,days,startHour,endHour); }
+  function handleStart(v){ var n=parseInt(v); setStartHour(n); emit(enabled,days,n,endHour); }
+  function handleEnd(v){ var n=parseInt(v); setEndHour(n); emit(enabled,days,startHour,n); }
+
+  var hours=Array.from({length:24},function(_,i){return mkOpt(i,fmtHour(i));});
+
+  return <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:14,marginBottom:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <div style={{fontWeight:700,color:"#0369a1",fontSize:13}}>🗓 Work Schedule <span style={{fontSize:11,fontWeight:400,color:"#64748b"}}>(SLA only counts during shift)</span></div>
+      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:600,color:enabled?"#0369a1":"#64748b"}}>
+        <input type="checkbox" checked={enabled} onChange={function(e){handleEnable(e.target.checked);}} style={{width:15,height:15,accentColor:"#0369a1"}}/>
+        {enabled?"Schedule enabled":"No schedule (24/7)"}
+      </label>
+    </div>
+    {enabled&&<>
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#475569",marginBottom:6,textTransform:"uppercase"}}>Working Days</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {DOW_LABELS.map(function(label,i){
+            var active=days.includes(i);
+            return <button key={i} type="button" onClick={function(){toggleDay(i);}} style={{padding:"5px 10px",borderRadius:6,border:"1.5px solid "+(active?"#0369a1":"#e2e8f0"),background:active?"#0369a1":"#fff",color:active?"#fff":"#64748b",fontSize:11,fontWeight:700,cursor:"pointer"}}>{label}</button>;
+          })}
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div><label style={{display:"block",fontSize:11,fontWeight:700,color:"#475569",marginBottom:4,textTransform:"uppercase"}}>Shift Start</label>
+          <select value={startHour} onChange={function(e){handleStart(e.target.value);}} style={{width:"100%",padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",boxSizing:"border-box"}}>
+            {hours.map(function(o){return <option key={o.value} value={o.value}>{o.label}</option>;})}
+          </select>
+        </div>
+        <div><label style={{display:"block",fontSize:11,fontWeight:700,color:"#475569",marginBottom:4,textTransform:"uppercase"}}>Shift End</label>
+          <select value={endHour} onChange={function(e){handleEnd(e.target.value);}} style={{width:"100%",padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",boxSizing:"border-box"}}>
+            {hours.filter(function(o){return o.value>startHour;}).map(function(o){return <option key={o.value} value={o.value}>{o.label}</option>;})}
+          </select>
+        </div>
+      </div>
+      <div style={{marginTop:8,fontSize:11,color:"#0369a1",background:"#e0f2fe",borderRadius:6,padding:"6px 10px"}}>
+        ⏱ SLA timer only runs {days.slice().sort(function(a,b){return a-b;}).map(function(d){return DOW_LABELS[d];}).join(", ")} · {fmtHour(startHour)} – {fmtHour(endHour)} ({endHour-startHour}h/day)
+      </div>
+    </>}
+  </div>;
+}
+
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
 function LoginPage(p){ var users=p.users; var setUsers=p.setUsers; var companies=p.companies; var onLogin=p.onLogin;
   var [view,setView]=useState("login"); var [loginEmail,setLoginEmail]=useState(""); var [loginPass,setLoginPass]=useState("");
   var [showP1,setShowP1]=useState(false); var [showP2,setShowP2]=useState(false); var [showP3,setShowP3]=useState(false);
@@ -211,7 +324,7 @@ function LoginPage(p){ var users=p.users; var setUsers=p.setUsers; var companies
         <p style={{color:"#94a3b8",fontSize:13,margin:0}}>IT Helpdesk · Sign in to your workspace</p>
       </div>
       <div style={{background:"rgba(255,255,255,0.97)",borderRadius:20,padding:36,boxShadow:"0 25px 60px rgba(0,0,0,.5)"}}>
-        {view==="login"&&<><h2 style={{fontSize:20,fontWeight:700,color:"#1e293b",margin:"0 0 4px"}}>Welcome back 👋</h2><p style={{fontSize:13,color:"#94a3b8",margin:"0 0 22px"}}>Sign in to access your dashboard</p><div onSubmit={doLogin}><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:5}}>Email Address</label><FocusInput type="email" value={loginEmail} onChange={function(e){setLoginEmail(e.target.value);}} placeholder="you@company.com" autoFocus/></div><div style={{marginBottom:6}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:5}}>Password</label><div style={{position:"relative"}}><FocusInput type={showP1?"text":"password"} value={loginPass} onChange={function(e){setLoginPass(e.target.value);}} placeholder="••••••••" extraPad/><button type="button" onClick={function(){setShowP1(!showP1);}} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8",padding:0}}>{showP1?"🙈":"👁️"}</button></div></div><div style={{textAlign:"right",marginBottom:18}}><button type="button" onClick={function(){setView("forgot");setResetEmail(loginEmail);setResetErr("");}} style={{background:"none",border:"none",color:"#0369a1",fontSize:12,fontWeight:600,cursor:"pointer",padding:0,textDecoration:"underline"}}>Forgot your password?</button></div><ErrBox msg={loginErr}/><PBtn onClick={doLogin} disabled={loading}>{loading?"⏳ Signing in…":"Sign In →"}</PBtn></div><div style={{marginTop:18,textAlign:"center"}}><span style={{fontSize:12,color:"#94a3b8"}}>Don't have an account? </span><button type="button" onClick={function(){setView("signup");setSigErr("");}} style={{background:"none",border:"none",color:"#0369a1",fontSize:12,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>Sign Up</button></div></>}
+        {view==="login"&&<><h2 style={{fontSize:20,fontWeight:700,color:"#1e293b",margin:"0 0 4px"}}>Welcome back 👋</h2><p style={{fontSize:13,color:"#94a3b8",margin:"0 0 22px"}}>Sign in to access your dashboard</p><div><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:5}}>Email Address</label><FocusInput type="email" value={loginEmail} onChange={function(e){setLoginEmail(e.target.value);}} placeholder="you@company.com" autoFocus/></div><div style={{marginBottom:6}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:5}}>Password</label><div style={{position:"relative"}}><FocusInput type={showP1?"text":"password"} value={loginPass} onChange={function(e){setLoginPass(e.target.value);}} placeholder="••••••••" extraPad/><button type="button" onClick={function(){setShowP1(!showP1);}} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8",padding:0}}>{showP1?"🙈":"👁️"}</button></div></div><div style={{textAlign:"right",marginBottom:18}}><button type="button" onClick={function(){setView("forgot");setResetEmail(loginEmail);setResetErr("");}} style={{background:"none",border:"none",color:"#0369a1",fontSize:12,fontWeight:600,cursor:"pointer",padding:0,textDecoration:"underline"}}>Forgot your password?</button></div><ErrBox msg={loginErr}/><PBtn onClick={doLogin} disabled={loading}>{loading?"⏳ Signing in…":"Sign In →"}</PBtn></div><div style={{marginTop:18,textAlign:"center"}}><span style={{fontSize:12,color:"#94a3b8"}}>Don't have an account? </span><button type="button" onClick={function(){setView("signup");setSigErr("");}} style={{background:"none",border:"none",color:"#0369a1",fontSize:12,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>Sign Up</button></div></>}
         {view==="signup"&&<><BackBtn onClick={function(){setView("login");setSigErr("");}} /><h2 style={{fontSize:20,fontWeight:700,color:"#1e293b",margin:"0 0 18px"}}>Create an Account 🚀</h2><div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><div style={{marginBottom:10}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Full Name *</label><FocusInput type="text" value={sigName} onChange={function(e){setSigName(e.target.value);}} placeholder="Jane Smith" autoFocus/></div><div style={{marginBottom:10}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Phone</label><FocusInput type="tel" value={sigPhone} onChange={function(e){setSigPhone(e.target.value);}} placeholder="+1-555-0100"/></div></div><div style={{marginBottom:10}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Work Email *</label><FocusInput type="email" value={sigEmail} onChange={function(e){setSigEmail(e.target.value);}} placeholder="you@company.com"/></div><div style={{marginBottom:10}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Department</label><FocusInput type="text" value={sigDept} onChange={function(e){setSigDept(e.target.value);}} placeholder="Sales"/></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:4}}><div><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Password *</label><div style={{position:"relative"}}><FocusInput type={showP2?"text":"password"} value={sigPass} onChange={function(e){setSigPass(e.target.value);}} placeholder="Min 8 chars" extraPad/><button type="button" onClick={function(){setShowP2(!showP2);}} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#94a3b8",padding:0}}>{showP2?"🙈":"👁️"}</button></div></div><div><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Confirm *</label><div style={{position:"relative"}}><FocusInput type={showP3?"text":"password"} value={sigConf} onChange={function(e){setSigConf(e.target.value);}} placeholder="Repeat" extraPad/><button type="button" onClick={function(){setShowP3(!showP3);}} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#94a3b8",padding:0}}>{showP3?"🙈":"👁️"}</button></div></div></div>{sigPass.length>0&&<div style={{marginBottom:12}}><div style={{display:"flex",gap:4,marginBottom:3}}>{[1,2,3,4].map(function(i){ return <div key={i} style={{flex:1,height:4,borderRadius:2,background:i<=str?strColor[str]:"#e2e8f0"}}/>; })}</div><div style={{fontSize:10,color:strColor[str]}}>{strLabel[str]}</div></div>}<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#92400e"}}>⚠️ New accounts require <strong>admin approval</strong>.</div><ErrBox msg={sigErr}/><PBtn onClick={doSignup} disabled={loading}>{loading?"⏳ Creating…":"Create Account →"}</PBtn></div></>}
         {view==="pending"&&<div style={{textAlign:"center",padding:"10px 0"}}><div style={{fontSize:56,marginBottom:14}}>⏳</div><h2 style={{fontSize:20,fontWeight:700,color:"#1e293b",margin:"0 0 10px"}}>Account Pending Approval</h2><p style={{fontSize:13,color:"#64748b",lineHeight:1.7,margin:"0 0 18px"}}>Your account for <strong>{sigEmail}</strong> has been submitted.</p><PBtn onClick={function(){setView("login");setLoginErr("");}}>← Back to Sign In</PBtn></div>}
         {view==="forgot"&&<><BackBtn onClick={function(){setView("login");setResetErr("");}} /><div style={{textAlign:"center",marginBottom:22}}><div style={{fontSize:44,marginBottom:8}}>🔑</div><h2 style={{fontSize:20,fontWeight:700,color:"#1e293b",margin:"0 0 6px"}}>Forgot Password?</h2></div><div><div style={{marginBottom:16}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:5}}>Email Address</label><FocusInput type="email" value={resetEmail} onChange={function(e){setResetEmail(e.target.value);}} placeholder="you@company.com" autoFocus/></div><ErrBox msg={resetErr}/><PBtn onClick={doForgot} disabled={loading}>{loading?"⏳ Sending…":"Send Reset Link →"}</PBtn></div></>}
@@ -249,6 +362,7 @@ export default function App(){
   var [tickets,setTicketsR]     = useState(function(){ return loadState("hd_tickets",SEED_TICKETS); });
   var [ticketTypes,setTTR]      = useState(function(){ return loadState("hd_ticketTypes",SEED_TYPES); });
   var [statusSla,setStatusSlaR] = useState(function(){ return loadStatusSla(); });
+  var [schedules,setSchedulesR] = useState(function(){ return loadSchedules(); });
   var [logs,setLogsR]           = useState(function(){ return loadState("hd_logs",SEED_LOGS); });
   var [curUser,setCurUserR]     = useState(function(){ return loadState("hd_curUser",null); });
   var [page,setPageR]           = useState(function(){ return loadState("hd_page","dashboard"); });
@@ -263,6 +377,7 @@ export default function App(){
   function setTickets(v){     var n=typeof v==="function"?v(tickets):v;     saveState("hd_tickets",n);     setTicketsR(n); }
   function setTicketTypes(v){ var n=typeof v==="function"?v(ticketTypes):v; saveState("hd_ticketTypes",n); setTTR(n); }
   function setStatusSla(v){   var n=typeof v==="function"?v(statusSla):v;   saveStatusSlaStore(n);          setStatusSlaR(n); }
+  function setSchedules(v){   var n=typeof v==="function"?v(schedules):v;   saveSchedules(n);               setSchedulesR(n); }
   function setLogs(v){        var n=typeof v==="function"?v(logs):v;        saveState("hd_logs",n);        setLogsR(n); }
   function setCurUser(u){     if(u)saveState("hd_curUser",u); else clearAuth(); setCurUserR(u); }
   function setPage(v){        saveState("hd_page",v); setPageR(v); }
@@ -283,8 +398,9 @@ export default function App(){
   },[tickets]);
 
   var isAdmin=["admin","it_manager"].includes(curUser?.role);
-  var isTech =["admin","it_manager","it_technician"].includes(curUser?.role);
+  var isTech =IT_ROLES.includes(curUser?.role);
   var visible=useMemo(function(){ return tickets.filter(function(t){ return !t.deleted&&(isTech||t.submittedBy===curUser?.id||t.assignedTo===curUser?.id); }); },[tickets,curUser,isTech]);
+  var allNonDeleted=useMemo(function(){ return tickets.filter(function(t){return !t.deleted;}); },[tickets]);
 
   if(!curUser) return <LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
 
@@ -298,8 +414,8 @@ export default function App(){
     {id:"companies",icon:"🏢",label:"Companies",superAdmin:true},
     {id:"clients",icon:"🤝",label:"Clients",superAdmin:true},
     {id:"ticket_types",icon:"🏷️",label:"Ticket Types",superAdmin:true},
+    {id:"integrations",icon:"🔌",label:"Integrations",superAdmin:true},
     {id:"activity_log",icon:"📋",label:"Activity Log",superAdmin:true},
-    {id:"sms_tracker",icon:"💬",label:"SMS Tracker",admin:true},
   ].filter(function(n){ if(n.superAdmin)return curUser.role==="admin"; if(n.admin)return isAdmin; return true; });
 
   var curNav=NAV.find(function(n){return n.id===page;})||{icon:"",label:"—"};
@@ -327,20 +443,20 @@ export default function App(){
         </div>
         {toast&&<div style={{position:"fixed",top:20,right:20,zIndex:10000,background:toast.type==="error"?"#ef4444":"#10b981",color:"#fff",padding:"10px 20px",borderRadius:10,fontWeight:600,fontSize:13,boxShadow:"0 4px 20px rgba(0,0,0,.2)"}}>{toast.msg}</div>}
         <div style={{flex:1,overflowY:"auto",padding:24}}>
-          {page==="dashboard"    &&<PageDashboard   tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches}/>}
-          {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla}/>}
+          {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches}/>}
+          {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules}/>}
           {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage}/>}
           {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} setPage={setPage}/>}
-          {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla}/>}
-          {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast}/>}
+          {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules}/>}
+          {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedules}/>}
           {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast}/>}
           {page==="clients"      &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast}/>}
           {page==="ticket_types" &&<PageTicketTypes ticketTypes={ticketTypes} users={users} setTicketTypes={setTicketTypes} statusSla={statusSla} setStatusSla={setStatusSla} addLog={addLog} showToast={showToast}/>}
+          {page==="integrations"  &&<PageIntegrations showToast={showToast} addLog={addLog}/>}
           {page==="activity_log" &&<PageActivityLog logs={logs} users={users}/>}
-          {page==="sms_tracker"  &&<PageSmsTracker  tickets={visible} users={users} curUser={curUser} showToast={showToast} addLog={addLog}/>}
         </div>
       </div>
-      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} onClose={function(){setSelTicket(null);}}/>}
+      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} onClose={function(){setSelTicket(null);}}/>}
       {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} showToast={showToast} addLog={addLog} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
@@ -348,7 +464,7 @@ export default function App(){
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function PageDashboard(p){
-  var tickets=p.tickets; var users=p.users; var ticketTypes=p.ticketTypes; var clients=p.clients; var setPage=p.setPage; var setSelTicket=p.setSelTicket; var breaches=p.breaches;
+  var tickets=p.tickets; var allTickets=p.allTickets||p.tickets; var users=p.users; var ticketTypes=p.ticketTypes; var clients=p.clients; var setPage=p.setPage; var setSelTicket=p.setSelTicket; var breaches=p.breaches;
   var byStatus=ALL_STATUSES.map(function(s){ return {name:s,value:tickets.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color}; });
   var byPri=Object.keys(PRI_META).map(function(k){ return {name:PRI_META[k].label,value:tickets.filter(function(t){return t.priority===k;}).length,color:PRI_META[k].color}; });
   var daily=Array.from({length:7},function(_,i){ var d=new Date(Date.now()-(6-i)*86400000); return {lbl:d.toLocaleDateString("en",{weekday:"short"}),created:tickets.filter(function(t){return new Date(t.createdAt).toDateString()===d.toDateString();}).length,closed:tickets.filter(function(t){return t.closedAt&&new Date(t.closedAt).toDateString()===d.toDateString();}).length}; });
@@ -360,7 +476,7 @@ function PageDashboard(p){
       <Stat label="Open"           value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b"/>
       <Stat label="In Progress"    value={tickets.filter(function(t){return t.status==="In Progress";}).length} icon="⚙️" color="#6366f1"/>
       <Stat label="Escalated"      value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed" sub="need senior review"/>
-      <Stat label="Closed"         value={tickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981"/>
+      <Stat label="Closed"         value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981"/>
       <Stat label="SLA Breaches"   value={breaches.length} icon="🚨" color="#ef4444" sub="need attention"/>
       <Stat label="Active Clients" value={clients.length} icon="🤝" color="#8b5cf6" sub={clients.reduce(function(a,c){return a+c.locations.length;},0)+" locations"}/>
     </div>
@@ -387,7 +503,7 @@ function PageDashboard(p){
 // ── TICKET LIST ───────────────────────────────────────────────────────────────
 function PageTickets(p){
   var tickets=p.tickets; var users=p.users; var clients=p.clients; var ticketTypes=p.ticketTypes; var curUser=p.curUser;
-  var setTickets=p.setTickets; var addLog=p.addLog; var showToast=p.showToast; var setSelTicket=p.setSelTicket; var setPage=p.setPage; var isAdmin=p.isAdmin; var statusSla=p.statusSla;
+  var setTickets=p.setTickets; var addLog=p.addLog; var showToast=p.showToast; var setSelTicket=p.setSelTicket; var setPage=p.setPage; var isAdmin=p.isAdmin; var statusSla=p.statusSla; var schedules=p.schedules||{};
   var [search,setSearch]=useState(""); var [fStat,setFStat]=useState(""); var [fPri,setFPri]=useState(""); var [fType,setFType]=useState("");
   var filtered=tickets.filter(function(t){ var q=search.toLowerCase(); return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType); });
   function delTicket(id){ setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});}); addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted"); showToast("Ticket deleted"); }
@@ -411,7 +527,7 @@ function PageTickets(p){
           {filtered.map(function(t,i){
             var asgn=fu(t.assignedTo); var type=ftt(t.typeId); var client=fcl(t.clientId); var loc=getLoc(t.clientId,t.locationId);
             var pri=PRI_META[t.priority]||PRI_META.medium; var sm=STATUS_META[t.status]||STATUS_META.Open;
-            var sSla=getStatusSla(t,statusSla);
+            var sSla=getStatusSla(t,statusSla,schedules);
             return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
               <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id}</td>
               <td style={{padding:"9px 12px",maxWidth:180}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div></td>
@@ -421,16 +537,18 @@ function PageTickets(p){
               <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{client?<span>🤝 {client.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
               <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{loc?<span>📍 {loc.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
               <td style={{padding:"9px 12px"}}>{asgn?<div style={{display:"flex",alignItems:"center",gap:6}}><Avatar name={asgn.name} id={asgn.id} size={22}/><span style={{fontSize:11}}>{asgn.name}</span></div>:<span style={{fontSize:11,color:"#ef4444"}}>Unassigned</span>}</td>
-              <td style={{padding:"9px 12px",minWidth:130}}>
+              <td style={{padding:"9px 12px",minWidth:140}}>
                 {sSla?<div>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:3}}>
-                    <span style={{color:sSla.breached?"#ef4444":"#64748b",fontWeight:600}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining+"h left"}</span>
+                    <span style={{color:sSla.breached?"#ef4444":sSla.hasSchedule&&!sSla.onShift?"#94a3b8":"#64748b",fontWeight:600}}>
+                      {sSla.breached?"⚠️ Breached":sSla.hasSchedule&&!sSla.onShift?"⏸ Off shift":"⏱ "+sSla.remaining.toFixed(1)+"h left"}
+                    </span>
                     <span style={{color:"#94a3b8"}}>{sSla.pct}%</span>
                   </div>
                   <div style={{height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/>
+                    <div style={{height:"100%",width:sSla.pct+"%",background:sSla.hasSchedule&&!sSla.onShift?"#94a3b8":sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/>
                   </div>
-                  <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{sSla.hoursSpent}h / {sSla.hoursAllowed}h</div>
+                  <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{sSla.hoursSpent}h / {sSla.hoursAllowed}h {sSla.hasSchedule?"(shift hrs)":""}</div>
                 </div>:<span style={{fontSize:10,color:"#94a3b8"}}>— closed</span>}
               </td>
               <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn>{isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}</div></td>
@@ -459,10 +577,8 @@ function PageNewTicket(p){
     if(!form.title.trim()||!form.description.trim()){showToast("Fill in title and description","error");return;}
     var assign=aiAssign(form.title,form.description,form.typeId,users,ticketTypes);
     var tt=ticketTypes.find(function(t){return t.id===form.typeId;});
-    var now=new Date().toISOString();
-    var sla=new Date(Date.now()+(tt?tt.slaHours:24)*3600000).toISOString();
-    var mins=Math.max(0.017,(Date.now()-start)/60000);
-    var formOpenedAt=new Date(start).toISOString();
+    var now=new Date().toISOString(); var sla=new Date(Date.now()+(tt?tt.slaHours:24)*3600000).toISOString();
+    var mins=Math.max(0.017,(Date.now()-start)/60000); var formOpenedAt=new Date(start).toISOString();
     var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:formOpenedAt,slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],conversations:[],closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
     setPreview({draft:draft,assign:assign});
   }
@@ -508,11 +624,11 @@ function PageNewTicket(p){
 function TicketDetail(p){
   var ticket=p.ticket; var setTickets=p.setTickets; var users=p.users; var ticketTypes=p.ticketTypes;
   var companies=p.companies; var clients=p.clients; var curUser=p.curUser; var isAdmin=p.isAdmin; var isTech=p.isTech;
-  var addLog=p.addLog; var showToast=p.showToast; var onClose=p.onClose; var statusSla=p.statusSla;
+  var addLog=p.addLog; var showToast=p.showToast; var onClose=p.onClose; var statusSla=p.statusSla; var schedules=p.schedules||{};
   var [tab,setTab]=useState("details"); var [status,setStatus]=useState(ticket.status); var [asgn,setAsgn]=useState(ticket.assignedTo||""); var [note,setNote]=useState(""); var [typeId,setTypeId]=useState(ticket.typeId||"");
   var [msgTo,setMsgTo]=useState(""); var [msgCC,setMsgCC]=useState(""); var [msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title); var [msgBody,setMsgBody]=useState("");
   var [smsTo,setSmsTo]=useState(""); var [smsBody,setSmsBody]=useState(""); var [smsLog,setSmsLog]=useState([]);
-  var [emailSending,setEmailSending]=useState(false); var [smsSending,setSmsSending]=useState(false);
+  var [emailSending,setEmailSending]=useState(false);
   function fu(id){return users.find(function(x){return x.id===id;});}
   var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;}); var co=companies.find(function(c){return c.id===ticket.companyId;}); var client=clients.find(function(c){return c.id===ticket.clientId;}); var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
 
@@ -549,16 +665,17 @@ function TicketDetail(p){
   }
 
   if(!ticket) return null;
-  var sSla=getStatusSla(ticket,statusSla);
+  var sSla=getStatusSla(ticket,statusSla,schedules);
   var submitter=fu(ticket.submittedBy);
   var submittedAt=ticket.submittedAt||ticket.createdAt;
   var formOpenedAt=ticket.formOpenedAt||ticket.createdAt;
   var createMins=ticket.timeToCreateMins||0;
   var createColor=createMins<=5?"#10b981":createMins<=15?"#f59e0b":"#ef4444";
+  var assigneeSchedule=ticket.assignedTo?schedules[ticket.assignedTo]:null;
 
   var detailRows=[["Title",ticket.title],["Type",tt?.name||(ticket.customTypeName||"—")],["Priority",<Badge key="p" label={PRI_META[ticket.priority]?.label||ticket.priority} color={PRI_META[ticket.priority]?.color||"#6366f1"}/>],["Status",<Badge key="s" label={ticket.status} color={STATUS_META[ticket.status]?.color||"#6366f1"}/>],["Company",co?.name||"—"],["Submitted By",fu(ticket.submittedBy)?.name||"—"],["Assigned To",fu(ticket.assignedTo)?.name||"Unassigned"],["AI Reason",ticket.aiReason||"—"],["Created",fdt(ticket.createdAt)],["SLA Deadline",fdt(ticket.slaDeadline)],["Create Time",fmtMs(ticket.timeToCreateMins)],["Overall SLA",ticket.slaBreached?<Badge key="sl" label="BREACHED" color="#ef4444"/>:<Badge key="sl2" label="✓ OK" color="#10b981"/>]];
-  var TABS=["details","time","status","email","sms","history"].filter(function(t){if(t==="status")return isTech;return true;});
-  var tabLabels={details:"📋 Details",time:"⏱ Time",status:"🔄 Status",email:"📧 Email",sms:"📱 SMS",history:"📜 History"};
+  var TABS=["details","time","status","email","history"].filter(function(t){if(t==="status")return isTech;return true;});
+  var tabLabels={details:"📋 Details",time:"⏱ Time",status:"🔄 Status",email:"📧 Email",history:"📜 History"};
 
   return <Modal title={"Ticket #"+ticket.id+" — "+ticket.title} onClose={onClose} wide>
     <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
@@ -572,15 +689,19 @@ function TicketDetail(p){
         {client?<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><div><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Client</div><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{client.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {client.email}</div><div style={{fontSize:11,color:"#64748b"}}>📞 {client.phone}</div></div><div><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:4}}>Location</div>{loc?<><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>📍 {loc.name}</div><div style={{fontSize:11,color:"#64748b"}}>{loc.address}</div>{loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}{loc.contact&&<div style={{fontSize:11,color:"#64748b"}}>👤 {loc.contact}</div>}</>:<div style={{fontSize:12,color:"#94a3b8"}}>No location</div>}</div></div>:<div style={{fontSize:12,color:"#94a3b8"}}>No client associated.</div>}
       </div>
       <div style={{background:"#f8fafc",padding:12,borderRadius:8,fontSize:12,lineHeight:1.6,whiteSpace:"pre-wrap",color:"#334155"}}>{ticket.description}</div>
-      {sSla&&<div style={{marginTop:14,background:sSla.breached?"#fef2f2":"#f0fdf4",border:"1px solid "+(sSla.breached?"#fecaca":"#bbf7d0"),borderRadius:10,padding:14}}>
+      {sSla&&<div style={{marginTop:14,background:sSla.breached?"#fef2f2":sSla.hasSchedule&&!sSla.onShift?"#f8fafc":"#f0fdf4",border:"1px solid "+(sSla.breached?"#fecaca":sSla.hasSchedule&&!sSla.onShift?"#e2e8f0":"#bbf7d0"),borderRadius:10,padding:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-          <div style={{fontWeight:700,color:sSla.breached?"#dc2626":"#166534",fontSize:13}}>⏱ Status SLA — "{ticket.status}"</div>
-          <Badge label={sSla.breached?"BREACHED":"✓ Within SLA"} color={sSla.breached?"#ef4444":"#10b981"}/>
+          <div style={{fontWeight:700,color:sSla.breached?"#dc2626":sSla.hasSchedule&&!sSla.onShift?"#64748b":"#166534",fontSize:13}}>⏱ Status SLA — "{ticket.status}"</div>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            {sSla.hasSchedule&&<Badge label={sSla.onShift?"🟢 On shift":"⏸ Off shift — timer paused"} color={sSla.onShift?"#10b981":"#94a3b8"}/>}
+            <Badge label={sSla.breached?"BREACHED":"✓ Within SLA"} color={sSla.breached?"#ef4444":"#10b981"}/>
+          </div>
         </div>
-        <div style={{height:8,background:"#e2e8f0",borderRadius:4,overflow:"hidden",marginBottom:8}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:4}}/></div>
+        {sSla.hasSchedule&&<div style={{background:"#e0f2fe",borderRadius:6,padding:"6px 10px",marginBottom:10,fontSize:11,color:"#0369a1"}}>🗓 Assignee schedule: {fmtSchedule(sSla.schedule)} — SLA only counts during shift hours</div>}
+        <div style={{height:8,background:"#e2e8f0",borderRadius:4,overflow:"hidden",marginBottom:8}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.hasSchedule&&!sSla.onShift?"#94a3b8":sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:4}}/></div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
           <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Allowed</div><div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{sSla.hoursAllowed}h</div></div>
-          <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Spent</div><div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{sSla.hoursSpent}h</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>{sSla.hasSchedule?"Shift hrs used":"Spent"}</div><div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{sSla.hoursSpent}h</div></div>
           <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Remaining</div><div style={{fontWeight:800,fontSize:16,color:sSla.breached?"#ef4444":"#10b981"}}>{sSla.breached?"0h":sSla.remaining+"h"}</div></div>
           <div style={{textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Used</div><div style={{fontWeight:800,fontSize:16,color:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981"}}>{sSla.pct}%</div></div>
         </div>
@@ -590,10 +711,7 @@ function TicketDetail(p){
     </div>}
 
     {tab==="time"&&<div>
-      <div style={{background:"linear-gradient(135deg,#eef2ff,#f0f9ff)",border:"1px solid #c7d2fe",borderRadius:12,padding:20,marginBottom:16}}>
-        <div style={{fontWeight:800,color:"#3730a3",fontSize:15,marginBottom:4}}>⏱️ Ticket Time Tracking</div>
-        <div style={{fontSize:12,color:"#4338ca"}}>Full timestamp and creation time data for this ticket.</div>
-      </div>
+      <div style={{background:"linear-gradient(135deg,#eef2ff,#f0f9ff)",border:"1px solid #c7d2fe",borderRadius:12,padding:20,marginBottom:16}}><div style={{fontWeight:800,color:"#3730a3",fontSize:15,marginBottom:4}}>⏱️ Ticket Time Tracking</div><div style={{fontSize:12,color:"#4338ca"}}>Full timestamp and creation time data for this ticket.</div></div>
       <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:16,marginBottom:14}}>
         <div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:12}}>👤 Submitted By</div>
         {submitter?<div style={{display:"flex",gap:12,alignItems:"center"}}><Avatar name={submitter.name} id={submitter.id} size={42}/><div><div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{submitter.name}</div><div style={{fontSize:12,color:"#64748b"}}>{submitter.email}</div><div style={{marginTop:4}}><Badge label={ROLE_META[submitter.role]?.label||submitter.role} color={ROLE_META[submitter.role]?.color||"#6366f1"}/></div></div></div>:<div style={{color:"#94a3b8",fontSize:12}}>Unknown user</div>}
@@ -646,17 +764,6 @@ function TicketDetail(p){
       {(ticket.conversations||[]).map(function(m){ return <div key={m.id} style={{background:m.isExternal?"#fff7ed":"#f8fafc",border:"1px solid "+(m.isExternal?"#fed7aa":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><div style={{fontWeight:700,fontSize:12,color:m.isExternal?"#ea580c":"#1e293b"}}>{m.isExternal?"📬 EXTERNAL":"📧"} {m.fromEmail}{m.toEmails&&m.toEmails.length>0&&<span style={{color:"#64748b",fontWeight:400}}> → {m.toEmails.join(", ")}</span>}</div><div style={{display:"flex",gap:4,alignItems:"center"}}>{m.status==="sending"&&<span style={{fontSize:10,color:"#f59e0b"}}>⏳</span>}{m.status==="sent"&&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}{m.status==="failed"&&<span style={{fontSize:10,color:"#ef4444"}}>❌</span>}<span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div></div>{m.cc&&m.cc.length>0&&<div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>CC: {m.cc.join(", ")}</div>}<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div><div style={{fontSize:12,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div></div>; })}
     </div>}
 
-    {tab==="sms"&&<div>
-      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:10,marginBottom:14,fontSize:12}}>📱 <strong>SMS Tracker</strong> — Logged via Twilio API.</div>
-      <FInput label="Phone Number" value={smsTo} onChange={function(e){setSmsTo(e.target.value);}} placeholder="+1-555-0123"/>
-      <FTextarea label="Message" value={smsBody} onChange={function(e){setSmsBody(e.target.value);}} rows={3} placeholder="Type SMS…"/>
-      <button onClick={sendSms} disabled={smsSending} style={{background:smsSending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontWeight:600,fontSize:13,cursor:smsSending?"not-allowed":"pointer"}}>{smsSending?"⏳ Sending…":"📱 Send & Track SMS"}</button>
-      <hr style={{margin:"14px 0",border:"none",borderTop:"1px solid #e2e8f0"}}/>
-      <div style={{fontWeight:700,marginBottom:8}}>SMS Log</div>
-      {smsLog.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No SMS tracked yet.</div>}
-      {smsLog.map(function(s){ return <div key={s.id} style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:10,marginBottom:8,fontSize:12}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><div style={{fontWeight:700}}>📱 → {s.to}</div><Badge label={s.status} color={s.status==="delivered"?"#10b981":s.status==="failed"?"#ef4444":"#f59e0b"}/></div><div style={{color:"#334155"}}>{s.body}</div><div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>By {s.from} · {fdt(s.ts)}</div></div>; })}
-    </div>}
-
     {tab==="history"&&<div>
       <div style={{fontWeight:700,color:"#1e293b",marginBottom:12}}>📜 Status History</div>
       {(ticket.statusHistory||[]).slice().reverse().map(function(h,i){ return <div key={i} style={{display:"flex",gap:12,marginBottom:12}}><div style={{width:10,height:10,borderRadius:"50%",background:STATUS_META[h.status]?.color||"#6366f1",marginTop:4,flexShrink:0}}/><div style={{flex:1,background:"#f8fafc",borderRadius:8,padding:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><Badge label={h.status} color={STATUS_META[h.status]?.color||"#6366f1"}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(h.timestamp)}</span></div><div style={{fontSize:11,color:"#64748b",marginTop:4}}>Assigned: <strong>{fu(h.assignedTo)?.name||"Unassigned"}</strong></div><div style={{fontSize:11,color:"#475569"}}>By: {fu(h.changedBy)?.name||"System"}</div>{h.note&&<div style={{fontSize:11,color:"#334155",marginTop:4,fontStyle:"italic"}}>{h.note}</div>}</div></div>; })}
@@ -669,220 +776,63 @@ function PageTimeTracking(p){
   var tickets=p.tickets; var users=p.users; var ticketTypes=p.ticketTypes; var curUser=p.curUser; var isAdmin=p.isAdmin; var isTech=p.isTech; var setSelTicket=p.setSelTicket;
   var [search,setSearch]=useState(""); var [filterUser,setFilterUser]=useState(""); var [filterType,setFilterType]=useState(""); var [sortBy,setSortBy]=useState("submittedAt"); var [sortDir,setSortDir]=useState("desc");
   var [view,setView]=useState("table");
-
-  var scope=useMemo(function(){
-    var base=tickets.filter(function(t){return !t.deleted;});
-    if(!isAdmin) return base.filter(function(t){return t.submittedBy===curUser.id;});
-    if(filterUser) return base.filter(function(t){return t.submittedBy===filterUser;});
-    return base;
-  },[tickets,curUser,isAdmin,filterUser]);
-
-  var filtered=useMemo(function(){
-    var q=search.toLowerCase();
-    return scope.filter(function(t){
-      return(!q||(t.title.toLowerCase().includes(q)||t.id.includes(q)))&&(!filterType||t.typeId===filterType);
-    }).sort(function(a,b){
-      var av,bv;
-      if(sortBy==="submittedAt"){av=new Date(a.submittedAt||a.createdAt);bv=new Date(b.submittedAt||b.createdAt);}
-      else if(sortBy==="formOpenedAt"){av=new Date(a.formOpenedAt||a.createdAt);bv=new Date(b.formOpenedAt||b.createdAt);}
-      else if(sortBy==="timeToCreate"){av=a.timeToCreateMins||0;bv=b.timeToCreateMins||0;}
-      else if(sortBy==="title"){av=a.title.toLowerCase();bv=b.title.toLowerCase();}
-      else{av=new Date(a.createdAt);bv=new Date(b.createdAt);}
-      if(av<bv)return sortDir==="asc"?-1:1;
-      if(av>bv)return sortDir==="asc"?1:-1;
-      return 0;
-    });
-  },[scope,search,filterType,sortBy,sortDir]);
-
-  function fu(id){return users.find(function(x){return x.id===id;});}
-  function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
-
+  var scope=useMemo(function(){ var base=tickets.filter(function(t){return !t.deleted;}); if(!isAdmin) return base.filter(function(t){return t.submittedBy===curUser.id;}); if(filterUser) return base.filter(function(t){return t.submittedBy===filterUser;}); return base; },[tickets,curUser,isAdmin,filterUser]);
+  var filtered=useMemo(function(){ var q=search.toLowerCase(); return scope.filter(function(t){ return(!q||(t.title.toLowerCase().includes(q)||t.id.includes(q)))&&(!filterType||t.typeId===filterType); }).sort(function(a,b){ var av,bv; if(sortBy==="submittedAt"){av=new Date(a.submittedAt||a.createdAt);bv=new Date(b.submittedAt||b.createdAt);} else if(sortBy==="formOpenedAt"){av=new Date(a.formOpenedAt||a.createdAt);bv=new Date(b.formOpenedAt||b.createdAt);} else if(sortBy==="timeToCreate"){av=a.timeToCreateMins||0;bv=b.timeToCreateMins||0;} else if(sortBy==="title"){av=a.title.toLowerCase();bv=b.title.toLowerCase();} else{av=new Date(a.createdAt);bv=new Date(b.createdAt);} if(av<bv)return sortDir==="asc"?-1:1; if(av>bv)return sortDir==="asc"?1:-1; return 0; }); },[scope,search,filterType,sortBy,sortDir]);
+  function fu(id){return users.find(function(x){return x.id===id;});} function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
   var totalMinsAll=filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);
   var avgCreate=filtered.length?totalMinsAll/filtered.length:0;
   var fastest=filtered.length?filtered.reduce(function(a,t){return (t.timeToCreateMins||999)<(a.timeToCreateMins||999)?t:a;},filtered[0]):null;
   var slowest=filtered.length?filtered.reduce(function(a,t){return (t.timeToCreateMins||0)>(a.timeToCreateMins||0)?t:a;},filtered[0]):null;
-
-  var byTypeTime=ticketTypes.map(function(tt){
-    var mine=filtered.filter(function(t){return t.typeId===tt.id&&t.timeToCreateMins;});
-    return {name:tt.name,color:tt.color,avg:mine.length?mine.reduce(function(a,t){return a+t.timeToCreateMins;},0)/mine.length:0,count:mine.length};
-  }).filter(function(x){return x.count>0;});
-
-  var hourBuckets=Array.from({length:24},function(_,h){
-    var cnt=filtered.filter(function(t){return new Date(t.submittedAt||t.createdAt).getHours()===h;}).length;
-    return {hour:h,label:(h===0?"12am":h<12?h+"am":h===12?"12pm":(h-12)+"pm"),count:cnt};
-  });
+  var byTypeTime=ticketTypes.map(function(tt){ var mine=filtered.filter(function(t){return t.typeId===tt.id&&t.timeToCreateMins;}); return {name:tt.name,color:tt.color,avg:mine.length?mine.reduce(function(a,t){return a+t.timeToCreateMins;},0)/mine.length:0,count:mine.length}; }).filter(function(x){return x.count>0;});
+  var hourBuckets=Array.from({length:24},function(_,h){ var cnt=filtered.filter(function(t){return new Date(t.submittedAt||t.createdAt).getHours()===h;}).length; return {hour:h,label:(h===0?"12am":h<12?h+"am":h===12?"12pm":(h-12)+"pm"),count:cnt}; });
   var maxHour=Math.max.apply(null,hourBuckets.map(function(h){return h.count;}));
-
   var DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  var dowBuckets=DOW.map(function(d,i){
-    return {day:d,count:filtered.filter(function(t){return new Date(t.submittedAt||t.createdAt).getDay()===i;}).length};
-  });
-
-  var bySubmitter=isAdmin?users.filter(function(u){return u.active;}).map(function(u){
-    var mine=filtered.filter(function(t){return t.submittedBy===u.id;});
-    if(!mine.length)return null;
-    return {user:u,count:mine.length,avg:mine.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0)/mine.length,fastest:mine.reduce(function(a,t){return (t.timeToCreateMins||999)<(a.timeToCreateMins||999)?t:a;},mine[0]),slowest:mine.reduce(function(a,t){return (t.timeToCreateMins||0)>(a.timeToCreateMins||0)?t:a;},mine[0])};
-  }).filter(Boolean):[];
-
-  var dailySummary=useMemo(function(){
-    var map={};
-    filtered.forEach(function(t){
-      var d=new Date(t.submittedAt||t.createdAt);
-      var key=d.toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"});
-      if(!map[key]) map[key]={date:key,rawDate:d,count:0,totalMins:0,tickets:[]};
-      map[key].count+=1;
-      map[key].totalMins+=(t.timeToCreateMins||0);
-      map[key].tickets.push(t);
-    });
-    return Object.values(map).sort(function(a,b){return new Date(b.rawDate)-new Date(a.rawDate);});
-  },[filtered]);
-
+  var dowBuckets=DOW.map(function(d,i){ return {day:d,count:filtered.filter(function(t){return new Date(t.submittedAt||t.createdAt).getDay()===i;}).length}; });
+  var bySubmitter=isAdmin?users.filter(function(u){return u.active;}).map(function(u){ var mine=filtered.filter(function(t){return t.submittedBy===u.id;}); if(!mine.length)return null; return {user:u,count:mine.length,avg:mine.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0)/mine.length,fastest:mine.reduce(function(a,t){return (t.timeToCreateMins||999)<(a.timeToCreateMins||999)?t:a;},mine[0]),slowest:mine.reduce(function(a,t){return (t.timeToCreateMins||0)>(a.timeToCreateMins||0)?t:a;},mine[0])}; }).filter(Boolean):[];
+  var dailySummary=useMemo(function(){ var map={}; filtered.forEach(function(t){ var d=new Date(t.submittedAt||t.createdAt); var key=d.toLocaleDateString("en-US",{year:"numeric",month:"short",day:"numeric"}); if(!map[key]) map[key]={date:key,rawDate:d,count:0,totalMins:0,tickets:[]}; map[key].count+=1; map[key].totalMins+=(t.timeToCreateMins||0); map[key].tickets.push(t); }); return Object.values(map).sort(function(a,b){return new Date(b.rawDate)-new Date(a.rawDate);}); },[filtered]);
   function toggleSort(col){if(sortBy===col){setSortDir(function(d){return d==="asc"?"desc":"asc";});}else{setSortBy(col);setSortDir("desc");}}
   function SortArrow(sp){ if(sortBy!==sp.col)return <span style={{color:"#cbd5e1",marginLeft:3}}>⇅</span>; return <span style={{marginLeft:3}}>{sortDir==="asc"?"↑":"↓"}</span>; }
-
   return <div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
-      <div><div style={{fontWeight:800,fontSize:18,color:"#1e293b"}}>⏱️ Time Tracking</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>Track when each ticket was submitted, how long it took to create, and submission patterns.</div></div>
+      <div><div style={{fontWeight:800,fontSize:18,color:"#1e293b"}}>⏱️ Time Tracking</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>Track when each ticket was submitted and submission patterns.</div></div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {["table","heatmap","daily"].map(function(v){ var labels={table:"📋 Table",heatmap:"🔥 Heatmap",daily:"📅 Daily Summary"}; return <button key={v} onClick={function(){setView(v);}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+(view===v?"#6366f1":"#e2e8f0"),background:view===v?"#6366f1":"#fff",color:view===v?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>{labels[v]}</button>; })}
+        {["table","heatmap","daily"].map(function(v){ var labels={table:"📋 Table",heatmap:"🔥 Heatmap",daily:"📅 Daily"}; return <button key={v} onClick={function(){setView(v);}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+(view===v?"#6366f1":"#e2e8f0"),background:view===v?"#6366f1":"#fff",color:view===v?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>{labels[v]}</button>; })}
         {isAdmin&&<button onClick={function(){setView("byuser");}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid "+(view==="byuser"?"#6366f1":"#e2e8f0"),background:view==="byuser"?"#6366f1":"#fff",color:view==="byuser"?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>👥 By User</button>}
       </div>
     </div>
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
-      <Stat label="Total Create Time" value={fmtMs(totalMinsAll)} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets combined"}/>
-      <Stat label="Avg Create Time"   value={fmtMs(avgCreate)}    icon="⏱" color="#0ea5e9" sub="time to fill form"/>
-      <Stat label="Fastest Submit"    value={fastest?fmtMs(fastest.timeToCreateMins):"—"} icon="⚡" color="#10b981" sub={fastest?fastest.title.slice(0,18)+"…":""}/>
-      <Stat label="Slowest Submit"    value={slowest?fmtMs(slowest.timeToCreateMins):"—"} icon="🐢" color="#f59e0b" sub={slowest?slowest.title.slice(0,18)+"…":""}/>
+      <Stat label="Total Create Time" value={fmtMs(totalMinsAll)} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets"}/>
+      <Stat label="Avg Create Time" value={fmtMs(avgCreate)} icon="⏱" color="#0ea5e9"/>
+      <Stat label="Fastest Submit" value={fastest?fmtMs(fastest.timeToCreateMins):"—"} icon="⚡" color="#10b981" sub={fastest?fastest.title.slice(0,18)+"…":""}/>
+      <Stat label="Slowest Submit" value={slowest?fmtMs(slowest.timeToCreateMins):"—"} icon="🐢" color="#f59e0b" sub={slowest?slowest.title.slice(0,18)+"…":""}/>
     </div>
-    <Card style={{marginBottom:16,padding:"14px 16px"}}>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets…" style={{flex:1,minWidth:160,padding:"7px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}/>
-        <select value={filterType} onChange={function(e){setFilterType(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Types</option>{ticketTypes.map(function(t){return <option key={t.id} value={t.id}>{t.name}</option>;})}</select>
-        {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Users</option>{users.filter(function(u){return u.active;}).map(function(u){return <option key={u.id} value={u.id}>{u.name}</option>;})}</select>}
-      </div>
-    </Card>
-
-    {view==="table"&&<Card style={{padding:0,overflow:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",minWidth:860}}>
-        <thead><tr style={{background:"#f8fafc"}}>
-          <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>#</th>
-          <th onClick={function(){toggleSort("title");}} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",cursor:"pointer"}}>Title <SortArrow col="title"/></th>
-          <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Submitted By</th>
-          <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Type</th>
-          <th onClick={function(){toggleSort("formOpenedAt");}} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",cursor:"pointer"}}>Form Opened <SortArrow col="formOpenedAt"/></th>
-          <th onClick={function(){toggleSort("submittedAt");}} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",cursor:"pointer"}}>Submitted At <SortArrow col="submittedAt"/></th>
-          <th onClick={function(){toggleSort("timeToCreate");}} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",cursor:"pointer"}}>Create Time <SortArrow col="timeToCreate"/></th>
-          <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Status</th>
-          <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}></th>
-        </tr></thead>
-        <tbody>
-          {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found.</td></tr>}
-          {filtered.map(function(t,i){
-            var submitter=fu(t.submittedBy); var tt=ftt(t.typeId); var sm=STATUS_META[t.status]||STATUS_META.Open;
-            var cm=t.timeToCreateMins||0; var cc=cm<=5?"#10b981":cm<=15?"#f59e0b":"#ef4444";
-            var sat=t.submittedAt||t.createdAt; var foa=t.formOpenedAt||t.createdAt;
-            return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
-              <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id}</td>
-              <td style={{padding:"9px 12px",maxWidth:180}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div></td>
-              <td style={{padding:"9px 12px"}}>{submitter?<div style={{display:"flex",alignItems:"center",gap:6}}><Avatar name={submitter.name} id={submitter.id} size={20}/><span style={{fontSize:11}}>{submitter.name}</span></div>:<span style={{fontSize:11,color:"#94a3b8"}}>—</span>}</td>
-              <td style={{padding:"9px 12px"}}>{tt?<Badge label={tt.name} color={tt.color}/>:<span style={{color:"#94a3b8",fontSize:11}}>—</span>}</td>
-              <td style={{padding:"9px 12px"}}><div style={{fontSize:11,color:"#334155",fontWeight:600}}>{fdtFull(foa)}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(foa)}</div></td>
-              <td style={{padding:"9px 12px"}}><div style={{fontSize:11,color:"#334155",fontWeight:600}}>{fdtFull(sat)}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(sat)}</div></td>
-              <td style={{padding:"9px 12px"}}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:40,height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,cm/30*100)+"%",background:cc,borderRadius:3}}/></div><span style={{fontSize:12,fontWeight:700,color:cc}}>{fmtMs(cm)}</span></div></td>
-              <td style={{padding:"9px 12px"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/></td>
-              <td style={{padding:"9px 12px"}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn></td>
-            </tr>;
-          })}
-        </tbody>
-      </table>
-    </Card>}
-
+    <Card style={{marginBottom:16,padding:"14px 16px"}}><div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}><input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets…" style={{flex:1,minWidth:160,padding:"7px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}/><select value={filterType} onChange={function(e){setFilterType(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Types</option>{ticketTypes.map(function(t){return <option key={t.id} value={t.id}>{t.name}</option>;})}</select>{isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Users</option>{users.filter(function(u){return u.active;}).map(function(u){return <option key={u.id} value={u.id}>{u.name}</option>;})}</select>}</div></Card>
+    {view==="table"&&<Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:860}}><thead><tr style={{background:"#f8fafc"}}><th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>#</th><th onClick={function(){toggleSort("title");}} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",cursor:"pointer"}}>Title <SortArrow col="title"/></th><th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Submitted By</th><th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Type</th><th onClick={function(){toggleSort("formOpenedAt");}} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",cursor:"pointer"}}>Form Opened <SortArrow col="formOpenedAt"/></th><th onClick={function(){toggleSort("submittedAt");}} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",cursor:"pointer"}}>Submitted <SortArrow col="submittedAt"/></th><th onClick={function(){toggleSort("timeToCreate");}} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",cursor:"pointer"}}>Create Time <SortArrow col="timeToCreate"/></th><th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>Status</th><th style={{padding:"10px 12px",borderBottom:"1px solid #e2e8f0"}}></th></tr></thead><tbody>{filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found.</td></tr>}{filtered.map(function(t,i){ var submitter=fu(t.submittedBy); var tt2=ftt(t.typeId); var sm=STATUS_META[t.status]||STATUS_META.Open; var cm=t.timeToCreateMins||0; var cc=cm<=5?"#10b981":cm<=15?"#f59e0b":"#ef4444"; var sat=t.submittedAt||t.createdAt; var foa=t.formOpenedAt||t.createdAt; return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}><td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id}</td><td style={{padding:"9px 12px",maxWidth:180}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div></td><td style={{padding:"9px 12px"}}>{submitter?<div style={{display:"flex",alignItems:"center",gap:6}}><Avatar name={submitter.name} id={submitter.id} size={20}/><span style={{fontSize:11}}>{submitter.name}</span></div>:<span style={{fontSize:11,color:"#94a3b8"}}>—</span>}</td><td style={{padding:"9px 12px"}}>{tt2?<Badge label={tt2.name} color={tt2.color}/>:<span style={{color:"#94a3b8",fontSize:11}}>—</span>}</td><td style={{padding:"9px 12px"}}><div style={{fontSize:11,color:"#334155",fontWeight:600}}>{fdtFull(foa)}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(foa)}</div></td><td style={{padding:"9px 12px"}}><div style={{fontSize:11,color:"#334155",fontWeight:600}}>{fdtFull(sat)}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(sat)}</div></td><td style={{padding:"9px 12px"}}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:40,height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,cm/30*100)+"%",background:cc,borderRadius:3}}/></div><span style={{fontSize:12,fontWeight:700,color:cc}}>{fmtMs(cm)}</span></div></td><td style={{padding:"9px 12px"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/></td><td style={{padding:"9px 12px"}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn></td></tr>; })}</tbody></table></Card>}
     {view==="heatmap"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-        <Card>
-          <div style={{fontWeight:700,color:"#1e293b",marginBottom:14}}>🕐 Tickets Submitted by Hour of Day</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:4,marginBottom:8}}>
-            {hourBuckets.map(function(h){ var intensity=maxHour>0?h.count/maxHour:0; var bg=h.count===0?"#f1f5f9":"rgba(99,102,241,"+Math.max(0.1,intensity)+")"; return <div key={h.hour} title={h.label+": "+h.count+" tickets"} style={{height:36,borderRadius:6,background:bg,display:"flex",alignItems:"center",justifyContent:"center"}}>{h.count>0&&<span style={{fontSize:10,fontWeight:700,color:intensity>0.5?"#fff":"#4338ca"}}>{h.count}</span>}</div>; })}
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:4}}>{hourBuckets.map(function(h){return <div key={h.hour} style={{fontSize:8,color:"#94a3b8",textAlign:"center"}}>{h.label}</div>;})}</div>
-        </Card>
-        <Card>
-          <div style={{fontWeight:700,color:"#1e293b",marginBottom:14}}>📅 Tickets by Day of Week</div>
-          <ResponsiveContainer width="100%" height={180}><BarChart data={dowBuckets}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="day" tick={{fontSize:11}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Bar dataKey="count" name="Tickets" radius={[4,4,0,0]}>{dowBuckets.map(function(e,i){return <Cell key={i} fill={PAL[i%PAL.length]}/>;})}</Bar></BarChart></ResponsiveContainer>
-        </Card>
+        <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:14}}>🕐 By Hour of Day</div><div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:4,marginBottom:8}}>{hourBuckets.map(function(h){ var intensity=maxHour>0?h.count/maxHour:0; var bg=h.count===0?"#f1f5f9":"rgba(99,102,241,"+Math.max(0.1,intensity)+")"; return <div key={h.hour} title={h.label+": "+h.count} style={{height:36,borderRadius:6,background:bg,display:"flex",alignItems:"center",justifyContent:"center"}}>{h.count>0&&<span style={{fontSize:10,fontWeight:700,color:intensity>0.5?"#fff":"#4338ca"}}>{h.count}</span>}</div>; })}</div><div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:4}}>{hourBuckets.map(function(h){return <div key={h.hour} style={{fontSize:8,color:"#94a3b8",textAlign:"center"}}>{h.label}</div>;})}</div></Card>
+        <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:14}}>📅 By Day of Week</div><ResponsiveContainer width="100%" height={180}><BarChart data={dowBuckets}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="day" tick={{fontSize:11}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Bar dataKey="count" name="Tickets" radius={[4,4,0,0]}>{dowBuckets.map(function(e,i){return <Cell key={i} fill={PAL[i%PAL.length]}/>;})}</Bar></BarChart></ResponsiveContainer></Card>
       </div>
-      <Card>
-        <div style={{fontWeight:700,color:"#1e293b",marginBottom:14}}>⏱ Average Create Time by Ticket Type</div>
-        {byTypeTime.length===0&&<div style={{textAlign:"center",color:"#94a3b8",padding:20}}>No data.</div>}
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {byTypeTime.sort(function(a,b){return b.avg-a.avg;}).map(function(t){ var maxAvg=Math.max.apply(null,byTypeTime.map(function(x){return x.avg;})); return <div key={t.name} style={{display:"flex",alignItems:"center",gap:12}}><div style={{width:130,fontSize:12,fontWeight:600,color:"#334155",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</div><div style={{flex:1,height:22,background:"#f1f5f9",borderRadius:6,overflow:"hidden",position:"relative"}}><div style={{height:"100%",width:(maxAvg>0?t.avg/maxAvg*100:0)+"%",background:t.color,borderRadius:6}}/><span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",fontSize:10,fontWeight:700,color:t.avg/maxAvg>0.4?"#fff":"#334155"}}>{fmtMs(t.avg)} avg</span></div><div style={{fontSize:11,color:"#94a3b8",width:50,textAlign:"right"}}>{t.count} tickets</div></div>; })}
-        </div>
-      </Card>
+      <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:14}}>⏱ Avg Create Time by Type</div>{byTypeTime.length===0&&<div style={{textAlign:"center",color:"#94a3b8",padding:20}}>No data.</div>}<div style={{display:"flex",flexDirection:"column",gap:10}}>{byTypeTime.sort(function(a,b){return b.avg-a.avg;}).map(function(t){ var maxAvg=Math.max.apply(null,byTypeTime.map(function(x){return x.avg;})); return <div key={t.name} style={{display:"flex",alignItems:"center",gap:12}}><div style={{width:130,fontSize:12,fontWeight:600,color:"#334155",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</div><div style={{flex:1,height:22,background:"#f1f5f9",borderRadius:6,overflow:"hidden",position:"relative"}}><div style={{height:"100%",width:(maxAvg>0?t.avg/maxAvg*100:0)+"%",background:t.color,borderRadius:6}}/><span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",fontSize:10,fontWeight:700,color:t.avg/maxAvg>0.4?"#fff":"#334155"}}>{fmtMs(t.avg)} avg</span></div><div style={{fontSize:11,color:"#94a3b8",width:50,textAlign:"right"}}>{t.count} tickets</div></div>; })}</div></Card>
     </div>}
-
     {view==="daily"&&<div>
-      {dailySummary.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets match the current filters.</div></Card>}
-      {dailySummary.length>0&&<>
-        <Card style={{marginBottom:16,padding:"14px 18px"}}>
-          <div style={{fontWeight:700,color:"#1e293b",marginBottom:4}}>📊 Total Create Time per Day</div>
-          <div style={{fontSize:11,color:"#64748b",marginBottom:12}}>Sum of time spent filling out the ticket form, grouped by submission date.</div>
-          <ResponsiveContainer width="100%" height={220}><BarChart data={dailySummary.slice().reverse()} margin={{top:4,right:8,left:0,bottom:40}}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="date" tick={{fontSize:9}} angle={-30} textAnchor="end" height={60}/><YAxis tick={{fontSize:10}} unit="m"/><Tooltip formatter={function(v){ return [fmtMs(v),"Total Create Time"]; }} labelFormatter={function(l){ return "📅 "+l; }} contentStyle={{fontSize:12,borderRadius:8}}/><Bar dataKey="totalMins" name="Total" radius={[5,5,0,0]}>{dailySummary.slice().reverse().map(function(_,i){ return <Cell key={i} fill={PAL[i%PAL.length]}/>; })}</Bar></BarChart></ResponsiveContainer>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>{dailySummary.map(function(row){ return <div key={row.date} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"8px 14px",textAlign:"center",minWidth:90}}><div style={{fontSize:10,color:"#64748b",fontWeight:600}}>{new Date(row.rawDate).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</div><div style={{fontSize:18,fontWeight:800,color:"#6366f1",margin:"2px 0"}}>{fmtMs(row.totalMins)}</div><div style={{fontSize:10,color:"#94a3b8"}}>{row.count} ticket{row.count!==1?"s":""}</div></div>; })}</div>
-        </Card>
-        <Card style={{padding:0,overflow:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
-            <thead><tr style={{background:"#f8fafc"}}>{["Date","Tickets","Total Create Time","Avg per Ticket","Fastest","Slowest","Breakdown"].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
-            <tbody>
-              {dailySummary.map(function(row,i){
-                var avg=row.count?row.totalMins/row.count:0;
-                var fastest=row.tickets.reduce(function(a,t){return (t.timeToCreateMins||999)<(a.timeToCreateMins||999)?t:a;},row.tickets[0]);
-                var slowest=row.tickets.reduce(function(a,t){return (t.timeToCreateMins||0)>(a.timeToCreateMins||0)?t:a;},row.tickets[0]);
-                var avgColor=avg<=5?"#10b981":avg<=15?"#f59e0b":"#ef4444";
-                return <tr key={row.date} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
-                  <td style={{padding:"10px 12px"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{row.date}</div><div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{new Date(row.rawDate).toLocaleDateString("en-US",{weekday:"long"})}</div></td>
-                  <td style={{padding:"10px 12px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:28,height:28,borderRadius:"50%",background:"#eef2ff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:"#6366f1"}}>{row.count}</div><span style={{fontSize:12,color:"#475569"}}>{row.count===1?"ticket":"tickets"}</span></div></td>
-                  <td style={{padding:"10px 12px"}}><div style={{fontWeight:800,fontSize:16,color:"#6366f1"}}>{fmtMs(row.totalMins)}</div></td>
-                  <td style={{padding:"10px 12px"}}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:36,height:7,background:"#e2e8f0",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,avg/30*100)+"%",background:avgColor,borderRadius:4}}/></div><span style={{fontWeight:700,color:avgColor,fontSize:13}}>{fmtMs(avg)}</span></div></td>
-                  <td style={{padding:"10px 12px"}}><div style={{fontSize:12,fontWeight:600,color:"#10b981"}}>{fastest?fmtMs(fastest.timeToCreateMins):"—"}</div>{fastest&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1,maxWidth:120,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fastest.title}</div>}</td>
-                  <td style={{padding:"10px 12px"}}><div style={{fontSize:12,fontWeight:600,color:"#f59e0b"}}>{slowest?fmtMs(slowest.timeToCreateMins):"—"}</div>{slowest&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1,maxWidth:120,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slowest.title}</div>}</td>
-                  <td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:3,flexWrap:"wrap",maxWidth:160}}>{row.tickets.slice(0,6).map(function(t){ var m=t.timeToCreateMins||0; var c=m<=5?"#10b981":m<=15?"#f59e0b":"#ef4444"; return <span key={t.id} title={t.title+" ("+fmtMs(m)+")"} style={{background:c+"22",color:c,border:"1px solid "+c+"44",borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:700}}>{fmtMs(m)}</span>; })}{row.tickets.length>6&&<span style={{fontSize:10,color:"#94a3b8",alignSelf:"center"}}>+{row.tickets.length-6}</span>}</div></td>
-                </tr>;
-              })}
-            </tbody>
-            <tfoot><tr style={{background:"#f0f9ff",borderTop:"2px solid #bae6fd"}}>
-              <td style={{padding:"10px 12px",fontWeight:800,color:"#0369a1",fontSize:13}}>TOTAL</td>
-              <td style={{padding:"10px 12px",fontWeight:800,color:"#0369a1",fontSize:13}}>{filtered.length} tickets</td>
-              <td style={{padding:"10px 12px",fontWeight:800,color:"#0369a1",fontSize:16}}>{fmtMs(totalMinsAll)}</td>
-              <td style={{padding:"10px 12px",fontWeight:700,color:"#0369a1",fontSize:13}}>{filtered.length?fmtMs(totalMinsAll/filtered.length):"-"} avg</td>
-              <td colSpan={3}/>
-            </tr></tfoot>
-          </table>
-        </Card>
-      </>}
+      {dailySummary.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets match filters.</div></Card>}
+      {dailySummary.length>0&&<Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}><thead><tr style={{background:"#f8fafc"}}>{["Date","Tickets","Total Time","Avg","Fastest","Slowest"].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead><tbody>{dailySummary.map(function(row,i){ var avg=row.count?row.totalMins/row.count:0; var f2=row.tickets.reduce(function(a,t){return (t.timeToCreateMins||999)<(a.timeToCreateMins||999)?t:a;},row.tickets[0]); var s2=row.tickets.reduce(function(a,t){return (t.timeToCreateMins||0)>(a.timeToCreateMins||0)?t:a;},row.tickets[0]); var avgColor=avg<=5?"#10b981":avg<=15?"#f59e0b":"#ef4444"; return <tr key={row.date} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}><td style={{padding:"10px 12px"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{row.date}</div><div style={{fontSize:10,color:"#94a3b8"}}>{new Date(row.rawDate).toLocaleDateString("en-US",{weekday:"long"})}</div></td><td style={{padding:"10px 12px",fontWeight:700,fontSize:13,color:"#6366f1"}}>{row.count}</td><td style={{padding:"10px 12px",fontWeight:800,fontSize:15,color:"#6366f1"}}>{fmtMs(row.totalMins)}</td><td style={{padding:"10px 12px"}}><span style={{fontWeight:700,color:avgColor,fontSize:13}}>{fmtMs(avg)}</span></td><td style={{padding:"10px 12px",fontSize:12,fontWeight:600,color:"#10b981"}}>{f2?fmtMs(f2.timeToCreateMins):"—"}</td><td style={{padding:"10px 12px",fontSize:12,fontWeight:600,color:"#f59e0b"}}>{s2?fmtMs(s2.timeToCreateMins):"—"}</td></tr>; })}</tbody><tfoot><tr style={{background:"#f0f9ff",borderTop:"2px solid #bae6fd"}}><td style={{padding:"10px 12px",fontWeight:800,color:"#0369a1",fontSize:13}}>TOTAL</td><td style={{padding:"10px 12px",fontWeight:800,color:"#0369a1"}}>{filtered.length}</td><td style={{padding:"10px 12px",fontWeight:800,color:"#0369a1",fontSize:15}}>{fmtMs(totalMinsAll)}</td><td style={{padding:"10px 12px",fontWeight:700,color:"#0369a1"}}>{filtered.length?fmtMs(totalMinsAll/filtered.length):"-"} avg</td><td colSpan={2}/></tr></tfoot></table></Card>}
     </div>}
-
     {view==="byuser"&&isAdmin&&<div>
-      {bySubmitter.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No user data in the current filter.</div></Card>}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,marginBottom:16}}>
-        {bySubmitter.map(function(row){ var rm=ROLE_META[row.user.role]; return <Card key={row.user.id} style={{borderTop:"3px solid "+avCol(row.user.id)}}><div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}><Avatar name={row.user.name} id={row.user.id} size={40}/><div><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{row.user.name}</div><Badge label={rm?.label||row.user.role} color={rm?.color||"#6366f1"}/></div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div style={{background:"#f8fafc",borderRadius:8,padding:"8px 10px",textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Tickets</div><div style={{fontSize:20,fontWeight:800,color:"#6366f1"}}>{row.count}</div></div><div style={{background:"#f8fafc",borderRadius:8,padding:"8px 10px",textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Avg Time</div><div style={{fontSize:14,fontWeight:800,color:"#0ea5e9"}}>{fmtMs(row.avg)}</div></div></div>{row.fastest&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>⚡ Fastest: <strong>{fmtMs(row.fastest.timeToCreateMins)}</strong> — {row.fastest.title.slice(0,22)}</div>}{row.slowest&&<div style={{fontSize:11,color:"#64748b"}}>🐢 Slowest: <strong>{fmtMs(row.slowest.timeToCreateMins)}</strong> — {row.slowest.title.slice(0,22)}</div>}</Card>; })}
-      </div>
-      <Card style={{padding:0,overflow:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
-          <thead><tr style={{background:"#f8fafc"}}>{["User","Role","Dept","# Tickets","Avg Create Time","Fastest","Slowest","Last Submitted"].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
-          <tbody>{bySubmitter.map(function(row){ var rm=ROLE_META[row.user.role]; var lastSub=filtered.filter(function(t){return t.submittedBy===row.user.id;}).sort(function(a,b){return new Date(b.submittedAt||b.createdAt)-new Date(a.submittedAt||a.createdAt);})[0]; return <tr key={row.user.id} style={{borderBottom:"1px solid #f1f5f9"}}><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:8,alignItems:"center"}}><Avatar name={row.user.name} id={row.user.id} size={26}/><div style={{fontWeight:600,fontSize:12}}>{row.user.name}</div></div></td><td style={{padding:"10px 12px"}}><Badge label={rm?.label||row.user.role} color={rm?.color||"#6366f1"}/></td><td style={{padding:"10px 12px",fontSize:12,color:"#64748b"}}>{row.user.dept||"—"}</td><td style={{padding:"10px 12px",fontWeight:700,fontSize:13,color:"#6366f1"}}>{row.count}</td><td style={{padding:"10px 12px"}}><span style={{fontWeight:700,fontSize:13}}>{fmtMs(row.avg)}</span></td><td style={{padding:"10px 12px",fontSize:11,color:"#10b981",fontWeight:600}}>{row.fastest?fmtMs(row.fastest.timeToCreateMins):"-"}</td><td style={{padding:"10px 12px",fontSize:11,color:"#f59e0b",fontWeight:600}}>{row.slowest?fmtMs(row.slowest.timeToCreateMins):"-"}</td><td style={{padding:"10px 12px",fontSize:11,color:"#64748b"}}>{lastSub?ago(lastSub.submittedAt||lastSub.createdAt):"—"}</td></tr>; })}</tbody>
-        </table>
-      </Card>
+      {bySubmitter.length===0&&<Card><div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No user data.</div></Card>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,marginBottom:16}}>{bySubmitter.map(function(row){ var rm=ROLE_META[row.user.role]; return <Card key={row.user.id} style={{borderTop:"3px solid "+avCol(row.user.id)}}><div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}><Avatar name={row.user.name} id={row.user.id} size={40}/><div><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{row.user.name}</div><Badge label={rm?.label||row.user.role} color={rm?.color||"#6366f1"}/></div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div style={{background:"#f8fafc",borderRadius:8,padding:"8px 10px",textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Tickets</div><div style={{fontSize:20,fontWeight:800,color:"#6366f1"}}>{row.count}</div></div><div style={{background:"#f8fafc",borderRadius:8,padding:"8px 10px",textAlign:"center"}}><div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginBottom:2}}>Avg Time</div><div style={{fontSize:14,fontWeight:800,color:"#0ea5e9"}}>{fmtMs(row.avg)}</div></div></div>{row.fastest&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>⚡ Fastest: <strong>{fmtMs(row.fastest.timeToCreateMins)}</strong> — {row.fastest.title.slice(0,22)}</div>}{row.slowest&&<div style={{fontSize:11,color:"#64748b"}}>🐢 Slowest: <strong>{fmtMs(row.slowest.timeToCreateMins)}</strong> — {row.slowest.title.slice(0,22)}</div>}</Card>; })}</div>
     </div>}
   </div>;
 }
 
 // ── REPORTS ───────────────────────────────────────────────────────────────────
 function PageReports(p){
-  var tickets=p.tickets; var users=p.users; var ticketTypes=p.ticketTypes; var clients=p.clients; var statusSla=p.statusSla||DEFAULT_STATUS_SLA;
+  var tickets=p.tickets; var users=p.users; var ticketTypes=p.ticketTypes; var clients=p.clients; var statusSla=p.statusSla||DEFAULT_STATUS_SLA; var schedules=p.schedules||{};
   var [view,setView]=useState("summary"); var [range,setRange]=useState("month"); var [aiInsight,setAiInsight]=useState(""); var [aiLoading,setAiLoading]=useState(false);
   var rangeStart=useMemo(function(){ var now=new Date(); if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString(); if(range==="week")return new Date(now.getTime()-7*86400000).toISOString(); if(range==="month")return new Date(now.getTime()-30*86400000).toISOString(); if(range==="year")return new Date(now.getTime()-365*86400000).toISOString(); return new Date(0).toISOString(); },[range]);
   var rangeLabel={day:"Today",week:"Last 7 Days",month:"Last 30 Days",year:"Last 12 Months",all:"All Time"};
-  var techs=users.filter(function(u){return ["it_technician","it_manager","admin"].includes(u.role);});
+  var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
   var active=tickets.filter(function(t){return !t.deleted&&new Date(t.createdAt)>=new Date(rangeStart);});
   var allActive=tickets.filter(function(t){return !t.deleted;});
   var byType=ticketTypes.map(function(tt,i){ var mine=active.filter(function(t){return t.typeId===tt.id;}); var res=calcClosed(mine); return {id:tt.id,name:tt.name,color:tt.color,priority:tt.priority,slaH:tt.slaHours,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,inProg:mine.filter(function(t){return t.status==="In Progress";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),fill:PAL[i%PAL.length]}; }).filter(function(x){return x.total>0;});
@@ -907,7 +857,7 @@ function PageReports(p){
   var byLocSlaChart=byLocation.map(function(l){return {name:l.locName,slaRate:l.slaRate,color:slaColor(l.slaRate)};});
   var trendLines=top3Types.map(function(tt){return <Line key={tt.name} type="monotone" dataKey={tt.name} stroke={tt.color} strokeWidth={2} dot={false} name={tt.name}/>;});
 
-  async function generateInsight(){ setAiLoading(true); setAiInsight(""); var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),avgClose:calcAvgClose(calcClosed(allActive)),topTypes:top3Types.map(function(t){return t.name+" ("+t.total+")";}),breached:allActive.filter(function(t){return t.slaBreached;}).length,openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalated:allActive.filter(function(t){return t.status==="Escalated";}).length,weeklyVolume:weeklyTrend.map(function(w){return w.label+": "+w.total;}),byType:byType.map(function(t){return t.name+": "+t.total+" tickets, SLA "+t.slaRate+"%";}),byUser:byUser.map(function(u){return u.name+": "+u.total+" tickets, SLA "+u.slaRate+"%, avg close "+u.avgClose+"h";})}; try{var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this ticketing data and provide:\n1. Top 3 issues and their business impact\n2. SLA performance analysis\n3. Workload distribution observations\n4. 3 actionable recommendations\n5. Trend analysis from the 12-week data\n\nKeep it professional and concise. Use bullet points.\n\nData:\n"+JSON.stringify(summary,null,2)}]})}); var data=await res.json(); setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");}catch(e){setAiInsight("Error: "+e.message);} setAiLoading(false); }
+  async function generateInsight(){ setAiLoading(true); setAiInsight(""); var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),avgClose:calcAvgClose(calcClosed(allActive)),topTypes:top3Types.map(function(t){return t.name+" ("+t.total+")";}),breached:allActive.filter(function(t){return t.slaBreached;}).length,openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalated:allActive.filter(function(t){return t.status==="Escalated";}).length,weeklyVolume:weeklyTrend.map(function(w){return w.label+": "+w.total;}),byType:byType.map(function(t){return t.name+": "+t.total+" tickets, SLA "+t.slaRate+"%";}),byUser:byUser.map(function(u){return u.name+": "+u.total+" tickets, SLA "+u.slaRate+"%, avg close "+u.avgClose+"h";})}; try{var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. Top 3 issues and business impact\n2. SLA performance analysis\n3. Workload distribution\n4. 3 actionable recommendations\n5. Trend analysis\n\nBe concise, use bullets.\n\nData:\n"+JSON.stringify(summary,null,2)}]})}); var data=await res.json(); setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");}catch(e){setAiInsight("Error: "+e.message);} setAiLoading(false); }
 
   function TH(hp){return <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:.4,borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{hp.children}</th>;}
   function TD(dp){return <td style={{padding:"9px 12px",fontSize:12,fontWeight:dp.bold?700:400,color:"#1e293b"}}>{dp.children}</td>;}
@@ -921,9 +871,11 @@ function PageReports(p){
       var hist=(t.statusHistory||[]); var idx=-1;
       for(var i=0;i<hist.length;i++){if(hist[i].status===status)idx=i;}
       if(idx<0)return false;
-      var entry=new Date(hist[idx].timestamp).getTime();
-      var exit2=hist[idx+1]?new Date(hist[idx+1].timestamp).getTime():Date.now();
-      return (exit2-entry)/3600000>allowedH;
+      var entryMs=new Date(hist[idx].timestamp).getTime();
+      var exitMs=hist[idx+1]?new Date(hist[idx+1].timestamp).getTime():Date.now();
+      var schedule=schedules[t.assignedTo]||null;
+      var spent=schedule?calcBusinessHoursElapsed(entryMs,exitMs,schedule):(exitMs-entryMs)/3600000;
+      return spent>allowedH;
     });
     var rate=allIn.length>0?Math.round((allIn.length-br.length)/allIn.length*100):100;
     return {rate:rate,met:allIn.length-br.length,breached:br.length,total:allIn.length};
@@ -935,20 +887,20 @@ function PageReports(p){
 
     {view==="summary"&&<div>
       <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
-        <Stat label="Total Tickets"   value={active.length}                    icon="🎫" color="#6366f1"/>
-        <Stat label="SLA Rate"        value={totalSlaRate+"%"}                 icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"}/>
-        <Stat label="Avg Close Time"  value={avgCloseAll+"h"}                  icon="⏱" color="#0ea5e9"/>
-        <Stat label="Avg Create Time" value={avgCreateAll+"m"}                 icon="📝" color="#8b5cf6"/>
-        <Stat label="Closed"          value={calcClosed(active).length}        icon="✅" color="#10b981" sub={Math.round(calcClosed(active).length/Math.max(active.length,1)*100)+"% rate"}/>
-        <Stat label="Escalated"       value={active.filter(function(t){return t.status==="Escalated";}).length} icon="🚨" color="#ef4444"/>
+        <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1"/>
+        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"}/>
+        <Stat label="Avg Close Time" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9"/>
+        <Stat label="Avg Create Time" value={avgCreateAll+"m"} icon="📝" color="#8b5cf6"/>
+        <Stat label="Closed" value={calcClosed(active).length} icon="✅" color="#10b981" sub={Math.round(calcClosed(active).length/Math.max(active.length,1)*100)+"% rate"}/>
+        <Stat label="Escalated" value={active.filter(function(t){return t.status==="Escalated";}).length} icon="🚨" color="#ef4444"/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
         <Card><div style={{fontWeight:700,marginBottom:12}}>Tickets by Status</div><ResponsiveContainer width="100%" height={200}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return <Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
         <Card><div style={{fontWeight:700,marginBottom:12}}>Tickets by Priority</div><ResponsiveContainer width="100%" height={200}><BarChart data={byPriChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Bar dataKey="value" radius={[4,4,0,0]}>{byPriChart.map(function(e,i){return <Cell key={i} fill={e.color}/>;})}</Bar></BarChart></ResponsiveContainer></Card>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-        <Card><div style={{fontWeight:700,marginBottom:12}}>Average Time per Status (hours)</div>{avgPerStatus.map(function(s){return <div key={s.status} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><div style={{width:10,height:10,borderRadius:"50%",background:s.color,flexShrink:0}}/><div style={{flex:1,fontSize:12}}>{s.status}</div><Badge label={s.count+" tickets"} color={s.color}/><div style={{fontSize:12,fontWeight:700,color:"#1e293b",minWidth:40,textAlign:"right"}}>{s.avgH}h</div></div>;})}</Card>
-        <Card><div style={{fontWeight:700,marginBottom:12}}>Top Ticket Types</div>{byType.slice(0,6).map(function(t,i){return <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f1f5f9"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:t.color}}/><span style={{fontSize:12}}>{t.name}</span></div><div style={{display:"flex",gap:6,alignItems:"center"}}><Badge label={t.total+" tickets"} color={t.color}/><Badge label={t.slaRate+"%"} color={slaColor(t.slaRate)}/></div></div>;})}</Card>
+        <Card><div style={{fontWeight:700,marginBottom:12}}>Avg Time per Status</div>{avgPerStatus.map(function(s){return <div key={s.status} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><div style={{width:10,height:10,borderRadius:"50%",background:s.color,flexShrink:0}}/><div style={{flex:1,fontSize:12}}>{s.status}</div><Badge label={s.count+" tickets"} color={s.color}/><div style={{fontSize:12,fontWeight:700,color:"#1e293b",minWidth:40,textAlign:"right"}}>{s.avgH}h</div></div>;})}</Card>
+        <Card><div style={{fontWeight:700,marginBottom:12}}>Top Ticket Types</div>{byType.slice(0,6).map(function(t){return <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f1f5f9"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:t.color}}/><span style={{fontSize:12}}>{t.name}</span></div><div style={{display:"flex",gap:6,alignItems:"center"}}><Badge label={t.total+" tickets"} color={t.color}/><Badge label={t.slaRate+"%"} color={slaColor(t.slaRate)}/></div></div>;})}</Card>
       </div>
     </div>}
 
@@ -956,10 +908,7 @@ function PageReports(p){
       <Card style={{marginBottom:16}}><div style={{fontWeight:700,marginBottom:12}}>Weekly Volume</div><ResponsiveContainer width="100%" height={260}><AreaChart data={weeklyTrend}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="label" tick={{fontSize:9}} angle={-25} textAnchor="end" height={50}/><YAxis tick={{fontSize:10}}/><Tooltip/><Legend wrapperStyle={{fontSize:11}}/><Area type="monotone" dataKey="total" stroke="#6366f1" fill="#eef2ff" name="Total" strokeWidth={2}/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed" strokeWidth={2}/><Area type="monotone" dataKey="breached" stroke="#ef4444" fill="#fee2e2" name="Breached" strokeWidth={2}/></AreaChart></ResponsiveContainer></Card>
       <Card style={{marginBottom:16}}><div style={{fontWeight:700,marginBottom:12}}>Issue Type Trend — Top 3</div><ResponsiveContainer width="100%" height={260}><LineChart data={weeklyTrend}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="label" tick={{fontSize:9}} angle={-25} textAnchor="end" height={50}/><YAxis tick={{fontSize:10}}/><Tooltip/><Legend wrapperStyle={{fontSize:11}}/>{trendLines}</LineChart></ResponsiveContainer></Card>
       <Card style={{borderLeft:"4px solid #6366f1"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div><div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>🤖 AI-Generated Insights</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Analyzes trends and generates actionable recommendations</div></div>
-          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"9px 18px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:aiLoading?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:6}}>{aiLoading?<><span style={{display:"inline-block",width:14,height:14,border:"2px solid #fff",borderTop:"2px solid transparent",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> Analyzing…</>:"✨ Generate Insights"}</button>
-        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div><div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>🤖 AI-Generated Insights</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Analyzes trends and generates recommendations</div></div><button onClick={generateInsight} disabled={aiLoading} style={{padding:"9px 18px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:aiLoading?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:6}}>{aiLoading?<><span style={{display:"inline-block",width:14,height:14,border:"2px solid #fff",borderTop:"2px solid transparent",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> Analyzing…</>:"✨ Generate Insights"}</button></div>
         {!aiInsight&&!aiLoading&&<div style={{background:"#f8fafc",borderRadius:10,padding:20,textAlign:"center",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>🧠</div><div style={{fontSize:13,fontWeight:600,color:"#475569"}}>Ready to analyze your data</div></div>}
         {aiLoading&&<div style={{background:"#f8fafc",borderRadius:10,padding:24,textAlign:"center"}}><div style={{fontSize:13,color:"#6366f1",fontWeight:600}}>🤖 Analyzing…</div></div>}
         {aiInsight&&!aiLoading&&<div style={{background:"#f8fafc",borderRadius:10,padding:20}}><div style={{fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div><div style={{marginTop:12,paddingTop:10,borderTop:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:10,color:"#94a3b8"}}>Generated {new Date().toLocaleString()}</span><button onClick={generateInsight} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 10px",fontSize:11,color:"#6366f1",cursor:"pointer",fontWeight:600}}>↻ Refresh</button></div></div>}
@@ -971,7 +920,7 @@ function PageReports(p){
         <Card><div style={{fontWeight:700,marginBottom:12}}>Volume by Type</div><ResponsiveContainer width="100%" height={220}><BarChart data={byTypeVolChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:9}} angle={-20} textAnchor="end" height={40}/><YAxis tick={{fontSize:10}}/><Tooltip/><Bar dataKey="total" radius={[4,4,0,0]}>{byTypeVolChart.map(function(e,i){return <Cell key={i} fill={e.color}/>;})}</Bar></BarChart></ResponsiveContainer></Card>
         <Card><div style={{fontWeight:700,marginBottom:12}}>SLA Rate by Type</div><ResponsiveContainer width="100%" height={220}><BarChart data={byTypeSlaChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:9}} angle={-20} textAnchor="end" height={40}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip/><Bar dataKey="slaRate" radius={[4,4,0,0]}>{byTypeSlaChart.map(function(e,i){return <Cell key={i} fill={e.color}/>;})}</Bar></BarChart></ResponsiveContainer></Card>
       </div>
-      <Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:750}}><thead><tr style={{background:"#f8fafc"}}><TH>Type</TH><TH>Priority</TH><TH>SLA Limit</TH><TH>Total</TH><TH>Open</TH><TH>In Progress</TH><TH>Closed</TH><TH>Breached</TH><TH>SLA Rate</TH><TH>Avg Close</TH></tr></thead><tbody>{byType.map(function(t){return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9"}}><TD><Badge label={t.name} color={t.color}/></TD><TD><Badge label={PRI_META[t.priority]?.label} color={PRI_META[t.priority]?.color}/></TD><TD>{t.slaH}h</TD><TD bold>{t.total}</TD><TD><Badge label={t.open} color="#f59e0b"/></TD><TD><Badge label={t.inProg} color="#6366f1"/></TD><TD><Badge label={t.resolved} color="#10b981"/></TD><TD><Badge label={t.breached} color={t.breached>0?"#ef4444":"#10b981"}/></TD><TD><Badge label={t.slaRate+"%"} color={slaColor(t.slaRate)}/></TD><TD>{t.avgClose}h</TD></tr>;})}</tbody></table></Card>
+      <Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:750}}><thead><tr style={{background:"#f8fafc"}}><TH>Type</TH><TH>Priority</TH><TH>SLA</TH><TH>Total</TH><TH>Open</TH><TH>In Prog</TH><TH>Closed</TH><TH>Breached</TH><TH>SLA Rate</TH><TH>Avg Close</TH></tr></thead><tbody>{byType.map(function(t){return <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9"}}><TD><Badge label={t.name} color={t.color}/></TD><TD><Badge label={PRI_META[t.priority]?.label} color={PRI_META[t.priority]?.color}/></TD><TD>{t.slaH}h</TD><TD bold>{t.total}</TD><TD><Badge label={t.open} color="#f59e0b"/></TD><TD><Badge label={t.inProg} color="#6366f1"/></TD><TD><Badge label={t.resolved} color="#10b981"/></TD><TD><Badge label={t.breached} color={t.breached>0?"#ef4444":"#10b981"}/></TD><TD><Badge label={t.slaRate+"%"} color={slaColor(t.slaRate)}/></TD><TD>{t.avgClose}h</TD></tr>;})}</tbody></table></Card>
     </div>}
 
     {view==="per_user"&&<div>
@@ -1007,15 +956,15 @@ function PageReports(p){
 
     {view==="sla"&&<div>
       <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
-        <Stat label="Overall SLA Rate"  value={totalSlaRate+"%"}  icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breaches"}/>
-        <Stat label="Avg Close Time"    value={avgCloseAll+"h"}   icon="⏱" color="#0ea5e9"/>
-        <Stat label="Avg Create Time"   value={avgCreateAll+"m"}  icon="📝" color="#8b5cf6"/>
-        <Stat label="SLA Met"           value={active.length-totalBreached} icon="✅" color="#10b981" sub={"out of "+active.length}/>
+        <Stat label="Overall SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breaches"}/>
+        <Stat label="Avg Close Time" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9"/>
+        <Stat label="Avg Create Time" value={avgCreateAll+"m"} icon="📝" color="#8b5cf6"/>
+        <Stat label="SLA Met" value={active.length-totalBreached} icon="✅" color="#10b981" sub={"out of "+active.length}/>
         <Stat label="Critical Breaches" value={active.filter(function(t){return t.slaBreached&&t.priority==="critical";}).length} icon="🚨" color="#dc2626"/>
       </div>
       <Card style={{marginBottom:16}}>
         <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>📊 SLA Compliance by Status</div>
-        <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Percentage of tickets that stayed within the configured SLA window for each status.</div>
+        <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Percentage of tickets within the configured SLA window per status, counting only assignee shift hours.</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12,marginBottom:20}}>
           {ALL_STATUSES.filter(function(s){return statusSla[s]!==null&&statusSla[s]!==undefined;}).map(function(status){
             var sm=STATUS_META[status]; var st=statusSlaStats(status); var c=slaColor(st.rate);
@@ -1035,9 +984,9 @@ function PageReports(p){
             </div>;
           })}
         </div>
-        <div style={{fontWeight:700,color:"#1e293b",marginBottom:12}}>SLA % Comparison Across Statuses</div>
+        <div style={{fontWeight:700,color:"#1e293b",marginBottom:12}}>SLA % Across Statuses</div>
         <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={ALL_STATUSES.filter(function(s){return statusSla[s]!==null&&statusSla[s]!==undefined;}).map(function(status){ var st=statusSlaStats(status); return {status:status,rate:st.rate,color:slaColor(st.rate)}; })}>
+          <BarChart data={ALL_STATUSES.filter(function(s){return statusSla[s]!==null&&statusSla[s]!==undefined;}).map(function(status){ var st=statusSlaStats(status); return {status,rate:st.rate}; })}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
             <XAxis dataKey="status" tick={{fontSize:11}}/>
             <YAxis tick={{fontSize:10}} domain={[0,100]} unit="%"/>
@@ -1052,7 +1001,7 @@ function PageReports(p){
         <Card><div style={{fontWeight:700,marginBottom:12}}>SLA Rate by Type</div><ResponsiveContainer width="100%" height={220}><BarChart data={byTypeSlaChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:9}} angle={-15} textAnchor="end" height={45}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip/><Bar dataKey="slaRate" radius={[4,4,0,0]}>{byTypeSlaChart.map(function(e,i){return <Cell key={i} fill={e.color}/>;})}</Bar></BarChart></ResponsiveContainer></Card>
         <Card><div style={{fontWeight:700,marginBottom:12}}>SLA Rate per Technician</div><ResponsiveContainer width="100%" height={220}><BarChart data={byUserSlaChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} domain={[0,100]}/><Tooltip/><Bar dataKey="slaRate" radius={[4,4,0,0]}>{byUserSlaChart.map(function(e,i){return <Cell key={i} fill={e.color}/>;})}</Bar></BarChart></ResponsiveContainer></Card>
       </div>
-      <Card style={{marginBottom:16}}><div style={{fontWeight:700,marginBottom:12}}>Average Close Time per Technician</div><ResponsiveContainer width="100%" height={200}><BarChart data={byUserCloseChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Bar dataKey="avgClose" fill="#0ea5e9" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></Card>
+      <Card style={{marginBottom:16}}><div style={{fontWeight:700,marginBottom:12}}>Avg Close Time per Technician</div><ResponsiveContainer width="100%" height={200}><BarChart data={byUserCloseChart}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="name" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}}/><Tooltip/><Bar dataKey="avgClose" fill="#0ea5e9" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></Card>
       <Card><div style={{fontWeight:700,marginBottom:14}}>Average Time per Status</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10}}>{avgPerStatus.map(function(s){return <div key={s.status} style={{background:STATUS_META[s.status].bg,border:"1px solid "+STATUS_META[s.status].color+"44",borderRadius:10,padding:14,textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:STATUS_META[s.status].color,textTransform:"uppercase",marginBottom:4}}>{s.status}</div><div style={{fontSize:24,fontWeight:800,color:"#1e293b"}}>{s.avgH}<span style={{fontSize:12,fontWeight:400,color:"#64748b"}}>h</span></div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{s.count} tickets</div></div>;})}</div></Card>
     </div>}
   </div>;
@@ -1060,16 +1009,19 @@ function PageReports(p){
 
 // ── USERS ─────────────────────────────────────────────────────────────────────
 function PageUsers(p){
-  var users=p.users; var companies=p.companies; var setUsers=p.setUsers; var curUser=p.curUser; var addLog=p.addLog; var showToast=p.showToast;
+  var users=p.users; var companies=p.companies; var setUsers=p.setUsers; var curUser=p.curUser; var addLog=p.addLog; var showToast=p.showToast; var schedules=p.schedules||{}; var setSchedules=p.setSchedules;
   var [modal,setModal]=useState(null); var [form,setForm]=useState({});
-  var [emailStatus,setEmailStatus]=useState(null); // null | "sending" | "sent" | "failed"
+  var [emailStatus,setEmailStatus]=useState(null);
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
   var pendingUsers=users.filter(function(u){return !u.active;});
 
   function approveUser(u){
     setUsers(function(prev){return prev.map(function(x){return x.id===u.id?Object.assign({},x,{active:true}):x;});});
-    addLog("USER_APPROVED",u.id,u.name+" approved");
-    showToast("✅ Account approved!");
+    addLog("USER_APPROVED",u.id,u.name+" approved"); showToast("✅ Account approved!");
+  }
+
+  function handleScheduleChange(userId, sch){
+    setSchedules(function(prev){ var n=Object.assign({},prev); if(sch===null){ delete n[userId]; }else{ n[userId]=sch; } return n; });
   }
 
   async function save(){
@@ -1079,43 +1031,13 @@ function PageUsers(p){
       setUsers(function(prev){return prev.concat([nu]);});
       addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");
       showToast("User created");
-
-      // ── Send welcome email ──────────────────────────────────────────────────
       setEmailStatus("sending");
-      var defaultPw=getPassword(nu.id); // will be "password123" for new users
-      var emailBody=[
-        "Hi "+nu.name+",",
-        "",
-        "An account has been created for you on the Hoptix IT Helpdesk portal.",
-        "",
-        "📧 Email:    "+nu.email,
-        "🔑 Password: "+defaultPw,
-        "",
-        "⚠️  For your security, please sign in and change your password immediately.",
-        "",
-        "You can access the portal at any time to submit and track support tickets.",
-        "",
-        "If you did not expect this email or believe it was sent in error, please",
-        "contact your IT administrator.",
-        "",
-        "— The Hoptix IT Team"
-      ].join("\n");
-
-      var result=await callSendEmail({
-        to: nu.email,
-        subject: "🎉 Your Hoptix IT Helpdesk account is ready",
-        body: emailBody
-      });
-
+      var defaultPw=getPassword(nu.id);
+      var emailBody=["Hi "+nu.name+",","","An account has been created for you on the Hoptix IT Helpdesk portal.","","📧 Email:    "+nu.email,"🔑 Password: "+defaultPw,"","⚠️  For your security, please sign in and change your password immediately.","","— The Hoptix IT Team"].join("\n");
+      var result=await callSendEmail({to:nu.email,subject:"🎉 Your Hoptix IT Helpdesk account is ready",body:emailBody});
       setEmailStatus(result.success?"sent":"failed");
-      if(result.success){
-        addLog("EMAIL_SENT",nu.id,"Welcome email sent to "+nu.email);
-      } else {
-        showToast("⚠️ Welcome email failed to send","error");
-        addLog("EMAIL_SENT",nu.id,"Welcome email FAILED for "+nu.email);
-      }
-      // ── End send welcome email ──────────────────────────────────────────────
-
+      if(result.success){ addLog("EMAIL_SENT",nu.id,"Welcome email sent to "+nu.email); }
+      else { showToast("⚠️ Welcome email failed to send","error"); }
     } else {
       var old=users.find(function(u){return u.id===form.id;});
       setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});
@@ -1128,7 +1050,7 @@ function PageUsers(p){
   return <div>
     {pendingUsers.length>0&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:16,marginBottom:20}}><div style={{fontWeight:700,color:"#92400e",marginBottom:10,fontSize:13}}>⏳ {pendingUsers.length} Account{pendingUsers.length>1?"s":""} Awaiting Approval</div>{pendingUsers.map(function(u){return <div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 14px",borderRadius:8,border:"1px solid #fde68a",marginBottom:6}}><div style={{display:"flex",gap:10,alignItems:"center"}}><Avatar name={u.name} id={u.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{u.name}</div><div style={{fontSize:11,color:"#64748b"}}>{u.email}</div></div></div><div style={{display:"flex",gap:6}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅ Approve</Btn><Btn size="sm" variant="danger" onClick={function(){setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Account rejected");}}>✕ Reject</Btn></div></div>;})}</div>}
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>User Management ({users.length})</div><Btn onClick={function(){setEmailStatus(null);setForm({name:"",email:"",role:"end_user",companyId:companies[0]?.id||"",phone:"",dept:"",active:true});setModal("new");}}>➕ Add User</Btn></div>
-    <Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}><thead><tr style={{background:"#f8fafc"}}>{["User","Email","Role","Company","Status","Actions"].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>{h}</th>;})}</tr></thead><tbody>{users.map(function(u){ var co=companies.find(function(c){return c.id===u.companyId;}); var rm=ROLE_META[u.role]; return <tr key={u.id} style={{borderBottom:"1px solid #f1f5f9"}}><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:8,alignItems:"center"}}><Avatar name={u.name} id={u.id} size={30}/><div><div style={{fontWeight:600,fontSize:12}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>Last: {ago(u.lastLogin)}</div></div></div></td><td style={{padding:"10px 12px",fontSize:12}}>{u.email}</td><td style={{padding:"10px 12px"}}><Badge label={rm?.label||u.role} color={rm?.color||"#6366f1"}/></td><td style={{padding:"10px 12px",fontSize:12}}>{co?.name||"—"}</td><td style={{padding:"10px 12px"}}><Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/></td><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️</Btn><Btn size="sm" variant={u.active?"warning":"success"} onClick={function(){setUsers(function(prev){return prev.map(function(x){return x.id===u.id?Object.assign({},x,{active:!x.active}):x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>{u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={function(){setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}</div></td></tr>; })}</tbody></table></Card>
+    <Card style={{padding:0,overflow:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}><thead><tr style={{background:"#f8fafc"}}>{["User","Email","Role","Company","Schedule","Status","Actions"].map(function(h){return <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0"}}>{h}</th>;})}</tr></thead><tbody>{users.map(function(u){ var co=companies.find(function(c){return c.id===u.companyId;}); var rm=ROLE_META[u.role]; var sch=schedules[u.id]||null; var isIT=IT_ROLES.includes(u.role); return <tr key={u.id} style={{borderBottom:"1px solid #f1f5f9"}}><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:8,alignItems:"center"}}><Avatar name={u.name} id={u.id} size={30}/><div><div style={{fontWeight:600,fontSize:12}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>Last: {ago(u.lastLogin)}</div></div></div></td><td style={{padding:"10px 12px",fontSize:12}}>{u.email}</td><td style={{padding:"10px 12px"}}><Badge label={rm?.label||u.role} color={rm?.color||"#6366f1"}/></td><td style={{padding:"10px 12px",fontSize:12}}>{co?.name||"—"}</td><td style={{padding:"10px 12px",fontSize:11,color:isIT?sch?"#0369a1":"#94a3b8":"#e2e8f0"}}>{isIT?(sch?<span title={fmtSchedule(sch)}>🗓 {sch.days.map(function(d){return DOW_LABELS[d];}).join(", ")} {fmtHour(sch.startHour)}–{fmtHour(sch.endHour)}</span>:"No schedule"):"—"}</td><td style={{padding:"10px 12px"}}><Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/></td><td style={{padding:"10px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️</Btn><Btn size="sm" variant={u.active?"warning":"success"} onClick={function(){setUsers(function(prev){return prev.map(function(x){return x.id===u.id?Object.assign({},x,{active:!x.active}):x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>{u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={function(){setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}</div></td></tr>; })}</tbody></table></Card>
     {modal&&<Modal title={modal==="new"?"Add User":"Edit User"} onClose={function(){setModal(null);}}>
       <FInput label="Full Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/>
       <FInput label="Email *" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/>
@@ -1136,12 +1058,11 @@ function PageUsers(p){
       <FInput label="Department" value={form.dept||""} onChange={function(e){fld("dept",e.target.value);}}/>
       <FSelect label="Role" value={form.role||"end_user"} onChange={function(e){fld("role",e.target.value);}} options={OPT_ROLES}/>
       <FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompanies(companies)}/>
-      {modal==="new"&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1"}}>
-        📧 A welcome email with login credentials will be sent to the provided address upon creation.
-      </div>}
+      {IT_ROLES.includes(form.role)&&<ScheduleEditor userId={form.id||"__new__"} schedules={schedules} onChange={handleScheduleChange}/>}
+      {modal==="new"&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1"}}>📧 A welcome email with login credentials will be sent upon creation.</div>}
       {emailStatus==="sending"&&<div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e",display:"flex",alignItems:"center",gap:8}}><span style={{display:"inline-block",width:12,height:12,border:"2px solid #92400e",borderTop:"2px solid transparent",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> Sending welcome email…</div>}
-      {emailStatus==="sent"&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#166534"}}>✅ Welcome email sent successfully!</div>}
-      {emailStatus==="failed"&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#dc2626"}}>⚠️ Welcome email failed. The account was still created.</div>}
+      {emailStatus==="sent"&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#166534"}}>✅ Welcome email sent!</div>}
+      {emailStatus==="failed"&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#dc2626"}}>⚠️ Welcome email failed. Account was still created.</div>}
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
         <Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn>
         <Btn onClick={save}>{modal==="new"?"Create & Send Welcome Email":"Save"}</Btn>
@@ -1183,8 +1104,8 @@ function PageTicketTypes(p){
   return <div>
     <Card style={{marginBottom:24,borderTop:"3px solid #6366f1"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div><div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>⏱ Status SLA Thresholds</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>Set how many hours are allowed for each ticket status before it's considered breached.</div></div>
-        <div style={{display:"flex",gap:8}}><Btn size="sm" variant="ghost" onClick={resetSla}>↺ Reset to Defaults</Btn><Btn size="sm" variant={slaChanged?"primary":"ghost"} onClick={saveSla} style={{opacity:slaChanged?1:0.5}}>💾 Save SLA Settings</Btn></div>
+        <div><div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>⏱ Status SLA Thresholds</div><div style={{fontSize:12,color:"#64748b",marginTop:2}}>Hours allowed per status. SLA only counts during the assignee's scheduled shift hours.</div></div>
+        <div style={{display:"flex",gap:8}}><Btn size="sm" variant="ghost" onClick={resetSla}>↺ Reset</Btn><Btn size="sm" variant={slaChanged?"primary":"ghost"} onClick={saveSla} style={{opacity:slaChanged?1:0.5}}>💾 Save SLA</Btn></div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
         {ALL_STATUSES.map(function(status){
@@ -1197,7 +1118,7 @@ function PageTicketTypes(p){
           </div>;
         })}
       </div>
-      {slaChanged&&<div style={{marginTop:14,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e"}}>⚠️ You have unsaved changes. Click <strong>Save SLA Settings</strong> to apply.</div>}
+      {slaChanged&&<div style={{marginTop:14,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e"}}>⚠️ Unsaved changes. Click <strong>Save SLA</strong> to apply.</div>}
     </Card>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><div style={{fontWeight:700,fontSize:14}}>Ticket Types ({ticketTypes.length})</div><Btn onClick={function(){setForm({name:"",priority:"medium",slaHours:24,color:"#6366f1",keywords:[],defaultAssignee:""});setModal("new");}}>➕ Add Type</Btn></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:14}}>
@@ -1208,19 +1129,9 @@ function PageTicketTypes(p){
 }
 
 // ── ACTIVITY LOG ──────────────────────────────────────────────────────────────
-const ACTION_META={USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},SMS_SENT:{icon:"📱",color:"#8b5cf6",label:"SMS Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},LOCATION_ADDED:{icon:"📍",color:"#10b981",label:"Location Added"},LOCATION_REMOVED:{icon:"📍",color:"#ef4444",label:"Location Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
-
 function PageActivityLog(p){ var logs=p.logs; var users=p.users;
   var [filter,setFilter]=useState("");
   function fu(id){return users.find(function(x){return x.id===id;});}
   var filtered=filter?logs.filter(function(l){return l.action===filter;}):logs;
   return <div><div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div><select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return <option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select></div><Card style={{padding:0}}>{filtered.map(function(log,i){ var am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action}; var actor=fu(log.userId); return <div key={log.id} style={{display:"flex",gap:12,padding:"12px 16px",borderBottom:i<filtered.length-1?"1px solid #f1f5f9":"none",alignItems:"flex-start"}}><div style={{width:32,height:32,borderRadius:8,background:am.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{am.icon}</div><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><Badge label={am.label} color={am.color}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(log.timestamp)}</span></div><div style={{fontSize:12,color:"#334155",marginTop:4}}>{log.detail}</div>{actor&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Avatar name={actor.name} id={actor.id} size={14}/>By {actor.name}</div>}</div></div>; })}{filtered.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No activity found</div>}</Card></div>;
-}
-
-// ── SMS TRACKER ───────────────────────────────────────────────────────────────
-function PageSmsTracker(p){ var tickets=p.tickets; var curUser=p.curUser; var showToast=p.showToast; var addLog=p.addLog;
-  var [to,setTo]=useState(""); var [body,setBody]=useState(""); var [tid,setTid]=useState(tickets[0]?.id||""); var [sending,setSending]=useState(false);
-  var [log,setLog]=useState([{id:"s1",to:"+1-555-0105",body:"Ticket #t1: Tech will call in 30 min.",from:"Alex Rodriguez",ticketId:"t1",ts:hAgo(2),status:"delivered"},{id:"s2",to:"+1-555-0107",body:"Security alert: Change your password now.",from:"Mike Chen",ticketId:"t3",ts:hAgo(1),status:"delivered"}]);
-  async function send(){ if(!to.trim()||!body.trim()){showToast("Phone and message required","error");return;} setSending(true); var entry={id:uid(),to,body,from:curUser.name,ticketId:tid,ts:new Date().toISOString(),status:"sending"}; setLog(function(prev){return [entry].concat(prev);}); var result=await callSendSms({to,message:body,ticketId:tid}); setLog(function(prev){return prev.map(function(s){return s.id===entry.id?Object.assign({},s,{status:result.success?"delivered":"failed"}):s;}); }); addLog("SMS_SENT",tid,"SMS → "+to+(result.success?"":" [FAILED]")); showToast(result.success?"📱 SMS sent via Twilio!":"⚠️ SMS failed",result.success?"ok":"error"); setSending(false); if(result.success){setTo("");setBody("");} }
-  return <div><div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:14,marginBottom:20,fontSize:12}}><div style={{fontWeight:700,color:"#1e40af",marginBottom:6}}>📱 SMS Tracking — Twilio API Integration</div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1.5fr",gap:20}}><Card><div style={{fontWeight:700,marginBottom:14}}>Send SMS</div><FInput label="To (phone)" value={to} onChange={function(e){setTo(e.target.value);}} placeholder="+1-555-0123"/><FSelect label="Link to Ticket" value={tid} onChange={function(e){setTid(e.target.value);}} options={optTickets(tickets)}/><FTextarea label="Message" value={body} onChange={function(e){setBody(e.target.value);}} rows={3} placeholder="Type SMS…"/><button onClick={send} disabled={sending} style={{background:sending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",fontWeight:600,fontSize:13,cursor:sending?"not-allowed":"pointer"}}>{sending?"⏳ Sending…":"📤 Send & Track"}</button></Card><Card><div style={{fontWeight:700,marginBottom:14}}>SMS Log ({log.length})</div>{log.map(function(m){return <div key={m.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:10,marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><div style={{fontWeight:700,fontSize:12}}>📱 → {m.to}</div><Badge label={m.status} color={m.status==="delivered"?"#10b981":m.status==="failed"?"#ef4444":"#f59e0b"}/></div><div style={{fontSize:12,color:"#334155",marginBottom:4}}>{m.body}</div><div style={{fontSize:10,color:"#94a3b8",display:"flex",justifyContent:"space-between"}}><span>By {m.from} · #{m.ticketId}</span><span>{fdt(m.ts)}</span></div></div>;})}</Card></div></div>;
 }
