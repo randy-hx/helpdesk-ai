@@ -461,7 +461,7 @@ export default function App(){
   var isAdmin=["admin","it_manager"].includes(curUser?.role);
   var isTech=IT_ROLES.includes(curUser?.role);
   var pendingUsers=useMemo(function(){return isAdmin?users.filter(function(u){return !u.active;}):[]},[users,isAdmin]);
-  var visible=useMemo(function(){return tickets.filter(function(t){return !t.deleted&&(isTech||t.submittedBy===curUser?.id||t.assignedTo===curUser?.id);});},[tickets,curUser,isTech]);
+  var visible=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
   var allNonDeleted=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
 
   if(loading)return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#062d6b)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #0ea5e9",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"#7dd3fc",fontSize:14,fontWeight:600}}>Loading Hoptix…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
