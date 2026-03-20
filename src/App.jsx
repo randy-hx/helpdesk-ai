@@ -527,6 +527,87 @@ export default function App(){
   </ErrorBoundary>;
 }
 
+// ── Ticket History ───────────────────────────────────────────────────────────
+function TicketHistory(p){
+  var ticket=p.ticket;var users=p.users;var curUser=p.curUser;
+  var[chats,setChats]=useState([]);
+  useEffect(function(){
+    dbGetChats(ticket.id).then(function(data){setChats(data);});
+  },[ticket.id]);
+  function fu(id){return users.find(function(u){return u.id===id;});}
+  var events=[];
+  (ticket.statusHistory||[]).filter(function(h){return !h._noSlaReset||h.note;}).forEach(function(h){
+    events.push({type:"status",time:h.timestamp,data:h});
+  });
+  (ticket.conversations||[]).forEach(function(m){
+    events.push({type:"email",time:m.timestamp,data:m});
+  });
+  chats.forEach(function(m){
+    events.push({type:"chat",time:m.created_at,data:m});
+  });
+  events.sort(function(a,b){return new Date(b.time)-new Date(a.time);});
+  if(events.length===0)return<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No history yet.</div>;
+  return<div>
+    <div style={{fontWeight:700,color:"#1e293b",marginBottom:16}}>📜 Ticket Timeline</div>
+    {events.map(function(ev,i){
+      if(ev.type==="status"){
+        var h=ev.data;
+        return<div key={i} style={{display:"flex",gap:12,marginBottom:12}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+            <div style={{width:32,height:32,borderRadius:8,background:(STATUS_META[h.status]?.color||"#6366f1")+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🔄</div>
+            {i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:16}}/>}
+          </div>
+          <div style={{flex:1,background:"#f8fafc",borderRadius:8,padding:10,marginBottom:4}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <Badge label={h.status} color={STATUS_META[h.status]?.color||"#6366f1"}/>
+              <span style={{fontSize:10,color:"#94a3b8"}}>{fdt(h.timestamp)}</span>
+            </div>
+            <div style={{fontSize:11,color:"#64748b"}}>Assigned: <strong>{fu(h.assignedTo)?.name||"Unassigned"}</strong></div>
+            <div style={{fontSize:11,color:"#475569"}}>By: {fu(h.changedBy)?.name||"System"}</div>
+            {h.note&&<div style={{fontSize:11,color:"#334155",marginTop:4,fontStyle:"italic"}}>{h.note}</div>}
+          </div>
+        </div>;
+      }
+      if(ev.type==="email"){
+        var m=ev.data;var isReply=m.isExternal||m.status==="received";
+        var sender=isReply?(m.fromName||m.fromEmail):(fu(m.from)?.name||curUser.name);
+        return<div key={i} style={{display:"flex",gap:12,marginBottom:12}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+            <div style={{width:32,height:32,borderRadius:8,background:"#e0f2fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{isReply?"📬":"📧"}</div>
+            {i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:16}}/>}
+          </div>
+          <div style={{flex:1,background:isReply?"#f0fdf4":"#f0f9ff",borderRadius:8,padding:10,marginBottom:4,border:"1px solid "+(isReply?"#bbf7d0":"#bae6fd")}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontSize:12,fontWeight:700,color:isReply?"#166534":"#0369a1"}}>{isReply?"📬 Reply received":"📧 Email sent"}</span>
+              <span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span>
+            </div>
+            <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>From: <strong>{sender}</strong>{!isReply&&m.toEmails&&m.toEmails.length>0&&<span> → {m.toEmails.join(", ")}</span>}</div>
+            <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subject: {m.subject}</div>
+            <div style={{fontSize:12,color:"#334155",background:"rgba(255,255,255,.6)",borderRadius:6,padding:"6px 8px",maxHeight:60,overflow:"hidden",whiteSpace:"pre-wrap"}}>{m.body?.slice(0,120)}{m.body?.length>120?"…":""}</div>
+          </div>
+        </div>;
+      }
+      if(ev.type==="chat"){
+        var cm=ev.data;var csender=fu(cm.user_id);var isMe=cm.user_id===curUser.id;
+        return<div key={i} style={{display:"flex",gap:12,marginBottom:12}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+            <div style={{width:32,height:32,borderRadius:8,background:"#eef2ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>💬</div>
+            {i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:16}}/>}
+          </div>
+          <div style={{flex:1,background:isMe?"#eef2ff":"#f8fafc",borderRadius:8,padding:10,marginBottom:4,border:"1px solid "+(isMe?"#c7d2fe":"#e2e8f0")}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontSize:12,fontWeight:700,color:isMe?"#4338ca":"#334155"}}>💬 {isMe?"You":csender?.name||"Unknown"}</span>
+              <span style={{fontSize:10,color:"#94a3b8"}}>{fdt(cm.created_at)}</span>
+            </div>
+            <div style={{fontSize:12,color:"#334155"}}>{cm.message}</div>
+          </div>
+        </div>;
+      }
+      return null;
+    })}
+  </div>;
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 function PageDashboard(p){
   var tickets=p.tickets;var allTickets=p.allTickets||p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients;var setPage=p.setPage;var setSelTicket=p.setSelTicket;var breaches=p.breaches;
@@ -825,10 +906,7 @@ function TicketDetail(p){
 
     {tab==="chat"&&<TicketChat ticketId={ticket.id} curUser={curUser} users={users}/>}
 
-    {tab==="history"&&<div>
-      <div style={{fontWeight:700,color:"#1e293b",marginBottom:12}}>📜 Status History</div>
-      {(ticket.statusHistory||[]).filter(function(h){return !h._noSlaReset||h.note;}).slice().reverse().map(function(h,i){return<div key={i} style={{display:"flex",gap:12,marginBottom:12}}><div style={{width:10,height:10,borderRadius:"50%",background:STATUS_META[h.status]?.color||"#6366f1",marginTop:4,flexShrink:0}}/><div style={{flex:1,background:"#f8fafc",borderRadius:8,padding:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><Badge label={h.status} color={STATUS_META[h.status]?.color||"#6366f1"}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(h.timestamp)}</span></div><div style={{fontSize:11,color:"#64748b",marginTop:4}}>Assigned: <strong>{fu(h.assignedTo)?.name||"Unassigned"}</strong></div><div style={{fontSize:11,color:"#475569"}}>By: {fu(h.changedBy)?.name||"System"}</div>{h.note&&<div style={{fontSize:11,color:"#334155",marginTop:4,fontStyle:"italic"}}>{h.note}</div>}</div></div>;})}
-    </div>}
+    {tab==="history"&&<TicketHistory ticket={ticket} users={users} curUser={curUser}/>}
   </Modal>;
 }
 
