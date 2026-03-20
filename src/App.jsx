@@ -394,7 +394,7 @@ export default function App(){
   useEffect(function(){
     async function loadAll(){
       setLoading(true);
-      var[u,co,cl,tt,tkt,lg,sch]=await Promise.all([
+      var[u,co,cl,tt,tkt,lg,sch,et]=await Promise.all([
         dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),
         dbGetTickets(),dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates()
       ]);
