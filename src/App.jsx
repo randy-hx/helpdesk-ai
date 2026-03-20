@@ -133,38 +133,13 @@ function clearAuth(){ try{localStorage.removeItem("hd_curUser");}catch{} }
 
 const SEED_COMPANIES = [];
 const SEED_CLIENTS   = [];
-const SEED_USERS = [
+const SEED_USERS     = [
   {id:"u1",name:"Randy Admin",email:"randy@omnisecurityinc.com",role:"admin",companyId:"",phone:"",dept:"IT Administration",active:true,createdAt:new Date().toISOString(),lastLogin:null},
 ];
-const SEED_TYPES = [
-  {id:"tt1",name:"Hardware Issue",priority:"high",slaHours:8,keywords:["hardware","computer","printer","monitor","keyboard","laptop","screen"],defaultAssignee:null,color:"#ef4444"},
-  {id:"tt2",name:"Software Install",priority:"medium",slaHours:24,keywords:["install","software","application","app","program","license"],defaultAssignee:null,color:"#f59e0b"},
-  {id:"tt3",name:"Network Problem",priority:"critical",slaHours:4,keywords:["network","internet","wifi","connection","disconnected"],defaultAssignee:null,color:"#dc2626"},
-  {id:"tt4",name:"Password Reset",priority:"low",slaHours:4,keywords:["password","reset","locked","login","forgot"],defaultAssignee:null,color:"#10b981"},
-  {id:"tt5",name:"Email Issue",priority:"medium",slaHours:8,keywords:["email","outlook","mail","inbox","calendar"],defaultAssignee:null,color:"#6366f1"},
-  {id:"tt6",name:"Security Incident",priority:"critical",slaHours:2,keywords:["security","hack","breach","virus","malware","phishing"],defaultAssignee:null,color:"#7c3aed"},
-  {id:"tt7",name:"VPN Access",priority:"medium",slaHours:8,keywords:["vpn","remote","tunnel"],defaultAssignee:null,color:"#8b5cf6"},
-  {id:"tt8",name:"Others",priority:"low",slaHours:48,keywords:[],defaultAssignee:null,color:"#94a3b8"},
-];
+const SEED_TYPES   = [];
 const SEED_TICKETS = [];
-const SEED_LOGS    = []; Dell XPS 15.","tt1","In Progress","u5","u3","c2","cl4","loc8",12,[{id:"m1",from:"u5",fromEmail:"john@acmecorp.com",to:["u3"],toEmails:["alex@itsolutions.com"],cc:[],subject:"Re: [#t1]",body:"Flickering every 5 min.",timestamp:hAgo(10),isExternal:false,status:"sent"},{id:"m2",from:"u3",fromEmail:"alex@itsolutions.com",to:["u5"],toEmails:["john@acmecorp.com"],cc:[],subject:"Re: [#t1]",body:"Bring laptop to IT at 2PM.\n\nAlex",timestamp:hAgo(9),isExternal:false,status:"sent"}],[{status:"Open",assignedTo:"u3",timestamp:hAgo(12),changedBy:"u5",note:"Ticket created"},{status:"In Progress",assignedTo:"u3",timestamp:hAgo(10),changedBy:"u3",note:"Diagnostic scheduled"}]),
-  mkT("t2","Cannot connect to VPN","Error 789 on VPN. Windows 11.","tt7","Open","u6","u4","c3","cl2","loc4",3,[],[]),
-  mkT("t3","Phishing email received","Fake IT domain. Five colleagues affected.","tt6","Escalated","u7","u2","c2","cl1","loc1",6,[{id:"m3",from:"u7",fromEmail:"bob@acmecorp.com",to:["u2"],toEmails:["mike@itsolutions.com"],cc:[],subject:"Re: [#t3]",body:"5 colleagues confirmed.",timestamp:hAgo(5),isExternal:false,status:"sent"},{id:"m4",from:"u2",fromEmail:"mike@itsolutions.com",to:["u7"],toEmails:["bob@acmecorp.com"],cc:[],subject:"Re: [#t3]",body:"Blocking domain now.\n\nMike",timestamp:hAgo(4),isExternal:false,status:"sent"}],[{status:"Open",assignedTo:"u2",timestamp:hAgo(6),changedBy:"u7",note:"Ticket created"},{status:"Escalated",assignedTo:"u2",timestamp:hAgo(4),changedBy:"u2",note:"Escalated"}]),
-  mkT("t4","Outlook not syncing","Stopped syncing 3h ago.","tt5","Closed","u5","u4","c2","cl4","loc7",24,[],[]),
-  mkT("t5","AD Account locked","Locked before presentation.","tt4","Closed","u6","u4","c3","cl2","loc5",48,[],[]),
-  mkT("t6","Adobe CS install","Need Adobe CS on 3 computers.","tt2","Open","u7","u4","c2","cl1","loc2",5,[],[]),
-  mkT("t7","3rd floor outage","25+ users offline.","tt3","In Progress","u5","u3","c2","cl4","loc8",2,[],[]),
-  mkT("t8","TEST - ignore","Test ticket.","tt8","Open","u5",null,"c2",null,null,1,[],[]),
-  mkT("t9","New employee setup","Configure laptop for new hire.","tt2","Closed","u7","u4","c2","cl4","loc8",72,[],[]),
-  mkT("t10","Backup drive error","Not recognized after update.","tt1","Open","u6","u3","c3","cl2","loc4",8,[],[]),
-];
-const SEED_LOGS = [
-  {id:"l1",action:"USER_ROLE_CHANGE",userId:"u1",target:"u2",detail:"Role changed to IT Manager",timestamp:dAgo(5)},
-  {id:"l2",action:"COMPANY_CREATED",userId:"u1",target:"c3",detail:"Company TechStart Inc created",timestamp:dAgo(85)},
-  {id:"l3",action:"TICKET_CREATED",userId:"u5",target:"t1",detail:"Ticket #t1 created",timestamp:hAgo(12)},
-  {id:"l4",action:"TICKET_STATUS",userId:"u3",target:"t1",detail:"Status: Open → In Progress",timestamp:hAgo(10)},
-  {id:"l6",action:"EMAIL_SENT",userId:"u3",target:"t1",detail:"Email sent to john@acmecorp.com",timestamp:hAgo(9)},
-];
+const SEED_LOGS    = []; 
+
 
 function mkOpt(v,l){ return {value:v,label:l}; }
 const OPT_ROLES    = Object.keys(ROLE_META).map(function(k){ return mkOpt(k,ROLE_META[k].label); });
