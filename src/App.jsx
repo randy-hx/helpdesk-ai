@@ -1,6 +1,6 @@
 // ── REPLACE your entire LoginPage function with this ──────────────────────────
 function LoginPage(p){
-  var users=p.users;var setUsers=p.setUsers;var companies=p.companies;var onLogin=p.onLogin;
+  var users=p.users;var setUsers=p.setUsers;var companies=p.companies;var onLogin=p.onLogin;var dbSetPassword=p.dbSetPassword;
   var[view,setView]=useState("login");
   var[loginEmail,setLoginEmail]=useState("");var[loginPass,setLoginPass]=useState("");
   var[showP1,setShowP1]=useState(false);var[showP2,setShowP2]=useState(false);var[showP3,setShowP3]=useState(false);
