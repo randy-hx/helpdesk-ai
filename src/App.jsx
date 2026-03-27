@@ -184,7 +184,26 @@ class ErrorBoundary extends React.Component{constructor(p){super(p);this.state={
 function Badge(p){return<span style={{background:p.bg||p.color+"22",color:p.color,border:"1px solid "+p.color+"44",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,whiteSpace:"nowrap",display:"inline-block"}}>{p.label}</span>;}
 function Avatar(p){var s=p.size||32;return<div style={{width:s,height:s,borderRadius:"50%",background:avCol(p.id||p.name),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:s*0.35,fontWeight:700,flexShrink:0}}>{inits(p.name)}</div>;}
 function Card(p){return<div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px rgba(0,0,0,.06)",padding:16,...p.style}}>{p.children}</div>;}
-function Stat(p){return<Card style={{flex:1,minWidth:140}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><div style={{color:"#64748b",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{p.label}</div><div style={{fontSize:24,fontWeight:800,color:p.color||"#6366f1",margin:"4px 0 2px"}}>{p.value}</div>{p.sub&&<div style={{fontSize:10,color:"#94a3b8"}}>{p.sub}</div>}</div><span style={{fontSize:20}}>{p.icon}</span></div></Card>;}
+function Stat(p){
+  var[tip,setTip]=useState(false);
+  return<Card style={{flex:1,minWidth:140,position:"relative"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:2}}>
+          <div style={{color:"#64748b",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5}}>{p.label}</div>
+          {p.help&&<button onClick={function(){setTip(!tip);}} style={{background:"none",border:"none",cursor:"pointer",padding:0,lineHeight:1,color:"#94a3b8",fontSize:11,fontWeight:700,flexShrink:0}}>ⓘ</button>}
+        </div>
+        <div style={{fontSize:24,fontWeight:800,color:p.color||"#6366f1",margin:"4px 0 2px"}}>{p.value}</div>
+        {p.sub&&<div style={{fontSize:10,color:"#94a3b8"}}>{p.sub}</div>}
+      </div>
+      <span style={{fontSize:20}}>{p.icon}</span>
+    </div>
+    {tip&&p.help&&<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:0,right:0,background:"#1e293b",color:"#f1f5f9",borderRadius:8,padding:"8px 10px",fontSize:11,lineHeight:1.6,zIndex:999,boxShadow:"0 4px 16px rgba(0,0,0,.25)"}}>
+      {p.help}
+      <div style={{position:"absolute",bottom:-5,left:16,width:10,height:10,background:"#1e293b",transform:"rotate(45deg)"}}/>
+    </div>}
+  </Card>;
+}
 
 function Modal(p){
   var isMob=useIsMobile();
@@ -1356,10 +1375,10 @@ function PageReports(p){
     <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>{["day","week","month","year","all"].map(function(r){return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;})}</div>
     {view==="summary"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"}/>
-        <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9"/>
-        <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1"/>
-        <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
+        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"} help={"SLA Rate = tickets resolved within their time target ÷ total tickets × 100. Formula: ("+( active.length-totalBreached)+" on-time ÷ "+active.length+" total) × 100. Green ≥90%, Yellow ≥75%, Red <75%."}/>
+        <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9" help="Average hours from ticket creation to closure, across all closed tickets in this period. Lower is better."/>
+        <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1" help="Number of tickets created within the selected time period and filters."/>
+        <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Total real work time logged by IT staff using the Start/Stop timer. This reflects actual effort spent, not elapsed wall-clock time."/>
       </div>
       <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
       <Card style={{borderLeft:"4px solid #6366f1"}}>
@@ -1786,7 +1805,35 @@ function PageIntegrations(p){
   async function runTest(){if(!testTo.trim()){showToast("Enter a recipient email","error");return;}setSending(true);setStatus("");try{var r=await callSendEmail({to:testTo.trim(),subject:"Hoptix Test",body:"Your email integration is working!"});if(r.success){setStatus("ok");showToast("📧 Test sent!");}else{setStatus("fail");showToast("Failed: "+r.error,"error");}}catch(e){setStatus("fail");showToast("Error: "+e.message,"error");}setSending(false);}
   return<div style={{maxWidth:600}}>
     <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🔌 Integrations</div>
-    <div style={{fontSize:12,color:"#64748b",marginBottom:20}}>Configure your email provider.</div>
+    <div style={{fontSize:12,color:"#64748b",marginBottom:20}}>Configure your email provider and review service costs.</div>
+
+    {/* Cost transparency card */}
+    <Card style={{borderTop:"3px solid #10b981",marginBottom:20}}>
+      <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>💰 Cost Transparency</div>
+      <div style={{fontSize:11,color:"#64748b",marginBottom:14}}>Everything this app uses, and what (if anything) you pay for it.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {[
+          {name:"Vercel (Hosting)",tier:"Free",detail:"Hobby plan — free forever for personal/small projects. Unlimited deploys, 100GB bandwidth/month.",color:"#10b981",paid:false},
+          {name:"Supabase (Database)",tier:"Free",detail:"Free tier — 500MB database, 1GB file storage, 50,000 monthly active users. More than enough for a helpdesk.",color:"#10b981",paid:false},
+          {name:"GitHub (Code Storage)",tier:"Free",detail:"Free for public and private repos. No cost for storing and deploying your code.",color:"#10b981",paid:false},
+          {name:"Gmail / Nodemailer (Email)",tier:"Free",detail:"Uses your existing Gmail account with an App Password. No cost — Google provides this for free.",color:"#10b981",paid:false},
+          {name:"AI Analysis (Anthropic Claude)",tier:"Pay per use",detail:"Only charged when you click 'Analyze Now' in Reports. Cost: ~$0.003 per analysis (about ₱0.17). You need an Anthropic API key from console.anthropic.com.",color:"#f59e0b",paid:true},
+          {name:"Recharts (Charts)",tier:"Free",detail:"Open-source charting library. Zero cost, runs entirely in the browser.",color:"#10b981",paid:false},
+        ].map(function(item){return<div key={item.name} style={{display:"flex",gap:10,padding:"10px 12px",background:item.paid?"#fffbeb":"#f0fdf4",border:"1px solid "+(item.paid?"#fde68a":"#bbf7d0"),borderRadius:10,alignItems:"flex-start"}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:item.color,flexShrink:0,marginTop:4}}/>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}>
+              <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{item.name}</span>
+              <span style={{background:item.paid?"#fef3c7":"#d1fae5",color:item.paid?"#92400e":"#065f46",borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{item.tier}</span>
+            </div>
+            <div style={{fontSize:11,color:"#475569",lineHeight:1.6}}>{item.detail}</div>
+          </div>
+        </div>;})}
+      </div>
+      <div style={{marginTop:12,background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",fontSize:11,color:"#0369a1",lineHeight:1.7}}>
+        💡 <strong>Summary:</strong> The only component that costs money is the <strong>AI Analysis</strong> button in Reports — and only when you actually click it. Everything else is completely free. A typical month of heavy usage would cost less than <strong>₱5</strong> in AI credits.
+      </div>
+    </Card>
     <Card style={{borderTop:"3px solid #6366f1",marginBottom:20}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a></div>
       <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1",lineHeight:1.8}}>Set in Vercel → Settings → Environment Variables:<br/><code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_USER</code> and <code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_APP_PASSWORD</code></div>
