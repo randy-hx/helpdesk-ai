@@ -219,3 +219,42 @@ export async function dbGetAllTimeSessions() {
     return [];
   }
 }
+export async function dbGetTimeSessions(ticketId) {
+  try {
+    var result = await supabase
+      .from('time_sessions')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('started_at', { ascending: true });
+    if (result.error) throw result.error;
+    return result.data || [];
+  } catch (e) {
+    console.error('dbGetTimeSessions', e);
+    return [];
+  }
+}
+
+export async function dbSaveTimeSession(session) {
+  try {
+    var result = await supabase
+      .from('time_sessions')
+      .upsert([session]);
+    if (result.error) throw result.error;
+  } catch (e) {
+    console.error('dbSaveTimeSession', e);
+  }
+}
+
+export async function dbGetAllTimeSessions() {
+  try {
+    var result = await supabase
+      .from('time_sessions')
+      .select('*')
+      .order('started_at', { ascending: false });
+    if (result.error) throw result.error;
+    return result.data || [];
+  } catch (e) {
+    console.error('dbGetAllTimeSessions', e);
+    return [];
+  }
+}
