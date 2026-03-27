@@ -777,31 +777,42 @@ export default function App(){
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 function PageDashboard(p){
-  var tickets=p.tickets;var allTickets=p.allTickets||p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var setPage=p.setPage;var setSelTicket=p.setSelTicket;var breaches=p.breaches;var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
+  var tickets=p.tickets;var allTickets=p.allTickets||p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var setPage=p.setPage;var setSelTicket=p.setSelTicket;var breaches=p.breaches||[];var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
   var byStatus=ALL_STATUSES.map(function(s){return{name:s,value:tickets.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
   var daily=Array.from({length:7},function(_,i){var d=new Date(Date.now()-(6-i)*86400000);return{lbl:d.toLocaleDateString("en",{weekday:"short"}),created:tickets.filter(function(t){return new Date(t.createdAt).toDateString()===d.toDateString();}).length,closed:tickets.filter(function(t){return t.closedAt&&new Date(t.closedAt).toDateString()===d.toDateString();}).length};});
   var techs=users.filter(function(u){return["it_technician","it_manager"].includes(u.role);});
   var byType=ticketTypes.map(function(tt,i){return{name:tt.name,value:tickets.filter(function(t){return t.typeId===tt.id;}).length,fill:PAL[i%PAL.length]};}).filter(function(x){return x.value>0;});
   var totalLoggedMins=allTimeSessions.filter(function(s){return s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
+
   return<div>
+    {/* Stat cards */}
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:16}}>
-      <Stat label="Total" value={tickets.length} icon="🎫" color="#6366f1"/>
-      <Stat label="Open" value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b"/>
-      <Stat label="In Progress" value={tickets.filter(function(t){return t.status==="In Progress";}).length} icon="⚙️" color="#6366f1"/>
-      <Stat label="Escalated" value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed"/>
-      <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981"/>
-      <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
+      <Stat label="Total" value={tickets.length} icon="🎫" color="#6366f1" help="All active (non-deleted) tickets in the system."/>
+      <Stat label="Open" value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b" help="Submitted but not yet assigned or started. Needs immediate attention."/>
+      <Stat label="In Progress" value={tickets.filter(function(t){return t.status==="In Progress";}).length} icon="⚙️" color="#6366f1" help="Currently being worked on by an assigned technician."/>
+      <Stat label="Escalated" value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed" help="Raised to senior staff — either past SLA or requires specialist attention."/>
+      <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981" help="Fully resolved and closed tickets. Includes all historical records."/>
+      <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Real work time logged by IT staff using the Start/Stop timer inside each ticket. Not wall-clock time."/>
     </div>
-    {breaches.length>0&&<div style={{background:"#fef2f2",border:"2px solid #ef4444",borderRadius:12,padding:14,marginBottom:16}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-        <span style={{fontSize:18}}>🚨</span>
+
+    {/* SLA Breach — always visible regardless of count */}
+    <div style={{background:breaches.length>0?"#fef2f2":"#f0fdf4",border:"2px solid "+(breaches.length>0?"#ef4444":"#bbf7d0"),borderRadius:12,padding:14,marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:breaches.length>0?12:0}}>
+        <span style={{fontSize:22}}>{breaches.length>0?"🚨":"✅"}</span>
         <div style={{flex:1}}>
-          <div style={{fontWeight:800,color:"#dc2626",fontSize:14}}>SLA Breach Alerts</div>
-          <div style={{fontSize:11,color:"#ef4444"}}>{breaches.length} ticket{breaches.length!==1?"s":""} past their SLA threshold</div>
+          <div style={{fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",fontSize:14}}>SLA Breach Alerts</div>
+          <div style={{fontSize:11,color:breaches.length>0?"#ef4444":"#16a34a",marginTop:2}}>
+            {breaches.length===0
+              ?"All active tickets are within their SLA targets — great work!"
+              :breaches.length+" ticket"+(breaches.length!==1?"s are":" is")+" past the SLA threshold"}
+          </div>
         </div>
-        <Badge label={breaches.length+" BREACHED"} color="#ef4444"/>
+        <div style={{textAlign:"center",background:breaches.length>0?"#fecaca":"#bbf7d0",borderRadius:10,padding:"6px 14px",flexShrink:0}}>
+          <div style={{fontSize:26,fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",lineHeight:1}}>{breaches.length}</div>
+          <div style={{fontSize:9,color:breaches.length>0?"#dc2626":"#166534",textTransform:"uppercase",fontWeight:700}}>Breached</div>
+        </div>
       </div>
-      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+      {breaches.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
         {breaches.slice(0,5).map(function(t){
           var pri=PRI_META[t.priority]||PRI_META.medium;
           var asgn=users.find(function(u){return u.id===t.assignedTo;});
@@ -817,9 +828,10 @@ function PageDashboard(p){
             <Btn size="sm" variant="danger" onClick={function(){setSelTicket(t.id);}}>View →</Btn>
           </div>;
         })}
-        {breaches.length>5&&<div style={{fontSize:11,color:"#ef4444",textAlign:"center",fontWeight:600}}>+{breaches.length-5} more breached tickets — check the Tickets page</div>}
-      </div>
-    </div>}
+        {breaches.length>5&&<div style={{fontSize:11,color:"#ef4444",textAlign:"center",fontWeight:600,padding:"4px 0"}}>+{breaches.length-5} more — check the Tickets page</div>}
+      </div>}
+    </div>
+    {/* Charts row */}
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(280px,1fr))",gap:14,marginBottom:14}}>
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{byStatus.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>7-Day Trend</div><ResponsiveContainer width="100%" height={180}><AreaChart data={daily}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="lbl" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:9}}/><Area type="monotone" dataKey="created" stroke="#6366f1" fill="#eef2ff" name="Created"/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed"/></AreaChart></ResponsiveContainer></Card>
