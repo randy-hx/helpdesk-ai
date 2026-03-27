@@ -26,7 +26,6 @@ const fmtMs   = function(mins){ if(!mins&&mins!==0)return"—"; var s=mins*60; i
 const pieLabel= function(p){ return p.value>0?p.name+": "+p.value:""; };
 const fmtHour = function(h){ if(h===0)return"12:00 AM"; if(h<12)return h+":00 AM"; if(h===12)return"12:00 PM"; return (h-12)+":00 PM"; };
 
-// Format minutes as "Xh Ym" for display
 const fmtDuration = function(mins){
   if(!mins||mins<=0)return"0m";
   var h=Math.floor(mins/60);
@@ -36,7 +35,6 @@ const fmtDuration = function(mins){
   return h+"h "+m+"m";
 };
 
-// Format a live elapsed seconds counter as HH:MM:SS
 const fmtElapsed = function(secs){
   var h=Math.floor(secs/3600);
   var m=Math.floor((secs%3600)/60);
@@ -46,33 +44,25 @@ const fmtElapsed = function(secs){
 
 function useIsMobile(){ var[mob,setMob]=useState(window.innerWidth<768); useEffect(function(){function h(){setMob(window.innerWidth<768);}window.addEventListener("resize",h);return function(){window.removeEventListener("resize",h);};},[]);return mob; }
 
-// Convert a PHT slot index (0–48, 30-min steps) to fractional hours in PHT
 function slotToHours(slot){ return slot*0.5; }
 
-// Get the day key ("sun","mon",...) for a JS Date object interpreted in PHT (UTC+8)
 function getPHTDayKey(dateMs){
-  // Shift to PHT by adding 8 hours offset
   var PHT_OFFSET_MS=8*3600000;
   var phtMs=dateMs+PHT_OFFSET_MS;
-  var dow=new Date(phtMs).getUTCDay(); // 0=Sun..6=Sat in PHT
+  var dow=new Date(phtMs).getUTCDay();
   return DAY_KEYS[dow];
 }
 
-// Get PHT midnight (00:00 PHT) for a given UTC ms timestamp, returned as UTC ms
 function getPHTMidnightUTC(dateMs){
   var PHT_OFFSET_MS=8*3600000;
   var phtMs=dateMs+PHT_OFFSET_MS;
   var d=new Date(phtMs);
-  // Zero out time in PHT
   var phtMidnight=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate());
-  // Convert back to UTC
   return phtMidnight-PHT_OFFSET_MS;
 }
 
 function calcBusinessHoursElapsed(startMs,endMs,schedule){
   if(!schedule)return(endMs-startMs)/3600000;
-
-  // ── New per-day format ──────────────────────────────────────────────────
   if(schedule.perDay&&schedule.daySchedule){
     var total=0;
     var cur=startMs;
@@ -83,21 +73,17 @@ function calcBusinessHoursElapsed(startMs,endMs,schedule){
       var ds=schedule.daySchedule[dayKey];
       var dayMidnightUTC=getPHTMidnightUTC(cur);
       if(ds&&ds.active){
-        // Convert PHT slot times to UTC ms for this day
         var dayStartUTC=dayMidnightUTC+slotToHours(ds.start)*3600000;
         var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;
         var os=Math.max(cur,dayStartUTC);
         var oe=Math.min(endMs,dayEndUTC);
         if(oe>os)total+=(oe-os)/3600000;
       }
-      // Advance to next PHT midnight
       var nextMidnightUTC=dayMidnightUTC+86400000;
       cur=nextMidnightUTC;
     }
     return total;
   }
-
-  // ── Legacy format fallback {days:[], startHour, endHour} ───────────────
   if(!schedule.days||!schedule.days.length)return(endMs-startMs)/3600000;
   var total2=0,cur2=startMs;
   while(cur2<endMs){
@@ -112,8 +98,6 @@ function calcBusinessHoursElapsed(startMs,endMs,schedule){
 
 function isCurrentlyOnShift(schedule){
   if(!schedule)return true;
-
-  // ── New per-day format ──────────────────────────────────────────────────
   if(schedule.perDay&&schedule.daySchedule){
     var nowMs=Date.now();
     var dayKey=getPHTDayKey(nowMs);
@@ -124,8 +108,6 @@ function isCurrentlyOnShift(schedule){
     var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;
     return nowMs>=dayStartUTC&&nowMs<dayEndUTC;
   }
-
-  // ── Legacy fallback ─────────────────────────────────────────────────────
   if(!schedule.days||!schedule.days.length)return true;
   var now=new Date();var dow=now.getDay();var h=now.getHours()+(now.getMinutes()/60);
   return schedule.days.includes(dow)&&h>=schedule.startHour&&h<schedule.endHour;
@@ -147,16 +129,25 @@ function getStatusSla(ticket,slaConfig,schedules){
   return{hoursAllowed:allowed,hoursSpent:parseFloat(spent.toFixed(2)),pct,breached,remaining:parseFloat(remaining.toFixed(2)),enteredAt:entry,onShift,hasSchedule:!!schedule,schedule};
 }
 
-// Sum real logged minutes from time_sessions for a set of ticket IDs
 function sumLoggedMinutes(sessions, ticketIds){
   return sessions
     .filter(function(s){ return ticketIds?ticketIds.includes(s.ticket_id):true; })
     .reduce(function(sum,s){ return sum+(s.duration_minutes||0); },0);
 }
 
+// ── Updated callSendEmail — now supports CC ───────────────────────────────────
 async function callSendEmail(opts){
-  try{var res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:opts.to,subject:opts.subject||"(no subject)",text:opts.body||opts.message||""})});var data=await res.json();if(res.ok&&data.id)return{success:true,provider:"Gmail",id:data.id};throw new Error(data.error||("Status "+res.status));}catch(e){return{success:false,error:e.message,provider:"Gmail"};}
+  try{
+    var body={to:opts.to,subject:opts.subject||"(no subject)",text:opts.body||opts.message||""};
+    // Include CC if provided and non-empty
+    if(opts.cc&&opts.cc.trim()){body.cc=opts.cc;}
+    var res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    var data=await res.json();
+    if(res.ok&&data.id)return{success:true,provider:"Gmail",id:data.id};
+    throw new Error(data.error||("Status "+res.status));
+  }catch(e){return{success:false,error:e.message,provider:"Gmail"};}
 }
+
 async function dbGetChats(ticketId){
   try{var{data,error}=await supabase.from("ticket_chats").select("*").eq("ticket_id",ticketId).order("created_at",{ascending:true});if(error)throw error;return data||[];}catch(e){console.error("dbGetChats",e);return[];}
 }
@@ -215,17 +206,15 @@ function TicketTimer(p){
   var users=p.users;
 
   var[sessions,setSessions]=useState([]);
-  var[activeSession,setActiveSession]=useState(null); // {id, started_at}
-  var[elapsed,setElapsed]=useState(0); // seconds
+  var[activeSession,setActiveSession]=useState(null);
+  var[elapsed,setElapsed]=useState(0);
   var[note,setNote]=useState("");
   var[loading,setLoading]=useState(true);
   var intervalRef=useRef(null);
 
-  // Load existing sessions
   useEffect(function(){
     dbGetTimeSessions(ticketId).then(function(data){
       setSessions(data);
-      // Check if there's an open session (no ended_at) by this user
       var open=data.find(function(s){return s.user_id===curUser.id&&!s.ended_at;});
       if(open){
         setActiveSession({id:open.id,started_at:open.started_at});
@@ -235,7 +224,6 @@ function TicketTimer(p){
     });
   },[ticketId]);
 
-  // Live tick when timer is running
   useEffect(function(){
     if(activeSession){
       intervalRef.current=setInterval(function(){
@@ -278,7 +266,6 @@ function TicketTimer(p){
   if(loading)return<div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>Loading timer…</div>;
 
   return<div>
-    {/* Timer display */}
     <div style={{background:activeSession?"linear-gradient(135deg,#064e3b,#065f46)":"linear-gradient(135deg,#1e1b4b,#312e81)",borderRadius:16,padding:24,textAlign:"center",marginBottom:16}}>
       <div style={{fontSize:11,fontWeight:700,color:activeSession?"#6ee7b7":"#a5b4fc",textTransform:"uppercase",letterSpacing:2,marginBottom:8}}>
         {activeSession?"⏱ Timer Running":"⏸ Timer Stopped"}
@@ -302,7 +289,6 @@ function TicketTimer(p){
       )}
     </div>
 
-    {/* Total summary */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
       <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:12,textAlign:"center"}}>
         <div style={{fontSize:22,fontWeight:800,color:"#059669"}}>{fmtDuration(totalMins)}</div>
@@ -314,7 +300,6 @@ function TicketTimer(p){
       </div>
     </div>
 
-    {/* Session log */}
     {completedSessions.length>0&&<div>
       <div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>📋 Session Log</div>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -345,8 +330,7 @@ function TicketTimer(p){
 }
 
 // ── Schedule Editor ───────────────────────────────────────────────────────────
-// Time slots in 30-min intervals, 0 = midnight start, 48 = midnight end (24:00)
-var SLOT_COUNT = 49; // 0..48, where 48 = 24:00 (midnight end)
+var SLOT_COUNT = 49;
 function fmtSlot(slot){
   if(slot===48)return"12:00 AM (Midnight)";
   var totalMins=slot*30;
@@ -358,18 +342,15 @@ function fmtSlot(slot){
 }
 var ALL_SLOTS=Array.from({length:SLOT_COUNT},function(_,i){return{value:i,label:fmtSlot(i)};});
 
-// Default per-day schedule: Mon–Fri 9am–6pm PHT
 function defaultDaySchedule(){
   return{mon:{active:true,start:18,end:36},tue:{active:true,start:18,end:36},wed:{active:true,start:18,end:36},thu:{active:true,start:18,end:36},fri:{active:true,start:18,end:36},sat:{active:false,start:18,end:36},sun:{active:false,start:18,end:36}};
 }
 var DAY_KEYS=["sun","mon","tue","wed","thu","fri","sat"];
 var DAY_LABELS_FULL=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
-// Convert old schedule format {days:[],startHour,endHour} to new per-day format
 function migrateSchedule(sch){
   if(!sch)return null;
-  if(sch.perDay)return sch; // already new format
-  // old format migration
+  if(sch.perDay)return sch;
   var pd=defaultDaySchedule();
   var startSlot=Math.round((sch.startHour||9)*2);
   var endSlot=Math.round((sch.endHour||17)*2);
@@ -427,7 +408,6 @@ function ScheduleEditor(p){
           var ds=daySchedule[key]||{active:false,start:18,end:36};
           return<div key={key} style={{background:ds.active?"#fff":"#f8fafc",border:"1px solid "+(ds.active?"#bae6fd":"#e2e8f0"),borderRadius:8,padding:"8px 12px"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-              {/* Day toggle */}
               <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",minWidth:100,flexShrink:0}}>
                 <input type="checkbox" checked={ds.active} onChange={function(){toggleDay(key);}} style={{width:14,height:14,accentColor:"#0369a1"}}/>
                 <span style={{fontSize:12,fontWeight:ds.active?700:500,color:ds.active?"#0369a1":"#94a3b8"}}>{DAY_LABELS_FULL[i]}</span>
@@ -517,7 +497,7 @@ function TicketHistory(p){
       </div>;}
       if(ev.type==="email"){var m=ev.data;var isReply=m.isExternal||m.status==="received";var sender=isReply?(m.fromName||m.fromEmail):(fu(m.from)?.name||curUser.name);return<div key={i} style={{display:"flex",gap:10,marginBottom:12}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}><div style={{width:30,height:30,borderRadius:8,background:"#e0f2fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{isReply?"📬":"📧"}</div>{i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:12}}/>}</div>
-        <div style={{flex:1,background:isReply?"#f0fdf4":"#f0f9ff",borderRadius:8,padding:10,marginBottom:4,border:"1px solid "+(isReply?"#bbf7d0":"#bae6fd")}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><span style={{fontSize:12,fontWeight:700,color:isReply?"#166534":"#0369a1"}}>{isReply?"📬 Reply":"📧 Sent"}</span><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div><div style={{fontSize:11,color:"#64748b",marginBottom:2}}>From: <strong>{sender}</strong></div><div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div><div style={{fontSize:12,color:"#334155",background:"rgba(255,255,255,.6)",borderRadius:6,padding:"6px 8px",maxHeight:50,overflow:"hidden"}}>{m.body?.slice(0,100)}{m.body?.length>100?"…":""}</div></div>
+        <div style={{flex:1,background:isReply?"#f0fdf4":"#f0f9ff",borderRadius:8,padding:10,marginBottom:4,border:"1px solid "+(isReply?"#bbf7d0":"#bae6fd")}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><span style={{fontSize:12,fontWeight:700,color:isReply?"#166534":"#0369a1"}}>{isReply?"📬 Reply":"📧 Sent"}</span><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div><div style={{fontSize:11,color:"#64748b",marginBottom:2}}>From: <strong>{sender}</strong></div>{m.cc&&<div style={{fontSize:11,color:"#64748b",marginBottom:2}}>CC: {m.cc}</div>}<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div><div style={{fontSize:12,color:"#334155",background:"rgba(255,255,255,.6)",borderRadius:6,padding:"6px 8px",maxHeight:50,overflow:"hidden"}}>{m.body?.slice(0,100)}{m.body?.length>100?"…":""}</div></div>
       </div>;}
       if(ev.type==="chat"){var cm=ev.data;var csender=fu(cm.user_id);var isMe=cm.user_id===curUser.id;return<div key={i} style={{display:"flex",gap:10,marginBottom:12}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}><div style={{width:30,height:30,borderRadius:8,background:"#eef2ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>💬</div>{i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:12}}/>}</div>
@@ -656,7 +636,7 @@ export default function App(){
   var[tickets,setTicketsR]=useState([]);var[ticketTypes,setTTR]=useState([]);
   var[statusSla,setStatusSlaR]=useState(DEFAULT_STATUS_SLA);var[schedules,setSchedulesR]=useState({});
   var[logs,setLogsR]=useState([]);var[emailTemplates,setEmailTemplates]=useState([]);
-  var[allTimeSessions,setAllTimeSessions]=useState([]); // global sessions for reports
+  var[allTimeSessions,setAllTimeSessions]=useState([]);
   var[curUser,setCurUserR]=useState(function(){return loadState("hd_curUser",null);});
   var[page,setPageR]=useState(function(){try{var s=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
   var[selTicket,setSelTicket]=useState(null);var[toast,setToast]=useState(null);
@@ -675,7 +655,6 @@ export default function App(){
     loadAll();
   },[]);
 
-  // Refresh all time sessions after any timer stop (called from TicketDetail)
   var refreshTimeSessions=useCallback(async function(){
     var ts=await dbGetAllTimeSessions();
     setAllTimeSessions(ts);
@@ -920,9 +899,28 @@ function TicketDetail(p){
   var addLog=p.addLog;var showToast=p.showToast;var onClose=p.onClose;var statusSla=p.statusSla;var schedules=p.schedules||{};
   var refreshTimeSessions=p.refreshTimeSessions||function(){};
   var[tab,setTab]=useState("details");var[status,setStatus]=useState(ticket.status);var[asgn,setAsgn]=useState(ticket.assignedTo||"");var[note,setNote]=useState("");var[typeId,setTypeId]=useState(ticket.typeId||"");
-  var[msgTo,setMsgTo]=useState("");var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);var[msgBody,setMsgBody]=useState("");
-  var emailTemplates=p.emailTemplates||[];var clients2=p.clients||[];var assignedUser=users.find(function(u){return u.id===ticket.assignedTo;});
-  function applyTemplate(tid){var tmpl=emailTemplates.find(function(t){return t.id===tid;});if(!tmpl)return;var cl2=clients2.find(function(c){return c.id===ticket.clientId;});var loc2=cl2?cl2.locations.find(function(l){return l.id===ticket.locationId;}):null;var body=tmpl.body.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");var subj=tmpl.subject.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");setMsgSubj(subj);setMsgBody(body);}
+  // ── Email state — now includes CC ──────────────────────────────────────────
+  var[msgTo,setMsgTo]=useState("");
+  var[msgCC,setMsgCC]=useState("");
+  var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);
+  var[msgBody,setMsgBody]=useState("");
+  var emailTemplates=p.emailTemplates||[];
+  var clients2=p.clients||[];
+  var assignedUser=users.find(function(u){return u.id===ticket.assignedTo;});
+
+  // Apply template — fills To, CC, Subject, and Body
+  function applyTemplate(tid){
+    var tmpl=emailTemplates.find(function(t){return t.id===tid;});
+    if(!tmpl)return;
+    var cl2=clients2.find(function(c){return c.id===ticket.clientId;});
+    var body=tmpl.body.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");
+    var subj=tmpl.subject.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");
+    setMsgSubj(subj);
+    setMsgBody(body);
+    // Auto-fill CC if template has a defaultCC field
+    if(tmpl.defaultCC&&tmpl.defaultCC.trim())setMsgCC(tmpl.defaultCC.trim());
+  }
+
   var[emailSending,setEmailSending]=useState(false);
   function fu(id){return users.find(function(x){return x.id===id;});}
   var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;});var co=companies.find(function(c){return c.id===ticket.companyId;});var client=clients.find(function(c){return c.id===ticket.clientId;});var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
@@ -945,21 +943,23 @@ function TicketDetail(p){
   async function sendEmail(){
     if(!msgTo.trim()||!msgBody.trim()){showToast("Recipient and body required","error");return;}
     setEmailSending(true);
-    var toList=msgTo.split(",").map(function(e){return e.trim();});
+    var toList=msgTo.split(",").map(function(e){return e.trim();}).filter(Boolean);
+    var ccStr=msgCC.trim(); // raw CC string stored for display
     var msgId=uid();
-    var msg={id:msgId,from:curUser.id,fromEmail:curUser.email,to:[],toEmails:toList,cc:[],subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false,status:"sending"};
+    var msg={id:msgId,from:curUser.id,fromEmail:curUser.email,to:[],toEmails:toList,cc:ccStr,subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false,status:"sending"};
     setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{conversations:(t.conversations||[]).concat([msg])}):t;});});
-    var results=await Promise.all(toList.map(function(email){return callSendEmail({to:email,subject:msgSubj,body:msgBody});}));
+    var results=await Promise.all(toList.map(function(email){return callSendEmail({to:email,subject:msgSubj,body:msgBody,cc:ccStr});}));
     var allOk=results.every(function(r){return r.success;});
     var failMsg=!allOk?results.filter(function(r){return !r.success;}).map(function(r){return r.error;}).join(", "):"";
     var finalConvs=(ticket.conversations||[]).concat([msg]).map(function(c){return c.id===msgId?Object.assign({},c,{status:allOk?"sent":"failed",failReason:failMsg}):c;});
     setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;return Object.assign({},t,{conversations:finalConvs});});});
     await dbSaveTicket(Object.assign({},ticket,{conversations:finalConvs}));
-    addLog("EMAIL_SENT",ticket.id,"Email to "+msgTo);showToast(allOk?"📧 Email sent!":"⚠️ Failed",allOk?"ok":"error");
-    setEmailSending(false);if(allOk){setMsgTo("");setMsgBody("");}
+    addLog("EMAIL_SENT",ticket.id,"Email to "+msgTo+(ccStr?" CC: "+ccStr:""));
+    showToast(allOk?"📧 Email sent!":"⚠️ Failed",allOk?"ok":"error");
+    setEmailSending(false);
+    if(allOk){setMsgTo("");setMsgCC("");setMsgBody("");}
   }
 
-  // Tabs: timer tab only for techs
   var TABS=["details","status","timer","email","chat","history"].filter(function(t){
     if(t==="status"||t==="timer")return isTech;
     return true;
@@ -1002,15 +1002,17 @@ function TicketDetail(p){
       <Btn onClick={saveStatus} style={{width:"100%"}}>💾 Save Changes</Btn>
     </div>}
 
-    {/* ── TIMER TAB ── */}
     {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions}/>}
 
+    {/* ── EMAIL TAB — now with CC field ──────────────────────────────────── */}
     {tab==="email"&&<div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{fontWeight:700,color:"#1e293b"}}>📧 Send Email</div>
         {emailTemplates.length>0&&<select onChange={function(e){if(e.target.value)applyTemplate(e.target.value);e.target.value="";}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc"}}><option value="">Use template…</option>{emailTemplates.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>}
       </div>
-      <FInput label="To" value={msgTo} onChange={function(e){setMsgTo(e.target.value);}} placeholder="email@example.com"/>
+      <FInput label="To" value={msgTo} onChange={function(e){setMsgTo(e.target.value);}} placeholder="email@example.com, another@example.com"/>
+      {/* ── CC FIELD ── */}
+      <FInput label="CC (optional)" value={msgCC} onChange={function(e){setMsgCC(e.target.value);}} placeholder="cc@example.com, another@example.com"/>
       <FInput label="Subject" value={msgSubj} onChange={function(e){setMsgSubj(e.target.value);}}/>
       <FTextarea label="Message" value={msgBody} onChange={function(e){setMsgBody(e.target.value);}} rows={4} placeholder="Type your message…"/>
       <button onClick={sendEmail} disabled={emailSending} style={{background:emailSending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,padding:"10px 18px",fontWeight:600,fontSize:14,cursor:emailSending?"not-allowed":"pointer",width:"100%",marginBottom:16}}>{emailSending?"⏳ Sending…":"📤 Send Email"}</button>
@@ -1018,7 +1020,8 @@ function TicketDetail(p){
       {(liveTicket.conversations||[]).length===0&&<div style={{color:"#94a3b8",fontSize:13}}>No messages yet.</div>}
       {(liveTicket.conversations||[]).map(function(m){var isReply=m.isExternal||m.status==="received";return<div key={m.id} style={{background:isReply?"#f0fdf4":"#f8fafc",border:"1px solid "+(isReply?"#bbf7d0":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:10}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:4}}><div style={{fontWeight:700,fontSize:12,color:isReply?"#166534":"#1e293b"}}>{isReply?"📬 REPLY":"📧"} {isReply?(m.fromName||m.fromEmail):m.fromEmail}</div><div style={{display:"flex",gap:4,alignItems:"center"}}>{m.status==="sent"&&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}{m.status==="failed"&&<span style={{fontSize:10,color:"#ef4444"}}>❌</span>}<span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div></div>
-        <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:2}}>Subj: {m.subject}</div>
+        {m.cc&&m.cc.trim()&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>CC: {m.cc}</div>}
         <div style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>
       </div>;})}
     </div>}
@@ -1036,7 +1039,7 @@ function PageTimeTracking(p){
   var[filterUser,setFilterUser]=useState("");
   var[dateFrom,setDateFrom]=useState("");
   var[dateTo,setDateTo]=useState("");
-  var[activeTab,setActiveTab]=useState("it_time"); // "it_time" | "create_time"
+  var[activeTab,setActiveTab]=useState("it_time");
 
   var scope=useMemo(function(){
     var base=tickets.filter(function(t){return !t.deleted;});
@@ -1049,7 +1052,6 @@ function PageTimeTracking(p){
     var q=search.toLowerCase();
     return scope.filter(function(t){
       if(q&&!t.title.toLowerCase().includes(q)&&!t.id.includes(q))return false;
-      // Date filter — applied to createdAt
       if(dateFrom){var from=new Date(dateFrom);from.setHours(0,0,0,0);if(new Date(t.createdAt)<from)return false;}
       if(dateTo){var to=new Date(dateTo);to.setHours(23,59,59,999);if(new Date(t.createdAt)>to)return false;}
       return true;
@@ -1058,7 +1060,6 @@ function PageTimeTracking(p){
 
   function fu(id){return users.find(function(x){return x.id===id;});}
 
-  // Logged IT minutes per ticket (from timer sessions)
   function ticketMins(ticketId){
     return allTimeSessions.filter(function(s){return s.ticket_id===ticketId&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
   }
@@ -1072,8 +1073,6 @@ function PageTimeTracking(p){
 
   return<div>
     <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking</div>
-
-    {/* Tab toggle */}
     <div style={{display:"flex",gap:6,marginBottom:14}}>
       {[{id:"it_time",label:"🕐 IT Work Time"},{id:"create_time",label:"📝 Ticket Creation Time"}].map(function(tab){
         return<button key={tab.id} onClick={function(){setActiveTab(tab.id);}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:activeTab===tab.id?"#6366f1":"#f1f5f9",color:activeTab===tab.id?"#fff":"#475569",fontSize:12,fontWeight:700,cursor:"pointer"}}>
@@ -1081,8 +1080,6 @@ function PageTimeTracking(p){
         </button>;
       })}
     </div>
-
-    {/* Summary stats */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
       {activeTab==="it_time"?<>
         <Stat label="Total IT Hours" value={fmtDuration(totalITMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
@@ -1092,8 +1089,6 @@ function PageTimeTracking(p){
         <Stat label="Avg Create Time" value={fmtMs(avgCreateMins)} icon="⏱" color="#0ea5e9"/>
       </>}
     </div>
-
-    {/* Filters */}
     <Card style={{marginBottom:14,padding:"12px 14px"}}>
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets…" style={Object.assign({},selStyle,{width:"100%"})}/>
@@ -1107,7 +1102,6 @@ function PageTimeTracking(p){
           </optgroup>
         </select>}
       </div>
-      {/* Date range */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,alignItems:"center"}}>
         <div>
           <label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>From</label>
@@ -1120,13 +1114,10 @@ function PageTimeTracking(p){
       </div>
       {(dateFrom||dateTo)&&<button onClick={function(){setDateFrom("");setDateTo("");}} style={{marginTop:8,padding:"5px 12px",border:"1px solid #c7d2fe",borderRadius:6,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer"}}>✕ Clear dates</button>}
     </Card>
-
     <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>
       Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}
       {(dateFrom||dateTo)&&<span style={{color:"#6366f1",fontWeight:600}}> · Date filtered</span>}
     </div>
-
-    {/* IT Work Time tab */}
     {activeTab==="it_time"&&<div>
       <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#0369a1"}}>
         ⏱ Hours shown are <strong>actual logged time</strong> from the Start/Stop timer inside each ticket.
@@ -1161,8 +1152,6 @@ function PageTimeTracking(p){
         })}
       </div>
     </div>}
-
-    {/* Ticket Creation Time tab */}
     {activeTab==="create_time"&&<div>
       <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#92400e"}}>
         📝 This tracks how long each user took to <strong>fill in and submit</strong> the ticket form — from when they opened it to when they clicked Submit.
@@ -1214,12 +1203,10 @@ function PageReports(p){
   var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(new Date(t.createdAt)<new Date(rangeStart))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,fClient,fLocation]);
   var allActive=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,fClient,fLocation]);
 
-  // Real logged minutes for a set of ticket IDs
   function loggedMins(ticketArr){
     var ids=ticketArr.map(function(t){return t.id;});
     return allTimeSessions.filter(function(s){return ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
   }
-  // Real logged minutes for a user
   function userLoggedMins(userId,ticketArr){
     var ids=ticketArr.map(function(t){return t.id;});
     return allTimeSessions.filter(function(s){return s.user_id===userId&&ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
@@ -1263,8 +1250,6 @@ function PageReports(p){
 
   return<div>
     <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>{VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}</div>
-
-    {/* Client/Location filter */}
     <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
       <span style={{fontSize:11,fontWeight:700,color:"#64748b",flexShrink:0}}>🔍 Filter:</span>
       <select value={fClient} onChange={function(e){handleClientChange(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Clients</option>{clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}</select>
@@ -1272,11 +1257,7 @@ function PageReports(p){
       {filterLabel&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 10px"}}><span style={{fontSize:11,fontWeight:700,color:"#4338ca"}}>📍 {filterLabel}</span><button onClick={function(){setFClient("");setFLocation("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:13,padding:0,lineHeight:1}}>✕</button></div>}
       <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{active.length} tickets · {fmtDuration(totalLoggedMins)} logged</div>
     </div>
-
-    {/* Range filter */}
     <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>{["day","week","month","year","all"].map(function(r){return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;})}</div>
-
-    {/* SUMMARY */}
     {view==="summary"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
         <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"}/>
@@ -1295,8 +1276,6 @@ function PageReports(p){
         {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
       </Card>
     </div>}
-
-    {/* BY CLIENT */}
     {view==="by_client"&&<div>
       {byClient.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>🤝</div>No client data yet.</div></Card>}
       {byClient.map(function(cl){return<Card key={cl.id} style={{marginBottom:16}}>
@@ -1330,8 +1309,6 @@ function PageReports(p){
         </div>}
       </Card>;})}
     </div>}
-
-    {/* TREND */}
     {view==="trend"&&<div>
       <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Weekly Volume</div><ResponsiveContainer width="100%" height={200}><AreaChart data={weeklyTrend}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="label" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Area type="monotone" dataKey="total" stroke="#6366f1" fill="#eef2ff" name="Total" strokeWidth={2}/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed" strokeWidth={2}/></AreaChart></ResponsiveContainer></Card>
       <Card style={{borderLeft:"4px solid #6366f1"}}>
@@ -1343,8 +1320,6 @@ function PageReports(p){
         {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
       </Card>
     </div>}
-
-    {/* BY TYPE */}
     {view==="by_type"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byType.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
       {byType.map(function(t){return<Card key={t.id}>
@@ -1358,8 +1333,6 @@ function PageReports(p){
         </div>
       </Card>;})}
     </div>}
-
-    {/* PER USER */}
     {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
       {byUser.map(function(t){return<Card key={t.id}>
@@ -1532,53 +1505,4 @@ function PageTicketTypes(p){
   </div>;
 }
 
-// ── Activity Log ──────────────────────────────────────────────────────────────
-const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},ROLE_CREATED:{icon:"🏷️",color:"#10b981",label:"Role Created"},ROLE_UPDATED:{icon:"🏷️",color:"#0ea5e9",label:"Role Updated"},ROLE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Role Deleted"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},LOCATION_ADDED:{icon:"📍",color:"#10b981",label:"Location Added"},LOCATION_REMOVED:{icon:"📍",color:"#ef4444",label:"Location Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
-function PageActivityLog(p){
-  var logs=p.logs;var users=p.users;var[filter,setFilter]=useState("");
-  function fu(id){return users.find(function(x){return x.id===id;});}
-  var filtered=filter?logs.filter(function(l){return l.action===filter;}):logs;
-  return<div>
-    <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}><div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div><select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return<option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select></div>
-    <Card style={{padding:0}}>
-      {filtered.length===0&&<div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No activity found</div>}
-      {filtered.map(function(log,i){var am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action};var actor=fu(log.userId);return<div key={log.id} style={{display:"flex",gap:12,padding:"12px 16px",borderBottom:i<filtered.length-1?"1px solid #f1f5f9":"none",alignItems:"flex-start"}}><div style={{width:32,height:32,borderRadius:8,background:am.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{am.icon}</div><div style={{flex:1,minWidth:0}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><Badge label={am.label} color={am.color}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(log.timestamp)}</span></div><div style={{fontSize:12,color:"#334155",marginTop:4,overflow:"hidden",textOverflow:"ellipsis"}}>{log.detail}</div>{actor&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Avatar name={actor.name} id={actor.id} size={14}/>By {actor.name}</div>}</div></div>;})}
-    </Card>
-  </div>;
-}
-
-// ── Integrations ──────────────────────────────────────────────────────────────
-function PageIntegrations(p){
-  var emailTemplates=p.emailTemplates||[];var setEmailTemplates=p.setEmailTemplates||function(){};var isAdmin=p.isAdmin;var showToast=p.showToast;
-  var[testTo,setTestTo]=useState("");var[sending,setSending]=useState(false);var[status,setStatus]=useState("");
-  var[tmplModal,setTmplModal]=useState(false);var[tmplForm,setTmplForm]=useState({name:"",subject:"",body:""});var[tmplEdit,setTmplEdit]=useState(null);
-  function openNew(){setTmplForm({name:"",subject:"",body:""});setTmplEdit(null);setTmplModal(true);}
-  function openEdit(t){setTmplForm({name:t.name,subject:t.subject,body:t.body});setTmplEdit(t.id);setTmplModal(true);}
-  async function saveTmpl(){if(!tmplForm.name.trim()||!tmplForm.subject.trim()||!tmplForm.body.trim()){showToast("All fields required","error");return;}var t={id:tmplEdit||uid(),name:tmplForm.name.trim(),subject:tmplForm.subject.trim(),body:tmplForm.body.trim(),createdAt:new Date().toISOString()};await dbSaveEmailTemplate(t);setEmailTemplates(function(prev){return tmplEdit?prev.map(function(x){return x.id===tmplEdit?t:x;}):prev.concat([t]);});showToast(tmplEdit?"Template updated!":"Template created!");setTmplModal(false);}
-  async function deleteTmpl(id){await dbDeleteEmailTemplate(id);setEmailTemplates(function(prev){return prev.filter(function(x){return x.id!==id;});});showToast("Template deleted");}
-  async function runTest(){if(!testTo.trim()){showToast("Enter a recipient email","error");return;}setSending(true);setStatus("");try{var r=await callSendEmail({to:testTo.trim(),subject:"Hoptix Test",body:"Your email integration is working!"});if(r.success){setStatus("ok");showToast("📧 Test sent!");}else{setStatus("fail");showToast("Failed: "+r.error,"error");}}catch(e){setStatus("fail");showToast("Error: "+e.message,"error");}setSending(false);}
-  return<div style={{maxWidth:600}}>
-    <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🔌 Integrations</div>
-    <div style={{fontSize:12,color:"#64748b",marginBottom:20}}>Configure your email provider.</div>
-    <Card style={{borderTop:"3px solid #6366f1",marginBottom:20}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a></div>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1",lineHeight:1.8}}>Set in Vercel → Settings → Environment Variables:<br/><code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_USER</code> and <code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_APP_PASSWORD</code></div>
-      <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>Send Test Email</label>
-      <div style={{display:"flex",gap:8,marginBottom:8}}><input type="email" value={testTo} onChange={function(e){setTestTo(e.target.value);}} placeholder="recipient@example.com" style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}/><button onClick={runTest} disabled={sending} style={{padding:"10px 16px",background:sending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:sending?"not-allowed":"pointer",flexShrink:0}}>{sending?"Sending…":"📤 Test"}</button></div>
-      {status==="ok"&&<div style={{padding:"8px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,fontSize:12,color:"#166534"}}>✅ Test email delivered!</div>}
-      {status==="fail"&&<div style={{padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:12,color:"#dc2626"}}>❌ Failed — check env variables.</div>}
-    </Card>
-    {isAdmin&&<Card style={{borderTop:"3px solid #6366f1"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Use <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div></div><Btn onClick={openNew}>➕ Add Template</Btn></div>
-      {emailTemplates.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>No templates yet.</div>}
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>{emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div><div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subject: {t.subject}</div><div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div></div><div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn></div></div></div>;})}</div>
-    </Card>}
-    {tmplModal&&<Modal title={tmplEdit?"Edit Template":"New Email Template"} onClose={function(){setTmplModal(false);}}>
-      <FInput label="Template Name *" value={tmplForm.name} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{name:e.target.value});});}} placeholder="e.g. Initial Response"/>
-      <FInput label="Subject *" value={tmplForm.subject} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{subject:e.target.value});});}} placeholder="Re: Your IT Request"/>
-      <FTextarea label="Body *" value={tmplForm.body} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{body:e.target.value});});}} rows={8} placeholder={"Hi {{client_name}},\n\nThank you for reaching out...\n\nBest regards,\n{{agent_name}}"}/>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>💡 <strong>{"{{client_name}}"}</strong> and <strong>{"{{agent_name}}"}</strong> auto-fill on tickets.</div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setTmplModal(false);}}>Cancel</Btn><Btn onClick={saveTmpl}>{tmplEdit?"Save Changes":"Create Template"}</Btn></div>
-    </Modal>}
-  </div>;
-}
+// ── Activity Log ──────────────────────────────
