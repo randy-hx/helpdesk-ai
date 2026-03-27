@@ -136,21 +136,7 @@ function getStatusSla(ticket, slaConfig, schedules) {
 }
 
 // ── Auto-reassignment logic ───────────────────────────────────────────────────
-function findItManager(users) {
-  return users.find(function(u) { return u.role === "it_manager" && u.active; }) || null;
-}
-function shouldReassignToManager(ticket, schedules, users) {
-  if (!ticket.assignedTo || ticket.status === "Closed") return false;
-  var schedule = schedules[ticket.assignedTo];
-  if (!schedule) return false;
-  return !isCurrentlyOnShift(schedule);
-}
-// Check if ticket has been unassigned/open for 12h
-function needsEscalationToManager(ticket) {
-  if (ticket.assignedTo || ticket.status === "Closed") return false;
-  var createdMs = new Date(ticket.createdAt).getTime();
-  return (Date.now() - createdMs) > 12 * 3600000;
-}
+
 
 async function callSendEmail(opts){
   try{var res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:opts.to,subject:opts.subject||"(no subject)",text:opts.body||opts.message||""})});var data=await res.json();if(res.ok&&data.id)return{success:true,provider:"Gmail",id:data.id};throw new Error(data.error||("Status "+res.status));}catch(e){return{success:false,error:e.message,provider:"Gmail"};}
@@ -175,17 +161,11 @@ function optLocs(l){return[mkOpt("","— Select Location —")].concat(l.map(fun
 function optTypes(t){return t.map(function(x){return mkOpt(x.id,x.name+" — "+(PRI_META[x.priority]?.label||x.priority)+", SLA "+x.slaHours+"h");});}
 function optTechs(u){return[mkOpt("","— Unassigned —")].concat(u.filter(function(x){return IT_ROLES.includes(x.role)&&x.active;}).map(function(x){return mkOpt(x.id,x.name+" ("+(ROLE_META[x.role]?.label||x.role)+")");}));}
 function optAssignees(u){return[mkOpt("","— Auto-assign —")].concat(u.filter(function(x){return IT_ROLES.includes(x.role)&&x.active;}).map(function(x){return mkOpt(x.id,x.name+" ("+(ROLE_META[x.role]?.label||x.role)+")");}));}
-function aiAssign(title,desc,typeId,users,types,schedules){
+function aiAssign(title,desc,typeId,users,types){
   var tt=types.find(function(t){return t.id===typeId;});
-  var manager=findItManager(users);
-  // Check default assignee availability
   if(tt&&tt.defaultAssignee){
     var u=users.find(function(u){return u.id===tt.defaultAssignee&&u.active;});
-    if(u){
-      var sch=schedules?schedules[u.id]:null;
-      if(!sch||isCurrentlyOnShift(sch))return{id:u.id,reason:"Type \""+tt.name+"\" → "+u.name};
-      if(manager)return{id:manager.id,reason:"Type \""+tt.name+"\" default "+u.name+" off-shift → IT Manager "+manager.name};
-    }
+    if(u)return{id:u.id,reason:"Type \""+tt.name+"\" → "+u.name};
   }
   var text=(title+" "+desc).toLowerCase();
   for(var i=0;i<types.length;i++){
@@ -194,20 +174,13 @@ function aiAssign(title,desc,typeId,users,types,schedules){
     for(var j=0;j<kws.length;j++){
       if(text.includes(kws[j].toLowerCase())){
         var u2=users.find(function(u){return u.id===t.defaultAssignee&&u.active;});
-        if(u2){
-          var sch2=schedules?schedules[u2.id]:null;
-          if(!sch2||isCurrentlyOnShift(sch2))return{id:u2.id,reason:"Keyword \""+kws[j]+"\" → "+u2.name};
-          if(manager)return{id:manager.id,reason:"Keyword match "+u2.name+" off-shift → IT Manager "+manager.name};
-        }
+        if(u2)return{id:u2.id,reason:"Keyword \""+kws[j]+"\" → "+u2.name};
       }
     }
   }
   var techs=users.filter(function(u){return u.role==="it_technician"&&u.active;});
-  // Pick available tech
-  var availTech=techs.find(function(u){var sch=schedules?schedules[u.id]:null;return!sch||isCurrentlyOnShift(sch);});
-  if(availTech)return{id:availTech.id,reason:"Load-balanced → "+availTech.name};
-  if(manager)return{id:manager.id,reason:"No tech available → IT Manager "+manager.name};
-  return{id:null,reason:"No staff available"};
+  if(techs.length)return{id:techs[0].id,reason:"Load-balanced → "+techs[0].name};
+  return{id:null,reason:"No technician available"};
 }
 
 // ── UI Primitives ─────────────────────────────────────────────────────────────
@@ -525,41 +498,7 @@ export default function App(){
     return function(){supabase.removeChannel(sub);};
   },[]);
 
-  // Auto-reassign check every 5 min — only runs on interval, not on every render
-  useEffect(function(){
-    function checkReassignments(){
-      var manager=findItManager(users);
-      if(!manager||!tickets.length)return;
-      var needsUpdate=[];
-      tickets.forEach(function(t){
-        if(t.deleted||t.status==="Closed")return;
-        if(t.assignedTo&&t.assignedTo!==manager.id){
-          var sch=schedules[t.assignedTo];
-          if(sch&&!isCurrentlyOnShift(sch)){
-            needsUpdate.push({ticket:t,reason:"Tech off-shift → IT Manager"});
-          }
-        }
-        if(!t.assignedTo&&needsEscalationToManager(t)){
-          needsUpdate.push({ticket:t,reason:"Unassigned 12h+ → IT Manager"});
-        }
-      });
-      if(needsUpdate.length>0){
-        var ids=needsUpdate.map(function(x){return x.ticket.id;});
-        setTicketsR(function(prev){
-          return prev.map(function(t){
-            var match=needsUpdate.find(function(x){return x.ticket.id===t.id;});
-            if(!match)return t;
-            var hist={status:t.status,assignedTo:manager.id,timestamp:new Date().toISOString(),changedBy:"system",note:match.reason,_noSlaReset:true};
-            return Object.assign({},t,{assignedTo:manager.id,statusHistory:(t.statusHistory||[]).concat([hist]),updatedAt:new Date().toISOString()});
-          });
-        });
-      }
-    }
-    // Only run on a timer — NOT triggered by ticket/user changes to avoid loops
-    var iv=setInterval(checkReassignments,5*60*1000);
-    return function(){clearInterval(iv);};
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+
 
   // Save a single ticket directly — no JSON.stringify scan of all tickets
   async function saveTicketById(id, updaterFn){
@@ -874,7 +813,7 @@ function PageNewTicket(p){
   function removeAtt(id){setAttachments(function(prev){return prev.filter(function(a){return a.id!==id;});});}
   function handlePreview(){
     if(!form.title.trim()||!form.description.trim()){showToast("Fill in title and description","error");return;}
-    var assign=aiAssign(form.title,form.description,form.typeId,users,ticketTypes,schedules);
+    var assign=aiAssign(form.title,form.description,form.typeId,users,ticketTypes);
     var tt=ticketTypes.find(function(t){return t.id===form.typeId;});
     var now=new Date().toISOString();var sla=new Date(Date.now()+(tt?tt.slaHours:24)*3600000).toISOString();
     var mins=Math.max(0.017,(Date.now()-start)/60000);
