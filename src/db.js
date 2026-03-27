@@ -180,4 +180,42 @@ export async function dbSaveEmailTemplate(t){
 }
 export async function dbDeleteEmailTemplate(id){
   await supabase.from('email_templates').delete().eq('id',id);
+export async function dbGetTimeSessions(ticketId) {
+  try {
+    const { data, error } = await supabase
+      .from('time_sessions')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('started_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.error('dbGetTimeSessions', e);
+    return [];
+  }
+}
+
+export async function dbSaveTimeSession(session) {
+  try {
+    const { error } = await supabase
+      .from('time_sessions')
+      .upsert([session]);
+    if (error) throw error;
+  } catch (e) {
+    console.error('dbSaveTimeSession', e);
+  }
+}
+
+export async function dbGetAllTimeSessions() {
+  try {
+    const { data, error } = await supabase
+      .from('time_sessions')
+      .select('*')
+      .order('started_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.error('dbGetAllTimeSessions', e);
+    return [];
+  }
 }
