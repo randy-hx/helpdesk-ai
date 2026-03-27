@@ -756,23 +756,37 @@ function PageDashboard(p){
 function PageTickets(p){
   var tickets=p.tickets;var users=p.users;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
   var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setSelTicket=p.setSelTicket;var setPage=p.setPage;var isAdmin=p.isAdmin;var statusSla=p.statusSla;var schedules=p.schedules||{};var isMobile=p.isMobile;
-  var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");var[fAssigned,setFAssigned]=useState("");
+  var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");
+  var[fAssigned,setFAssigned]=useState(function(){return curUser.role==="it_technician"?curUser.id:"";});
 
-  // Default techs to their own tickets
-  useEffect(function(){
-    if(curUser.role==="it_technician"&&!fAssigned){setFAssigned(curUser.id);}
-  },[curUser.id]);
+  // Memoised lookup maps — built once, not on every render
+  var userMap=useMemo(function(){var m={};users.forEach(function(u){m[u.id]=u;});return m;},[users]);
+  var typeMap=useMemo(function(){var m={};ticketTypes.forEach(function(t){m[t.id]=t;});return m;},[ticketTypes]);
+  var clientMap=useMemo(function(){var m={};clients.forEach(function(c){m[c.id]=c;});return m;},[clients]);
 
-  var filtered=tickets.filter(function(t){
+  // Pre-compute SLA for ALL tickets once, not inside render loop
+  var slaMap=useMemo(function(){
+    var m={};
+    tickets.forEach(function(t){
+      if(t.status!=="Closed") m[t.id]=getStatusSla(t,statusSla,schedules);
+    });
+    return m;
+  },[tickets,statusSla,schedules]);
+
+  var filtered=useMemo(function(){
     var q=search.toLowerCase();
-    return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType)&&(!fAssigned||(fAssigned==="__unassigned__"?!t.assignedTo:t.assignedTo===fAssigned));
-  });
-  function delTicket(id){setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});});addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted");showToast("Ticket deleted");}
-  function fu(id){return users.find(function(x){return x.id===id;});}
-  function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
-  function fcl(id){return clients.find(function(x){return x.id===id;});}
+    return tickets.filter(function(t){
+      return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q))
+        &&(!fStat||t.status===fStat)
+        &&(!fPri||t.priority===fPri)
+        &&(!fType||t.typeId===fType)
+        &&(!fAssigned||(fAssigned==="__unassigned__"?!t.assignedTo:t.assignedTo===fAssigned));
+    });
+  },[tickets,search,fStat,fPri,fType,fAssigned]);
 
-  var techUsers=users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});
+  function delTicket(id){setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true,updatedAt:new Date().toISOString()}):t;});});addLog("TICKET_DELETED",id,"Ticket deleted");showToast("Ticket deleted");}
+
+  var techUsers=useMemo(function(){return users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});},[users]);
 
   return<div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
@@ -795,9 +809,9 @@ function PageTickets(p){
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found</div></Card>}
         {filtered.map(function(t){
-          var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);
+          var asgn=userMap[t.assignedTo];var type=typeMap[t.typeId];var client=clientMap[t.clientId];
           var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;
-          var sSla=getStatusSla(t,statusSla,schedules);
+          var sSla=slaMap[t.id];
           return<div key={t.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:14,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}} onClick={function(){setSelTicket(t.id);}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}>
               <div style={{flex:1}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,marginBottom:2}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ago(t.createdAt)}</div></div>
@@ -823,9 +837,9 @@ function PageTickets(p){
           <tbody>
             {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found</td></tr>}
             {filtered.map(function(t,i){
-              var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);
+              var asgn=userMap[t.assignedTo];var type=typeMap[t.typeId];var client=clientMap[t.clientId];
               var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;
-              var sSla=getStatusSla(t,statusSla,schedules);
+              var sSla=slaMap[t.id];
               return<tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
                 <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id.slice(-6)}</td>
                 <td style={{padding:"9px 12px",maxWidth:200}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>📬</span>}</td>
