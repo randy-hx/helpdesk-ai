@@ -561,17 +561,61 @@ export default function App(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
+  async function setTickets(updater){
+    var next=typeof updater==="function"?updater(tickets):updater;
+    setTicketsR(next);
+    var changed=next.filter(function(t){
+      var old=tickets.find(function(p){return p.id===t.id;});
+      return !old||JSON.stringify(old)!==JSON.stringify(t);
+    }).slice(0,10);
+    for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}
+  }
   function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
   function setPage(v){if(v!=="integrations")saveState("hd_page",v);setPageR(v);setSidebarOpen(false);}
   var addLog=useCallback(function(action,target,detail,uId){var entry={id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};setLogsR(function(p){return[entry].concat(p).slice(0,500);});dbAddLog(entry);},[curUser]);
   var showToast=useCallback(function(msg,type){setToast({msg,type:type||"ok"});setTimeout(function(){setToast(null);},3500);},[]);
-  useEffect(function(){function check(){setBreaches(tickets.filter(function(t){if(t.deleted||t.status==="Closed")return false;var s=getStatusSla(t,statusSla,schedules);return s&&s.breached;}));}check();var iv=setInterval(check,30000);return function(){clearInterval(iv);};},[tickets,statusSla,schedules]);
+  useEffect(function(){
+    var iv=setInterval(function(){
+      setTicketsR(function(prev){
+        setBreaches(prev.filter(function(t){
+          if(t.deleted||t.status==="Closed")return false;
+          var s=getStatusSla(t,statusSla,schedules);
+          return s&&s.breached;
+        }));
+        return prev;
+      });
+    },30000);
+    return function(){clearInterval(iv);};
+  },[statusSla,schedules]);
   useEffect(function(){
     if(!curUser)return;
-    async function fetchReplies(){try{var res=await fetch("/api/fetch-replies");if(!res.ok)return;var data=await res.json();if(!data.replies||!data.replies.length)return;var updated=tickets.slice();data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});setTickets(function(){return updated;});setInboxAlerts(function(prev){return prev.concat(data.replies);});showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");}catch(e){}}
-    fetchReplies();var iv=setInterval(fetchReplies,60000);return function(){clearInterval(iv);};
-  },[curUser]);
+    var iv=setInterval(async function(){
+      try{
+        var res=await fetch("/api/fetch-replies");
+        if(!res.ok)return;
+        var data=await res.json();
+        if(!data.replies||!data.replies.length)return;
+        setTicketsR(function(prev){
+          var updated=prev.slice();
+          var hasNew=false;
+          data.replies.forEach(function(reply){
+            var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});
+            if(idx<0)return;
+            var ticket=updated[idx];
+            var dupId="reply_"+reply.uid;
+            if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;
+            var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};
+            updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});
+            hasNew=true;
+          });
+          return hasNew?updated:prev;
+        });
+        setInboxAlerts(function(prev){return prev.concat(data.replies);});
+        showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");
+      }catch(e){}
+    },60000);
+    return function(){clearInterval(iv);};
+  },[curUser,showToast]);
 
   var isAdmin=["admin","it_manager"].includes(curUser?.role);
   var isTech=IT_ROLES.includes(curUser?.role);
