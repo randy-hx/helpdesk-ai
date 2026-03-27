@@ -168,6 +168,7 @@ export function appTicketToDb(t){
     updated_at:t.updatedAt||t.createdAt||null
   };
 }
+
 // ── Email Templates ────────────────────────────────────────────────────────
 export async function dbGetEmailTemplates(){
   var r=await supabase.from('email_templates').select('*').order('created_at',{ascending:true});
@@ -180,81 +181,20 @@ export async function dbSaveEmailTemplate(t){
 }
 export async function dbDeleteEmailTemplate(id){
   await supabase.from('email_templates').delete().eq('id',id);
-export async function dbGetTimeSessions(ticketId) {
-  try {
-    const { data, error } = await supabase
-      .from('time_sessions')
-      .select('*')
-      .eq('ticket_id', ticketId)
-      .order('started_at', { ascending: true });
-    if (error) throw error;
-    return data || [];
-  } catch (e) {
-    console.error('dbGetTimeSessions', e);
-    return [];
-  }
 }
 
-export async function dbSaveTimeSession(session) {
-  try {
-    const { error } = await supabase
-      .from('time_sessions')
-      .upsert([session]);
-    if (error) throw error;
-  } catch (e) {
-    console.error('dbSaveTimeSession', e);
-  }
+// ── Time Sessions ──────────────────────────────────────────────────────────
+export async function dbGetTimeSessions(ticketId){
+  var r=await supabase.from('time_sessions').select('*').eq('ticket_id',ticketId).order('started_at',{ascending:true});
+  if(r.error){console.error('dbGetTimeSessions',r.error);return[];}
+  return r.data||[];
 }
-
-export async function dbGetAllTimeSessions() {
-  try {
-    const { data, error } = await supabase
-      .from('time_sessions')
-      .select('*')
-      .order('started_at', { ascending: false });
-    if (error) throw error;
-    return data || [];
-  } catch (e) {
-    console.error('dbGetAllTimeSessions', e);
-    return [];
-  }
+export async function dbSaveTimeSession(session){
+  var r=await supabase.from('time_sessions').upsert([session]);
+  if(r.error)console.error('dbSaveTimeSession',r.error);
 }
-export async function dbGetTimeSessions(ticketId) {
-  try {
-    var result = await supabase
-      .from('time_sessions')
-      .select('*')
-      .eq('ticket_id', ticketId)
-      .order('started_at', { ascending: true });
-    if (result.error) throw result.error;
-    return result.data || [];
-  } catch (e) {
-    console.error('dbGetTimeSessions', e);
-    return [];
-  }
-}
-
-export async function dbSaveTimeSession(session) {
-  try {
-    var result = await supabase
-      .from('time_sessions')
-      .upsert([session]);
-    if (result.error) throw result.error;
-  } catch (e) {
-    console.error('dbSaveTimeSession', e);
-  }
-}
-
-export async function dbGetAllTimeSessions() {
-  try {
-    var result = await supabase
-      .from('time_sessions')
-      .select('*')
-      .order('started_at', { ascending: false });
-    if (result.error) throw result.error;
-    return result.data || [];
-  } catch (e) {
-    console.error('dbGetAllTimeSessions', e);
-    return [];
-  }
+export async function dbGetAllTimeSessions(){
+  var r=await supabase.from('time_sessions').select('*').order('started_at',{ascending:false});
+  if(r.error){console.error('dbGetAllTimeSessions',r.error);return[];}
+  return r.data||[];
 }
