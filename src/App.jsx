@@ -46,13 +46,90 @@ const fmtElapsed = function(secs){
 
 function useIsMobile(){ var[mob,setMob]=useState(window.innerWidth<768); useEffect(function(){function h(){setMob(window.innerWidth<768);}window.addEventListener("resize",h);return function(){window.removeEventListener("resize",h);};},[]);return mob; }
 
-function calcBusinessHoursElapsed(startMs,endMs,schedule){
-  if(!schedule||!schedule.days||!schedule.days.length)return(endMs-startMs)/3600000;
-  var total=0,cur=startMs;
-  while(cur<endMs){var d=new Date(cur);var dow=d.getDay();var ds=new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.startHour,0,0,0).getTime();var de=new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.endHour,0,0,0).getTime();if(schedule.days.includes(dow)){var os=Math.max(cur,ds);var oe=Math.min(endMs,de);if(oe>os)total+=(oe-os)/3600000;}cur=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1,0,0,0,0).getTime();}
-  return total;
+// Convert a PHT slot index (0–48, 30-min steps) to fractional hours in PHT
+function slotToHours(slot){ return slot*0.5; }
+
+// Get the day key ("sun","mon",...) for a JS Date object interpreted in PHT (UTC+8)
+function getPHTDayKey(dateMs){
+  // Shift to PHT by adding 8 hours offset
+  var PHT_OFFSET_MS=8*3600000;
+  var phtMs=dateMs+PHT_OFFSET_MS;
+  var dow=new Date(phtMs).getUTCDay(); // 0=Sun..6=Sat in PHT
+  return DAY_KEYS[dow];
 }
-function isCurrentlyOnShift(schedule){ if(!schedule||!schedule.days||!schedule.days.length)return true; var now=new Date();var dow=now.getDay();var h=now.getHours()+(now.getMinutes()/60);return schedule.days.includes(dow)&&h>=schedule.startHour&&h<schedule.endHour; }
+
+// Get PHT midnight (00:00 PHT) for a given UTC ms timestamp, returned as UTC ms
+function getPHTMidnightUTC(dateMs){
+  var PHT_OFFSET_MS=8*3600000;
+  var phtMs=dateMs+PHT_OFFSET_MS;
+  var d=new Date(phtMs);
+  // Zero out time in PHT
+  var phtMidnight=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate());
+  // Convert back to UTC
+  return phtMidnight-PHT_OFFSET_MS;
+}
+
+function calcBusinessHoursElapsed(startMs,endMs,schedule){
+  if(!schedule)return(endMs-startMs)/3600000;
+
+  // ── New per-day format ──────────────────────────────────────────────────
+  if(schedule.perDay&&schedule.daySchedule){
+    var total=0;
+    var cur=startMs;
+    var safety=0;
+    while(cur<endMs&&safety<400){
+      safety++;
+      var dayKey=getPHTDayKey(cur);
+      var ds=schedule.daySchedule[dayKey];
+      var dayMidnightUTC=getPHTMidnightUTC(cur);
+      if(ds&&ds.active){
+        // Convert PHT slot times to UTC ms for this day
+        var dayStartUTC=dayMidnightUTC+slotToHours(ds.start)*3600000;
+        var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;
+        var os=Math.max(cur,dayStartUTC);
+        var oe=Math.min(endMs,dayEndUTC);
+        if(oe>os)total+=(oe-os)/3600000;
+      }
+      // Advance to next PHT midnight
+      var nextMidnightUTC=dayMidnightUTC+86400000;
+      cur=nextMidnightUTC;
+    }
+    return total;
+  }
+
+  // ── Legacy format fallback {days:[], startHour, endHour} ───────────────
+  if(!schedule.days||!schedule.days.length)return(endMs-startMs)/3600000;
+  var total2=0,cur2=startMs;
+  while(cur2<endMs){
+    var d=new Date(cur2);var dow=d.getDay();
+    var ds2=new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.startHour,0,0,0).getTime();
+    var de2=new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.endHour,0,0,0).getTime();
+    if(schedule.days.includes(dow)){var os2=Math.max(cur2,ds2);var oe2=Math.min(endMs,de2);if(oe2>os2)total2+=(oe2-os2)/3600000;}
+    cur2=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1,0,0,0,0).getTime();
+  }
+  return total2;
+}
+
+function isCurrentlyOnShift(schedule){
+  if(!schedule)return true;
+
+  // ── New per-day format ──────────────────────────────────────────────────
+  if(schedule.perDay&&schedule.daySchedule){
+    var nowMs=Date.now();
+    var dayKey=getPHTDayKey(nowMs);
+    var ds=schedule.daySchedule[dayKey];
+    if(!ds||!ds.active)return false;
+    var dayMidnightUTC=getPHTMidnightUTC(nowMs);
+    var dayStartUTC=dayMidnightUTC+slotToHours(ds.start)*3600000;
+    var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;
+    return nowMs>=dayStartUTC&&nowMs<dayEndUTC;
+  }
+
+  // ── Legacy fallback ─────────────────────────────────────────────────────
+  if(!schedule.days||!schedule.days.length)return true;
+  var now=new Date();var dow=now.getDay();var h=now.getHours()+(now.getMinutes()/60);
+  return schedule.days.includes(dow)&&h>=schedule.startHour&&h<schedule.endHour;
+}
 function calcSlaRate(arr){ return arr.length?Math.round((1-arr.filter(function(t){return t.slaBreached;}).length/arr.length)*100):100; }
 function calcAvgClose(arr){ return arr.length?Math.round(arr.reduce(function(a,t){return a+(new Date(t.closedAt||t.updatedAt)-new Date(t.createdAt))/3600000;},0)/arr.length):0; }
 function calcClosed(arr){ return arr.filter(function(t){return t.status==="Closed";}); }
@@ -268,34 +345,120 @@ function TicketTimer(p){
 }
 
 // ── Schedule Editor ───────────────────────────────────────────────────────────
+// Time slots in 30-min intervals, 0 = midnight start, 48 = midnight end (24:00)
+var SLOT_COUNT = 49; // 0..48, where 48 = 24:00 (midnight end)
+function fmtSlot(slot){
+  if(slot===48)return"12:00 AM (Midnight)";
+  var totalMins=slot*30;
+  var h=Math.floor(totalMins/60);
+  var m=totalMins%60;
+  var ampm=h<12?"AM":"PM";
+  var h12=h===0?12:h>12?h-12:h;
+  return h12+":"+(m===0?"00":"30")+" "+ampm;
+}
+var ALL_SLOTS=Array.from({length:SLOT_COUNT},function(_,i){return{value:i,label:fmtSlot(i)};});
+
+// Default per-day schedule: Mon–Fri 9am–6pm PHT
+function defaultDaySchedule(){
+  return{mon:{active:true,start:18,end:36},tue:{active:true,start:18,end:36},wed:{active:true,start:18,end:36},thu:{active:true,start:18,end:36},fri:{active:true,start:18,end:36},sat:{active:false,start:18,end:36},sun:{active:false,start:18,end:36}};
+}
+var DAY_KEYS=["sun","mon","tue","wed","thu","fri","sat"];
+var DAY_LABELS_FULL=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+// Convert old schedule format {days:[],startHour,endHour} to new per-day format
+function migrateSchedule(sch){
+  if(!sch)return null;
+  if(sch.perDay)return sch; // already new format
+  // old format migration
+  var pd=defaultDaySchedule();
+  var startSlot=Math.round((sch.startHour||9)*2);
+  var endSlot=Math.round((sch.endHour||17)*2);
+  (sch.days||[]).forEach(function(dow){
+    var key=DAY_KEYS[dow];
+    if(key){pd[key]={active:true,start:startSlot,end:endSlot};}
+  });
+  return{perDay:true,daySchedule:pd};
+}
+
 function ScheduleEditor(p){
   var userId=p.userId;var schedules=p.schedules;var onChange=p.onChange;
   var existing=schedules[userId]||null;
+  var migrated=migrateSchedule(existing);
+
   var[enabled,setEnabled]=useState(!!existing);
-  var[days,setDays]=useState(existing?existing.days:[1,2,3,4,5]);
-  var[startHour,setStartHour]=useState(existing?existing.startHour:9);
-  var[endHour,setEndHour]=useState(existing?existing.endHour:17);
-  function toggleDay(d){var nd=days.includes(d)?days.filter(function(x){return x!==d;}):days.concat([d]);setDays(nd);emit(enabled,nd,startHour,endHour);}
-  function emit(en,ds,sh,eh){onChange(userId,en?{days:ds,startHour:sh,endHour:eh}:null);}
-  function handleEnable(v){setEnabled(v);emit(v,days,startHour,endHour);}
-  var hours=Array.from({length:24},function(_,i){return mkOpt(i,fmtHour(i));});
+  var[daySchedule,setDaySchedule]=useState(migrated?migrated.daySchedule:defaultDaySchedule());
+
+  function emit(en,ds){
+    onChange(userId,en?{perDay:true,daySchedule:ds}:null);
+  }
+  function handleEnable(v){setEnabled(v);emit(v,daySchedule);}
+  function toggleDay(key){
+    var nd=Object.assign({},daySchedule);
+    nd[key]=Object.assign({},nd[key],{active:!nd[key].active});
+    setDaySchedule(nd);emit(enabled,nd);
+  }
+  function setDayStart(key,val){
+    var nd=Object.assign({},daySchedule);
+    nd[key]=Object.assign({},nd[key],{start:val,end:Math.max(nd[key].end,val+1)});
+    setDaySchedule(nd);emit(enabled,nd);
+  }
+  function setDayEnd(key,val){
+    var nd=Object.assign({},daySchedule);
+    nd[key]=Object.assign({},nd[key],{end:val});
+    setDaySchedule(nd);emit(enabled,nd);
+  }
+
+  var selSt={padding:"6px 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11,outline:"none",background:"#fff",width:"100%",boxSizing:"border-box"};
+
   return<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:14,marginBottom:14}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <div style={{fontWeight:700,color:"#0369a1",fontSize:13}}>🗓 Work Schedule</div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+      <div>
+        <div style={{fontWeight:700,color:"#0369a1",fontSize:13}}>🗓 Work Schedule</div>
+        <div style={{fontSize:10,color:"#0369a1",marginTop:1}}>🇵🇭 All times in Philippine Time (PHT · UTC+8)</div>
+      </div>
       <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:600,color:enabled?"#0369a1":"#64748b"}}>
         <input type="checkbox" checked={enabled} onChange={function(e){handleEnable(e.target.checked);}} style={{width:16,height:16,accentColor:"#0369a1"}}/>
         {enabled?"Enabled":"Off (24/7)"}
       </label>
     </div>
-    {enabled&&<>
-      <div style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:700,color:"#475569",marginBottom:6,textTransform:"uppercase"}}>Working Days</div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{DOW_LABELS.map(function(label,i){var active=days.includes(i);return<button key={i} type="button" onClick={function(){toggleDay(i);}} style={{padding:"6px 10px",borderRadius:6,border:"1.5px solid "+(active?"#0369a1":"#e2e8f0"),background:active?"#0369a1":"#fff",color:active?"#fff":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>{label}</button>;})}</div>
+    {enabled&&<div style={{marginTop:12}}>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {DAY_KEYS.map(function(key,i){
+          var ds=daySchedule[key]||{active:false,start:18,end:36};
+          return<div key={key} style={{background:ds.active?"#fff":"#f8fafc",border:"1px solid "+(ds.active?"#bae6fd":"#e2e8f0"),borderRadius:8,padding:"8px 12px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              {/* Day toggle */}
+              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",minWidth:100,flexShrink:0}}>
+                <input type="checkbox" checked={ds.active} onChange={function(){toggleDay(key);}} style={{width:14,height:14,accentColor:"#0369a1"}}/>
+                <span style={{fontSize:12,fontWeight:ds.active?700:500,color:ds.active?"#0369a1":"#94a3b8"}}>{DAY_LABELS_FULL[i]}</span>
+              </label>
+              {ds.active&&<div style={{display:"flex",alignItems:"center",gap:6,flex:1,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:110}}>
+                  <div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>Start (PHT)</div>
+                  <select value={ds.start} onChange={function(e){setDayStart(key,parseInt(e.target.value));}} style={selSt}>
+                    {ALL_SLOTS.slice(0,48).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}
+                  </select>
+                </div>
+                <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,paddingTop:14}}>→</div>
+                <div style={{flex:1,minWidth:110}}>
+                  <div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>End (PHT)</div>
+                  <select value={ds.end} onChange={function(e){setDayEnd(key,parseInt(e.target.value));}} style={selSt}>
+                    {ALL_SLOTS.filter(function(o){return o.value>ds.start;}).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}
+                  </select>
+                </div>
+                <div style={{fontSize:10,color:"#64748b",paddingTop:14,flexShrink:0}}>
+                  {(function(){var mins=(ds.end-ds.start)*30;var h=Math.floor(mins/60);var m=mins%60;return h+"h"+(m>0?" "+m+"m":"");})()}
+                </div>
+              </div>}
+              {!ds.active&&<span style={{fontSize:11,color:"#94a3b8",fontStyle:"italic"}}>Day off</span>}
+            </div>
+          </div>;
+        })}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div><label style={{display:"block",fontSize:11,fontWeight:700,color:"#475569",marginBottom:4}}>Start</label><select value={startHour} onChange={function(e){var n=parseInt(e.target.value);setStartHour(n);emit(enabled,days,n,endHour);}} style={{width:"100%",padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box"}}>{hours.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
-        <div><label style={{display:"block",fontSize:11,fontWeight:700,color:"#475569",marginBottom:4}}>End</label><select value={endHour} onChange={function(e){var n=parseInt(e.target.value);setEndHour(n);emit(enabled,days,startHour,n);}} style={{width:"100%",padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box"}}>{hours.filter(function(o){return o.value>startHour;}).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
+      <div style={{marginTop:10,background:"#e0f2fe",borderRadius:6,padding:"6px 10px",fontSize:10,color:"#0369a1"}}>
+        💡 SLA timers will only count down during your scheduled hours in Philippine Time.
       </div>
-    </>}
+    </div>}
   </div>;
 }
 
@@ -431,18 +594,59 @@ function LoginPage(p){
 // ── Profile Modal ─────────────────────────────────────────────────────────────
 function ProfileModal(p){
   var curUser=p.curUser;var setUsers=p.setUsers;var setCurUser=p.setCurUser;var showToast=p.showToast;var addLog=p.addLog;var onClose=p.onClose;
+  var schedules=p.schedules||{};var setSchedules=p.setSchedules||function(){};var dbSaveSchedule=p.dbSaveSchedule||function(){};
+  var isTechUser=IT_ROLES.includes(curUser.role);
   var[tab,setTab]=useState("profile");var[name,setName]=useState(curUser.name);var[phone,setPhone]=useState(curUser.phone||"");var[dept,setDept]=useState(curUser.dept||"");
   var[curPw,setCurPw]=useState("");var[newPw,setNewPw]=useState("");var[confPw,setConfPw]=useState("");
   var[showC,setShowC]=useState(false);var[showN,setShowN]=useState(false);var[showK,setShowK]=useState(false);
   var[pwErr,setPwErr]=useState("");var[pwOk,setPwOk]=useState("");var[saving,setSaving]=useState(false);
   var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
+
+  function handleScheduleChange(userId,sch){
+    setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});
+    dbSaveSchedule(userId,sch);
+    showToast("✅ Schedule saved!");
+  }
+
   async function saveProfile(){if(!name.trim()){showToast("Name cannot be empty","error");return;}setSaving(true);var updated=Object.assign({},curUser,{name:name.trim(),phone:phone.trim(),dept:dept.trim()});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?updated:u;});});setCurUser(updated);addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile");showToast("✅ Profile updated!");setSaving(false);onClose();}
   async function changePw(){setPwErr("");setPwOk("");if(!curPw){setPwErr("Enter your current password.");return;}var existingPw=await dbGetPassword(curUser.id);if(curPw!==existingPw){setPwErr("Current password is incorrect.");return;}if(newPw.length<8){setPwErr("Min 8 characters.");return;}if(newPw!==confPw){setPwErr("Passwords do not match.");return;}if(newPw===curPw){setPwErr("Must differ from current.");return;}setSaving(true);await dbSetPassword(curUser.id,newPw);addLog("PASSWORD_CHANGED",curUser.id,curUser.name+" changed password");setSaving(false);setCurPw("");setNewPw("");setConfPw("");setPwOk("✅ Password changed!");showToast("Password updated!");onClose();}
-  return<Modal title="My Profile" onClose={onClose}>
-    <div style={{display:"flex",alignItems:"center",gap:14,padding:"0 0 16px",borderBottom:"1px solid #e2e8f0",marginBottom:16}}><div style={{width:56,height:56,borderRadius:"50%",background:avCol(curUser.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:20,fontWeight:800}}>{inits(curUser.name)}</div><div><div style={{fontWeight:700,fontSize:15}}>{curUser.name}</div><div style={{fontSize:12,color:"#64748b"}}>{curUser.email}</div><div style={{marginTop:4}}><Badge label={ROLE_META[curUser.role]?.label||curUser.role} color={ROLE_META[curUser.role]?.color||"#6366f1"}/></div></div></div>
-    <div style={{display:"flex",gap:6,marginBottom:16}}>{["profile","password"].map(function(t){return<button key={t} onClick={function(){setTab(t);}} style={{flex:1,background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:13,fontWeight:700}}>{t==="profile"?"👤 Profile":"🔑 Password"}</button>;})}</div>
-    {tab==="profile"&&<div><FInput label="Full Name" value={name} onChange={function(e){setName(e.target.value);}}/><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Email</label><input value={curUser.email} disabled style={Object.assign({},inp,{background:"#f1f5f9",color:"#94a3b8"})}/></div><FInput label="Phone" value={phone} onChange={function(e){setPhone(e.target.value);}}/><FInput label="Department" value={dept} onChange={function(e){setDept(e.target.value);}}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={saveProfile} disabled={saving}>{saving?"⏳ Saving…":"💾 Save"}</Btn></div></div>}
-    {tab==="password"&&<div><div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Current Password</label><input type={showC?"text":"password"} value={curPw} onChange={function(e){setCurPw(e.target.value);}} placeholder="••••••••" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowC(!showC);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showC?"🙈":"👁️"}</button></div><div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password</label><input type={showN?"text":"password"} value={newPw} onChange={function(e){setNewPw(e.target.value);}} placeholder="Min 8 characters" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowN(!showN);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showN?"🙈":"👁️"}</button></div><div style={{position:"relative",marginBottom:16}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Confirm New Password</label><input type={showK?"text":"password"} value={confPw} onChange={function(e){setConfPw(e.target.value);}} placeholder="Repeat" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowK(!showK);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showK?"🙈":"👁️"}</button></div>{pwErr&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#dc2626",fontSize:13}}>⚠️ {pwErr}</div>}{pwOk&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#166534",fontSize:13}}>{pwOk}</div>}<div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={changePw} disabled={saving}>{saving?"⏳ Saving…":"🔑 Change"}</Btn></div></div>}
+
+  var tabs=["profile","password"];
+  if(isTechUser)tabs.push("schedule");
+  var tabIcons={profile:"👤 Profile",password:"🔑 Password",schedule:"🗓 Schedule"};
+
+  return<Modal title="My Profile" onClose={onClose} wide={isTechUser&&tab==="schedule"}>
+    <div style={{display:"flex",alignItems:"center",gap:14,padding:"0 0 16px",borderBottom:"1px solid #e2e8f0",marginBottom:16}}>
+      <div style={{width:56,height:56,borderRadius:"50%",background:avCol(curUser.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:20,fontWeight:800}}>{inits(curUser.name)}</div>
+      <div><div style={{fontWeight:700,fontSize:15}}>{curUser.name}</div><div style={{fontSize:12,color:"#64748b"}}>{curUser.email}</div><div style={{marginTop:4}}><Badge label={ROLE_META[curUser.role]?.label||curUser.role} color={ROLE_META[curUser.role]?.color||"#6366f1"}/></div></div>
+    </div>
+    <div style={{display:"flex",gap:6,marginBottom:16}}>
+      {tabs.map(function(t){return<button key={t} onClick={function(){setTab(t);}} style={{flex:1,background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>{tabIcons[t]}</button>;})}
+    </div>
+
+    {tab==="profile"&&<div>
+      <FInput label="Full Name" value={name} onChange={function(e){setName(e.target.value);}}/>
+      <div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Email</label><input value={curUser.email} disabled style={Object.assign({},inp,{background:"#f1f5f9",color:"#94a3b8"})}/></div>
+      <FInput label="Phone" value={phone} onChange={function(e){setPhone(e.target.value);}}/>
+      <FInput label="Department" value={dept} onChange={function(e){setDept(e.target.value);}}/>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={saveProfile} disabled={saving}>{saving?"⏳ Saving…":"💾 Save"}</Btn></div>
+    </div>}
+
+    {tab==="password"&&<div>
+      <div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Current Password</label><input type={showC?"text":"password"} value={curPw} onChange={function(e){setCurPw(e.target.value);}} placeholder="••••••••" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowC(!showC);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showC?"🙈":"👁️"}</button></div>
+      <div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password</label><input type={showN?"text":"password"} value={newPw} onChange={function(e){setNewPw(e.target.value);}} placeholder="Min 8 characters" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowN(!showN);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showN?"🙈":"👁️"}</button></div>
+      <div style={{position:"relative",marginBottom:16}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Confirm New Password</label><input type={showK?"text":"password"} value={confPw} onChange={function(e){setConfPw(e.target.value);}} placeholder="Repeat" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowK(!showK);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showK?"🙈":"👁️"}</button></div>
+      {pwErr&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#dc2626",fontSize:13}}>⚠️ {pwErr}</div>}
+      {pwOk&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#166534",fontSize:13}}>{pwOk}</div>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={changePw} disabled={saving}>{saving?"⏳ Saving…":"🔑 Change"}</Btn></div>
+    </div>}
+
+    {tab==="schedule"&&isTechUser&&<div>
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>
+        ⚠️ Your work schedule determines when SLA timers count against your tickets. Set it accurately so your SLA clock only ticks during your actual working hours.
+      </div>
+      <ScheduleEditor userId={curUser.id} schedules={schedules} onChange={handleScheduleChange}/>
+    </div>}
   </Modal>;
 }
 
@@ -568,7 +772,7 @@ export default function App(){
         </div>}
       </div>
       {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}} refreshTimeSessions={refreshTimeSessions}/>}
-      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} onClose={function(){setShowProfile(false);}}/>}
+      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} schedules={schedules} setSchedules={setSchedulesR} dbSaveSchedule={dbSaveSchedule} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
 }
