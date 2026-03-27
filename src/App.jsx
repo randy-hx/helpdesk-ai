@@ -561,14 +561,32 @@ export default function App(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  async function setTickets(updater){
-    var next=typeof updater==="function"?updater(tickets):updater;
-    setTicketsR(next);
-    var changed=next.filter(function(t){
-      var old=tickets.find(function(p){return p.id===t.id;});
-      return !old||JSON.stringify(old)!==JSON.stringify(t);
-    }).slice(0,10);
-    for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}
+  // Save a single ticket directly — no JSON.stringify scan of all tickets
+  async function saveTicketById(id, updaterFn){
+    setTicketsR(function(prev){
+      var idx=prev.findIndex(function(t){return t.id===id;});
+      if(idx<0)return prev;
+      var updated=updaterFn(prev[idx]);
+      var next=prev.slice();
+      next[idx]=updated;
+      // Fire-and-forget DB save — don't await inside setState
+      dbSaveTicket(updated).catch(function(e){console.error("save failed",e);});
+      return next;
+    });
+  }
+  // Legacy wrapper used by pages that pass a full-array updater
+  function setTickets(updater){
+    setTicketsR(function(prev){
+      var next=typeof updater==="function"?updater(prev):updater;
+      // Only save tickets whose updatedAt changed — cheapest possible diff
+      next.forEach(function(t){
+        var old=prev.find(function(p){return p.id===t.id;});
+        if(!old||old.updatedAt!==t.updatedAt||old.status!==t.status||old.assignedTo!==t.assignedTo||old.deleted!==t.deleted){
+          dbSaveTicket(t).catch(function(e){console.error("save failed",e);});
+        }
+      });
+      return next;
+    });
   }
   function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
   function setPage(v){if(v!=="integrations")saveState("hd_page",v);setPageR(v);setSidebarOpen(false);}
