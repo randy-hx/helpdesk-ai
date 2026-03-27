@@ -12,31 +12,121 @@ const IT_ROLES = ["admin","it_manager","it_technician"];
 const DEFAULT_STATUS_SLA = { "Open":2, "In Progress":8, "Pending":24, "Escalated":1, "Closed":null };
 const DOW_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const DEFAULT_ROLES = { admin:{label:"Administrator",color:"#dc2626",system:true}, it_manager:{label:"IT Manager",color:"#7c3aed",system:true}, it_technician:{label:"IT Technician",color:"#2563eb",system:true}, end_user:{label:"End User",color:"#059669",system:true} };
+// PHT = UTC+8
+const PHT_OFFSET_MS = 8 * 60 * 60 * 1000;
+
 function loadRoles(){ try{ var s=localStorage.getItem("hd_roles"); return s?Object.assign({},DEFAULT_ROLES,JSON.parse(s)):Object.assign({},DEFAULT_ROLES); }catch(e){ return Object.assign({},DEFAULT_ROLES); } }
 function saveRoles(v){ try{ localStorage.setItem("hd_roles",JSON.stringify(v)); }catch(e){} }
 var ROLE_META = loadRoles();
 
 const uid   = function(){ return "id_"+Date.now()+"_"+Math.random().toString(36).slice(2,6); };
-const fdt   = function(iso){ return iso?new Date(iso).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—"; };
-const fdtFull = function(iso){ return iso?new Date(iso).toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}):"—"; };
+const fdt   = function(iso){ return iso?new Date(iso).toLocaleString("en-PH",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Manila"}):"—"; };
+const fdtFull = function(iso){ return iso?new Date(iso).toLocaleString("en-PH",{weekday:"short",month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",timeZone:"Asia/Manila"}):"—"; };
 const ago   = function(iso){ if(!iso)return"—"; var m=Math.floor((Date.now()-new Date(iso))/60000); if(m<1)return"just now"; if(m<60)return m+"m ago"; var h=Math.floor(m/60); if(h<24)return h+"h ago"; return Math.floor(h/24)+"d ago"; };
 const inits = function(n){ if(!n)return"??"; var p=n.trim().split(" ").filter(Boolean); return p.length>=2?(p[0][0]+p[1][0]).toUpperCase():n.slice(0,2).toUpperCase(); };
 const avCol = function(id){ return PAL[Math.abs((id||"").split("").reduce(function(a,c){return a+c.charCodeAt(0);},0))%PAL.length]; };
 const slaColor = function(r){ return r>=90?"#10b981":r>=75?"#f59e0b":"#ef4444"; };
 const fmtMs = function(mins){ if(!mins&&mins!==0)return"—"; var s=mins*60; if(s<60)return s.toFixed(2)+"s"; if(s<3600){var m=Math.floor(mins);var sc=parseFloat(((mins-m)*60).toFixed(2));return m+"m "+sc+"s";} var h=Math.floor(mins/60);var rm=mins-h*60;var m2=Math.floor(rm);var s2=parseFloat(((rm-m2)*60).toFixed(2));return h+"h "+m2+"m "+s2+"s"; };
+const fmtHrs = function(h){ if(!h&&h!==0)return"0h"; return h.toFixed(1)+"h"; };
 const pieLabel = function(p){ return p.value>0?p.name+": "+p.value:""; };
-const fmtHour = function(h){ if(h===0)return"12:00 AM"; if(h<12)return h+":00 AM"; if(h===12)return"12:00 PM"; return (h-12)+":00 PM"; };
-const fmtSchedule = function(sch){ if(!sch||!sch.days||!sch.days.length)return"No schedule (24/7)"; var d=sch.days.slice().sort(function(a,b){return a-b;}).map(function(d){return DOW_LABELS[d];}).join(", "); return d+" · "+fmtHour(sch.startHour)+" – "+fmtHour(sch.endHour); };
 
-function useIsMobile(){ var[mob,setMob]=useState(window.innerWidth<768); useEffect(function(){function h(){setMob(window.innerWidth<768);}window.addEventListener("resize",h);return function(){window.removeEventListener("resize",h);};},[]);return mob; }
+// Generate 30-minute interval options for time select (PHT display)
+function genTimeOptions(){
+  var opts=[];
+  for(var h=0;h<24;h++){
+    for(var m=0;m<60;m+=30){
+      var totalMins=h*60+m;
+      var label=formatTimeSlot(totalMins);
+      opts.push({value:totalMins,label:label});
+    }
+  }
+  return opts;
+}
+function formatTimeSlot(totalMins){
+  var h=Math.floor(totalMins/60);
+  var m=totalMins%60;
+  var ampm=h<12?"AM":"PM";
+  var h12=h===0?12:h>12?h-12:h;
+  return h12+":"+(m===0?"00":"30")+" "+ampm+" PHT";
+}
+const TIME_OPTIONS = genTimeOptions();
 
-function calcBusinessHoursElapsed(startMs,endMs,schedule){
+function nowPHT(){
+  // Returns a Date object adjusted to PHT
+  return new Date(Date.now()+PHT_OFFSET_MS);
+}
+function getPHTDow(isoStr){
+  // day of week in PHT for a given ISO string
+  var d=new Date(new Date(isoStr).getTime()+PHT_OFFSET_MS);
+  return d.getUTCDay();
+}
+function getPHTDateStr(isoStr){
+  // YYYY-MM-DD in PHT
+  var d=new Date(new Date(isoStr).getTime()+PHT_OFFSET_MS);
+  return d.getUTCFullYear()+"-"+(d.getUTCMonth()+1).toString().padStart(2,"0")+"-"+d.getUTCDate().toString().padStart(2,"0");
+}
+function getPHTHourMins(isoStr){
+  // Returns total minutes from midnight PHT
+  var d=new Date(new Date(isoStr).getTime()+PHT_OFFSET_MS);
+  return d.getUTCHours()*60+d.getUTCMinutes();
+}
+function getPHTWeekKey(isoStr){
+  var d=new Date(new Date(isoStr).getTime()+PHT_OFFSET_MS);
+  var dow=d.getUTCDay();
+  var weekStart=new Date(d.getTime()-(dow*86400000));
+  return weekStart.getUTCFullYear()+"-W"+(weekStart.getUTCMonth()+1).toString().padStart(2,"0")+"-"+weekStart.getUTCDate().toString().padStart(2,"0");
+}
+function getPHTMonthKey(isoStr){
+  var d=new Date(new Date(isoStr).getTime()+PHT_OFFSET_MS);
+  return d.getUTCFullYear()+"-"+(d.getUTCMonth()+1).toString().padStart(2,"0");
+}
+
+function isCurrentlyOnShiftPHT(schedule){
+  if(!schedule||!schedule.days||!schedule.days.length)return true;
+  var now=nowPHT();
+  var dow=now.getUTCDay();
+  var curMins=now.getUTCHours()*60+now.getUTCMinutes();
+  if(!schedule.days.includes(dow))return false;
+  // Per-day schedule: schedule.dayConfig[dow] = {startMins, endMins}
+  if(schedule.dayConfig&&schedule.dayConfig[dow]){
+    var cfg=schedule.dayConfig[dow];
+    return curMins>=cfg.startMins&&curMins<cfg.endMins;
+  }
+  // Fallback uniform
+  var startMins=(schedule.startHour||9)*60;
+  var endMins=(schedule.endHour||17)*60;
+  return curMins>=startMins&&curMins<endMins;
+}
+
+function calcBusinessHoursElapsedPHT(startMs,endMs,schedule){
   if(!schedule||!schedule.days||!schedule.days.length)return(endMs-startMs)/3600000;
   var total=0,cur=startMs;
-  while(cur<endMs){var d=new Date(cur);var dow=d.getDay();var ds=new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.startHour,0,0,0).getTime();var de=new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.endHour,0,0,0).getTime();if(schedule.days.includes(dow)){var os=Math.max(cur,ds);var oe=Math.min(endMs,de);if(oe>os)total+=(oe-os)/3600000;}cur=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1,0,0,0,0).getTime();}
+  while(cur<endMs){
+    var dPHT=new Date(cur+PHT_OFFSET_MS);
+    var dow=dPHT.getUTCDay();
+    var dayStartPHT=new Date(dPHT.getUTCFullYear(),dPHT.getUTCMonth(),dPHT.getUTCDate()).getTime();
+    // Adjust back from PHT epoch
+    var dayStartUTC=dayStartPHT-PHT_OFFSET_MS;
+    var startMins,endMins;
+    if(schedule.dayConfig&&schedule.dayConfig[dow]){
+      startMins=schedule.dayConfig[dow].startMins;
+      endMins=schedule.dayConfig[dow].endMins;
+    } else {
+      startMins=(schedule.startHour||9)*60;
+      endMins=(schedule.endHour||17)*60;
+    }
+    if(schedule.days.includes(dow)){
+      var ds=dayStartUTC+startMins*60000;
+      var de=dayStartUTC+endMins*60000;
+      var os=Math.max(cur,ds);
+      var oe=Math.min(endMs,de);
+      if(oe>os)total+=(oe-os)/3600000;
+    }
+    cur=dayStartUTC+86400000;
+  }
   return total;
 }
-function isCurrentlyOnShift(schedule){ if(!schedule||!schedule.days||!schedule.days.length)return true; var now=new Date();var dow=now.getDay();var h=now.getHours()+(now.getMinutes()/60);return schedule.days.includes(dow)&&h>=schedule.startHour&&h<schedule.endHour; }
+
 function calcSlaRate(arr){ return arr.length?Math.round((1-arr.filter(function(t){return t.slaBreached;}).length/arr.length)*100):100; }
 function calcAvgClose(arr){ return arr.length?Math.round(arr.reduce(function(a,t){return a+(new Date(t.closedAt||t.updatedAt)-new Date(t.createdAt))/3600000;},0)/arr.length):0; }
 function calcClosed(arr){ return arr.filter(function(t){return t.status==="Closed";}); }
@@ -49,9 +139,28 @@ function getStatusSla(ticket,slaConfig,schedules){
   for(var i=hist.length-1;i>=0;i--){if(hist[i].status===ticket.status&&!hist[i]._noSlaReset){entry=hist[i].timestamp;break;}}
   if(!entry)entry=ticket.updatedAt||ticket.createdAt;
   var schedule=schedules&&ticket.assignedTo?schedules[ticket.assignedTo]:null;
-  var spent=schedule?calcBusinessHoursElapsed(new Date(entry).getTime(),Date.now(),schedule):(Date.now()-new Date(entry).getTime())/3600000;
-  var pct=Math.min(100,Math.round(spent/allowed*100));var breached=spent>allowed;var remaining=Math.max(0,allowed-spent);var onShift=isCurrentlyOnShift(schedule);
+  var spent=schedule?calcBusinessHoursElapsedPHT(new Date(entry).getTime(),Date.now(),schedule):(Date.now()-new Date(entry).getTime())/3600000;
+  var pct=Math.min(100,Math.round(spent/allowed*100));var breached=spent>allowed;var remaining=Math.max(0,allowed-spent);var onShift=isCurrentlyOnShiftPHT(schedule);
   return{hoursAllowed:allowed,hoursSpent:parseFloat(spent.toFixed(2)),pct,breached,remaining:parseFloat(remaining.toFixed(2)),enteredAt:entry,onShift,hasSchedule:!!schedule,schedule};
+}
+
+// Calculate actual time spent on a ticket (from statusHistory: time between status changes while In Progress)
+function calcActualTimeSpentHours(ticket){
+  var hist=(ticket.statusHistory||[]).slice().sort(function(a,b){return new Date(a.timestamp)-new Date(b.timestamp);});
+  var total=0;
+  for(var i=0;i<hist.length-1;i++){
+    if(hist[i].status==="In Progress"){
+      total+=(new Date(hist[i+1].timestamp)-new Date(hist[i].timestamp))/3600000;
+    }
+  }
+  // If currently In Progress, count up to now
+  if(ticket.status==="In Progress"&&hist.length>0){
+    var last=hist[hist.length-1];
+    if(last.status==="In Progress"){
+      total+=(Date.now()-new Date(last.timestamp))/3600000;
+    }
+  }
+  return total;
 }
 
 async function callSendEmail(opts){
@@ -87,6 +196,8 @@ function aiAssign(title,desc,typeId,users,types){
   return{id:null,reason:"No technician available"};
 }
 
+function useIsMobile(){ var[mob,setMob]=useState(window.innerWidth<768); useEffect(function(){function h(){setMob(window.innerWidth<768);}window.addEventListener("resize",h);return function(){window.removeEventListener("resize",h);};},[]);return mob; }
+
 // ── UI Primitives ─────────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component{constructor(p){super(p);this.state={error:null};}static getDerivedStateFromError(e){return{error:e.message};}render(){if(this.state.error)return<div style={{padding:24,background:"#fef2f2",minHeight:"100vh"}}><div style={{fontSize:18,fontWeight:700,color:"#dc2626",marginBottom:12}}>⚠️ Something went wrong</div><pre style={{background:"#fff",padding:16,borderRadius:8,border:"1px solid #fecaca",fontSize:12,whiteSpace:"pre-wrap",color:"#7f1d1d",marginBottom:16,overflowX:"auto"}}>{this.state.error}</pre><button onClick={function(){try{localStorage.removeItem("hd_page");}catch(e){}window.location.href="/";}} style={{padding:"10px 20px",background:"#dc2626",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,marginRight:8,marginBottom:8}}>🏠 Dashboard</button><button onClick={function(){try{localStorage.clear();}catch(e){}window.location.href="/";}} style={{padding:"10px 20px",background:"#7f1d1d",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>🗑 Clear &amp; Restart</button></div>;return this.props.children;}}
 
@@ -108,33 +219,76 @@ function FTextarea(p){var label=p.label;var rest=Object.assign({},p);delete rest
 function Btn(p){var v=p.variant||"primary";var sm=p.size==="sm";var base={border:"none",cursor:"pointer",borderRadius:8,fontWeight:600,fontSize:sm?11:13,display:"inline-flex",alignItems:"center",gap:4,padding:sm?"6px 12px":"10px 18px"};var cols={primary:{background:"#6366f1",color:"#fff"},danger:{background:"#ef4444",color:"#fff"},success:{background:"#10b981",color:"#fff"},warning:{background:"#f59e0b",color:"#fff"},ghost:{background:"#f1f5f9",color:"#475569"}};var rest=Object.assign({},p);delete rest.variant;delete rest.size;return<button style={Object.assign({},base,cols[v]||cols.primary,p.style||{})} {...rest}>{p.children}</button>;}
 function FocusInput(p){var[focused,setFocused]=useState(false);var extraPad=p.extraPad;var rest=Object.assign({},p);delete rest.extraPad;return<input {...rest} onFocus={function(){setFocused(true);}} onBlur={function(){setFocused(false);}} style={{width:"100%",padding:extraPad?"12px 44px 12px 14px":"12px 14px",border:"1.5px solid "+(focused?"#0ea5e9":"#e2e8f0"),borderRadius:10,fontSize:15,outline:"none",boxSizing:"border-box",background:"#f8fafc",transition:"border-color .2s"}}/>;}
 
-// ── Schedule Editor ───────────────────────────────────────────────────────────
+// ── Per-Day Schedule Editor ───────────────────────────────────────────────────
+// schedule shape: { days:[0,1,2,...], dayConfig:{ 0:{startMins,endMins}, 1:{startMins,endMins}, ... } }
+// All times are stored as minutes-from-midnight in PHT
 function ScheduleEditor(p){
   var userId=p.userId;var schedules=p.schedules;var onChange=p.onChange;
   var existing=schedules[userId]||null;
   var[enabled,setEnabled]=useState(!!existing);
   var[days,setDays]=useState(existing?existing.days:[1,2,3,4,5]);
-  var[startHour,setStartHour]=useState(existing?existing.startHour:9);
-  var[endHour,setEndHour]=useState(existing?existing.endHour:17);
-  function toggleDay(d){var nd=days.includes(d)?days.filter(function(x){return x!==d;}):days.concat([d]);setDays(nd);emit(enabled,nd,startHour,endHour);}
-  function emit(en,ds,sh,eh){onChange(userId,en?{days:ds,startHour:sh,endHour:eh}:null);}
-  function handleEnable(v){setEnabled(v);emit(v,days,startHour,endHour);}
-  var hours=Array.from({length:24},function(_,i){return mkOpt(i,fmtHour(i));});
+  // dayConfig: per-day start/end in minutes PHT
+  var defaultDayConfig=function(){var dc={};[0,1,2,3,4,5,6].forEach(function(d){dc[d]={startMins:9*60,endMins:17*60};});return dc;};
+  var[dayConfig,setDayConfig]=useState(existing&&existing.dayConfig?existing.dayConfig:defaultDayConfig());
+
+  function toggleDay(d){
+    var nd=days.includes(d)?days.filter(function(x){return x!==d;}):days.concat([d]);
+    setDays(nd);
+    emit(enabled,nd,dayConfig);
+  }
+  function emit(en,ds,dc){
+    onChange(userId,en?{days:ds,dayConfig:dc}:null);
+  }
+  function handleEnable(v){setEnabled(v);emit(v,days,dayConfig);}
+  function updateDayTime(dow,field,val){
+    var newDc=Object.assign({},dayConfig);
+    newDc[dow]=Object.assign({},newDc[dow]||{startMins:540,endMins:1020},{[field]:parseInt(val)});
+    // Ensure endMins > startMins
+    if(field==="startMins"&&newDc[dow].endMins<=parseInt(val)){
+      newDc[dow].endMins=parseInt(val)+30;
+    }
+    setDayConfig(newDc);
+    emit(enabled,days,newDc);
+  }
+
   return<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:14,marginBottom:14}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <div style={{fontWeight:700,color:"#0369a1",fontSize:13}}>🗓 Work Schedule</div>
+      <div style={{fontWeight:700,color:"#0369a1",fontSize:13}}>🗓 Work Schedule <span style={{fontSize:10,color:"#64748b",fontWeight:400}}>(PHT)</span></div>
       <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:600,color:enabled?"#0369a1":"#64748b"}}>
         <input type="checkbox" checked={enabled} onChange={function(e){handleEnable(e.target.checked);}} style={{width:16,height:16,accentColor:"#0369a1"}}/>
         {enabled?"Enabled":"Off (24/7)"}
       </label>
     </div>
     {enabled&&<>
-      <div style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:700,color:"#475569",marginBottom:6,textTransform:"uppercase"}}>Working Days</div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{DOW_LABELS.map(function(label,i){var active=days.includes(i);return<button key={i} type="button" onClick={function(){toggleDay(i);}} style={{padding:"6px 10px",borderRadius:6,border:"1.5px solid "+(active?"#0369a1":"#e2e8f0"),background:active?"#0369a1":"#fff",color:active?"#fff":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>{label}</button>;})}</div>
+      <div style={{marginBottom:12}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#475569",marginBottom:6,textTransform:"uppercase"}}>Working Days</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {DOW_LABELS.map(function(label,i){var active=days.includes(i);return<button key={i} type="button" onClick={function(){toggleDay(i);}} style={{padding:"6px 10px",borderRadius:6,border:"1.5px solid "+(active?"#0369a1":"#e2e8f0"),background:active?"#0369a1":"#fff",color:active?"#fff":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>{label}</button>;})}
+        </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div><label style={{display:"block",fontSize:11,fontWeight:700,color:"#475569",marginBottom:4}}>Start</label><select value={startHour} onChange={function(e){var n=parseInt(e.target.value);setStartHour(n);emit(enabled,days,n,endHour);}} style={{width:"100%",padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box"}}>{hours.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
-        <div><label style={{display:"block",fontSize:11,fontWeight:700,color:"#475569",marginBottom:4}}>End</label><select value={endHour} onChange={function(e){var n=parseInt(e.target.value);setEndHour(n);emit(enabled,days,startHour,n);}} style={{width:"100%",padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box"}}>{hours.filter(function(o){return o.value>startHour;}).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
+      {/* Per-day time config */}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {days.slice().sort(function(a,b){return a-b;}).map(function(dow){
+          var cfg=dayConfig[dow]||{startMins:540,endMins:1020};
+          var endOpts=TIME_OPTIONS.filter(function(o){return o.value>cfg.startMins;});
+          return<div key={dow} style={{background:"#fff",borderRadius:8,padding:"10px 12px",border:"1px solid #bae6fd"}}>
+            <div style={{fontWeight:700,color:"#0369a1",fontSize:12,marginBottom:8}}>{DOW_LABELS[dow]}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>Start (PHT)</label>
+                <select value={cfg.startMins} onChange={function(e){updateDayTime(dow,"startMins",e.target.value);}} style={{width:"100%",padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:12,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}>
+                  {TIME_OPTIONS.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}
+                </select>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>End (PHT)</label>
+                <select value={cfg.endMins} onChange={function(e){updateDayTime(dow,"endMins",e.target.value);}} style={{width:"100%",padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:12,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}>
+                  {endOpts.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}
+                </select>
+              </div>
+            </div>
+          </div>;
+        })}
       </div>
     </>}
   </div>;
@@ -252,7 +406,7 @@ function LoginPage(p){
         {view==="signup"&&<><BackBtn onClick={function(){setView("login");setSigErr("");}} /><h2 style={{fontSize:18,fontWeight:700,color:"#1e293b",margin:"0 0 16px"}}>Create an Account 🚀</h2>
           <FInput label="Full Name *" value={sigName} onChange={function(e){setSigName(e.target.value);}} placeholder="Jane Smith"/>
           <FInput label="Work Email *" type="email" value={sigEmail} onChange={function(e){setSigEmail(e.target.value);}} placeholder="you@company.com"/>
-          <FInput label="Phone" type="tel" value={sigPhone} onChange={function(e){setSigPhone(e.target.value);}} placeholder="+1-555-0100"/>
+          <FInput label="Phone" type="tel" value={sigPhone} onChange={function(e){setSigPhone(e.target.value);}} placeholder="+63-9XX-XXX-XXXX"/>
           <FInput label="Department" value={sigDept} onChange={function(e){setSigDept(e.target.value);}} placeholder="Sales"/>
           <div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Password *</label><FocusInput type={showP2?"text":"password"} value={sigPass} onChange={function(e){setSigPass(e.target.value);}} placeholder="Min 8 chars" extraPad/><button type="button" onClick={function(){setShowP2(!showP2);}} style={{position:"absolute",right:12,top:30,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showP2?"🙈":"👁️"}</button></div>
           <div style={{position:"relative",marginBottom:sigPass.length>0?4:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Confirm Password *</label><FocusInput type={showP3?"text":"password"} value={sigConf} onChange={function(e){setSigConf(e.target.value);}} placeholder="Repeat" extraPad/><button type="button" onClick={function(){setShowP3(!showP3);}} style={{position:"absolute",right:12,top:30,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showP3?"🙈":"👁️"}</button></div>
@@ -269,21 +423,39 @@ function LoginPage(p){
   </div>;
 }
 
-// ── Profile Modal ─────────────────────────────────────────────────────────────
+// ── Profile Modal (with Schedule for IT roles) ────────────────────────────────
 function ProfileModal(p){
   var curUser=p.curUser;var setUsers=p.setUsers;var setCurUser=p.setCurUser;var showToast=p.showToast;var addLog=p.addLog;var onClose=p.onClose;
+  var schedules=p.schedules||{};var setSchedules=p.setSchedules;var dbSaveSchedule=p.dbSaveSchedule;
   var[tab,setTab]=useState("profile");var[name,setName]=useState(curUser.name);var[phone,setPhone]=useState(curUser.phone||"");var[dept,setDept]=useState(curUser.dept||"");
   var[curPw,setCurPw]=useState("");var[newPw,setNewPw]=useState("");var[confPw,setConfPw]=useState("");
   var[showC,setShowC]=useState(false);var[showN,setShowN]=useState(false);var[showK,setShowK]=useState(false);
   var[pwErr,setPwErr]=useState("");var[pwOk,setPwOk]=useState("");var[saving,setSaving]=useState(false);
+  var isTechUser=IT_ROLES.includes(curUser.role);
   var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
+
+  function handleScheduleChange(userId,sch){
+    setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});
+    if(dbSaveSchedule)dbSaveSchedule(userId,sch);
+  }
+
   async function saveProfile(){if(!name.trim()){showToast("Name cannot be empty","error");return;}setSaving(true);var updated=Object.assign({},curUser,{name:name.trim(),phone:phone.trim(),dept:dept.trim()});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?updated:u;});});setCurUser(updated);addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile");showToast("✅ Profile updated!");setSaving(false);onClose();}
   async function changePw(){setPwErr("");setPwOk("");if(!curPw){setPwErr("Enter your current password.");return;}var existingPw=await dbGetPassword(curUser.id);if(curPw!==existingPw){setPwErr("Current password is incorrect.");return;}if(newPw.length<8){setPwErr("Min 8 characters.");return;}if(newPw!==confPw){setPwErr("Passwords do not match.");return;}if(newPw===curPw){setPwErr("Must differ from current.");return;}setSaving(true);await dbSetPassword(curUser.id,newPw);addLog("PASSWORD_CHANGED",curUser.id,curUser.name+" changed password");setSaving(false);setCurPw("");setNewPw("");setConfPw("");setPwOk("✅ Password changed!");showToast("Password updated!");onClose();}
+
+  var tabs=["profile","password"];
+  if(isTechUser)tabs.push("schedule");
+  var tabLabels={profile:"👤 Profile",password:"🔑 Password",schedule:"🗓 Schedule"};
+
   return<Modal title="My Profile" onClose={onClose}>
     <div style={{display:"flex",alignItems:"center",gap:14,padding:"0 0 16px",borderBottom:"1px solid #e2e8f0",marginBottom:16}}><div style={{width:56,height:56,borderRadius:"50%",background:avCol(curUser.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:20,fontWeight:800}}>{inits(curUser.name)}</div><div><div style={{fontWeight:700,fontSize:15}}>{curUser.name}</div><div style={{fontSize:12,color:"#64748b"}}>{curUser.email}</div><div style={{marginTop:4}}><Badge label={ROLE_META[curUser.role]?.label||curUser.role} color={ROLE_META[curUser.role]?.color||"#6366f1"}/></div></div></div>
-    <div style={{display:"flex",gap:6,marginBottom:16}}>{["profile","password"].map(function(t){return<button key={t} onClick={function(){setTab(t);}} style={{flex:1,background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:13,fontWeight:700}}>{t==="profile"?"👤 Profile":"🔑 Password"}</button>;})}</div>
+    <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{tabs.map(function(t){return<button key={t} onClick={function(){setTab(t);}} style={{flex:1,minWidth:80,background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>{tabLabels[t]}</button>;})}</div>
     {tab==="profile"&&<div><FInput label="Full Name" value={name} onChange={function(e){setName(e.target.value);}}/><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Email</label><input value={curUser.email} disabled style={Object.assign({},inp,{background:"#f1f5f9",color:"#94a3b8"})}/></div><FInput label="Phone" value={phone} onChange={function(e){setPhone(e.target.value);}}/><FInput label="Department" value={dept} onChange={function(e){setDept(e.target.value);}}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={saveProfile} disabled={saving}>{saving?"⏳ Saving…":"💾 Save"}</Btn></div></div>}
     {tab==="password"&&<div><div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Current Password</label><input type={showC?"text":"password"} value={curPw} onChange={function(e){setCurPw(e.target.value);}} placeholder="••••••••" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowC(!showC);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showC?"🙈":"👁️"}</button></div><div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password</label><input type={showN?"text":"password"} value={newPw} onChange={function(e){setNewPw(e.target.value);}} placeholder="Min 8 characters" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowN(!showN);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showN?"🙈":"👁️"}</button></div><div style={{position:"relative",marginBottom:16}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Confirm New Password</label><input type={showK?"text":"password"} value={confPw} onChange={function(e){setConfPw(e.target.value);}} placeholder="Repeat" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowK(!showK);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showK?"🙈":"👁️"}</button></div>{pwErr&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#dc2626",fontSize:13}}>⚠️ {pwErr}</div>}{pwOk&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#166534",fontSize:13}}>{pwOk}</div>}<div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={changePw} disabled={saving}>{saving?"⏳ Saving…":"🔑 Change"}</Btn></div></div>}
+    {tab==="schedule"&&isTechUser&&<div>
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⚠️ Set your working hours in <strong>Philippine Time (PHT, UTC+8)</strong>. This affects SLA calculations.</div>
+      <ScheduleEditor userId={curUser.id} schedules={schedules} onChange={handleScheduleChange}/>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Close</Btn><Btn variant="success" onClick={function(){showToast("✅ Schedule saved!");onClose();}}>✅ Done</Btn></div>
+    </div>}
   </Modal>;
 }
 
@@ -344,7 +516,6 @@ export default function App(){
     {id:"integrations",icon:"🔌",label:"Integrations",superAdmin:true},
   ].filter(function(n){if(n.superAdmin)return curUser.role==="admin";if(n.admin)return isAdmin;return true;});
 
-  // Mobile bottom nav — show first 4 items + more
   var bottomNav=NAV.slice(0,4);
   var curNav=NAV.find(function(n){return n.id===page;})||{icon:"",label:"—"};
 
@@ -358,17 +529,13 @@ export default function App(){
     <div style={{display:"flex",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:"#f8fafc",fontSize:13,overflow:"hidden"}}>
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}button:active{opacity:.8}.nv:hover{background:rgba(14,165,233,.15)!important;color:#7dd3fc!important}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:767px){.hide-mobile{display:none!important}.desktop-only{display:none!important}}`}</style>
 
-      {/* Desktop sidebar */}
       {!isMobile&&sidebar}
-
-      {/* Mobile drawer overlay */}
       {isMobile&&sidebarOpen&&<div style={{position:"fixed",inset:0,zIndex:8888,display:"flex"}}>
         <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={function(){setSidebarOpen(false);}}/>
         <div style={{position:"relative",zIndex:1,width:260,height:"100%"}}>{sidebar}</div>
       </div>}
 
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
-        {/* Top bar */}
         <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:isMobile?"10px 16px":"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             {isMobile&&<button onClick={function(){setSidebarOpen(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:2,color:"#334155",display:"flex",alignItems:"center"}}>☰</button>}
@@ -398,7 +565,6 @@ export default function App(){
           {page==="integrations" &&<PageIntegrations showToast={showToast} addLog={addLog} emailTemplates={emailTemplates} setEmailTemplates={setEmailTemplates} curUser={curUser} isAdmin={isAdmin}/>}
         </div>
 
-        {/* Mobile bottom navigation */}
         {isMobile&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #e2e8f0",display:"flex",zIndex:8000,boxShadow:"0 -2px 10px rgba(0,0,0,.08)"}}>
           {bottomNav.map(function(n){var active=page===n.id;return<button key={n.id} onClick={function(){setPage(n.id);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
             <span style={{fontSize:20}}>{n.icon}</span>
@@ -413,7 +579,7 @@ export default function App(){
       </div>
 
       {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}}/>}
-      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} onClose={function(){setShowProfile(false);}}/>}
+      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} schedules={schedules} setSchedules={setSchedulesR} dbSaveSchedule={dbSaveSchedule} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
 }
@@ -447,29 +613,38 @@ function PageDashboard(p){
   </div>;
 }
 
-// ── Tickets ───────────────────────────────────────────────────────────────────
+// ── Tickets (with Assigned To filter) ────────────────────────────────────────
 function PageTickets(p){
   var tickets=p.tickets;var users=p.users;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
   var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setSelTicket=p.setSelTicket;var setPage=p.setPage;var isAdmin=p.isAdmin;var statusSla=p.statusSla;var schedules=p.schedules||{};var isMobile=p.isMobile;
   var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");
-  var filtered=tickets.filter(function(t){var q=search.toLowerCase();return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType);});
+  var[fAssignee,setFAssignee]=useState(function(){
+    // Default: if tech, show their own tickets
+    return IT_ROLES.includes(curUser.role)&&!["admin","it_manager"].includes(curUser.role)?curUser.id:"";
+  });
+  var filtered=tickets.filter(function(t){var q=search.toLowerCase();return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType)&&(!fAssignee||(fAssignee==="__unassigned__"?!t.assignedTo:t.assignedTo===fAssignee));});
   function delTicket(id){setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});});addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted");showToast("Ticket deleted");}
   function fu(id){return users.find(function(x){return x.id===id;});}
   function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
   function fcl(id){return clients.find(function(x){return x.id===id;});}
+  var techUsers=users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});
   return<div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none"}}/>
       <Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn>
     </div>
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4,flexWrap:"wrap"}}>
       <select value={fStat} onChange={function(e){setFStat(e.target.value);}} style={{padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0}}><option value="">All Status</option>{ALL_STATUSES.map(function(s){return<option key={s} value={s}>{s}</option>;})}</select>
       <select value={fPri} onChange={function(e){setFPri(e.target.value);}} style={{padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0}}><option value="">All Priority</option>{Object.keys(PRI_META).map(function(k){return<option key={k} value={k}>{PRI_META[k].label}</option>;})}</select>
       <select value={fType} onChange={function(e){setFType(e.target.value);}} style={{padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0}}><option value="">All Types</option>{ticketTypes.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>
+      <select value={fAssignee} onChange={function(e){setFAssignee(e.target.value);}} style={{padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0,background:"#eef2ff",color:"#4338ca",fontWeight:600}}>
+        <option value="">All Assigned</option>
+        <option value="__unassigned__">— Unassigned</option>
+        {techUsers.map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}
+      </select>
     </div>
 
     {isMobile?(
-      // Mobile card view
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found</div></Card>}
         {filtered.map(function(t){
@@ -482,7 +657,7 @@ function PageTickets(p){
               {t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>📬 New</span>}
             </div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-              <Badge label={sm.bg?t.status:t.status} color={sm.color} bg={sm.bg}/>
+              <Badge label={t.status} color={sm.color} bg={sm.bg}/>
               <Badge label={pri.label} color={pri.color} bg={pri.bg}/>
               {type&&<Badge label={type.name} color={type.color||"#94a3b8"}/>}
             </div>
@@ -495,7 +670,6 @@ function PageTickets(p){
         })}
       </div>
     ):(
-      // Desktop table view
       <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}>
           <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Assigned To","SLA",""].map(function(h){return<th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
@@ -692,77 +866,350 @@ function TicketDetail(p){
   </Modal>;
 }
 
-// ── Time Tracking ─────────────────────────────────────────────────────────────
+// ── Time Tracking (enhanced) ──────────────────────────────────────────────────
 function PageTimeTracking(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;
-  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[sortBy,setSortBy]=useState("submittedAt");var[sortDir,setSortDir]=useState("desc");
-  var scope=useMemo(function(){var base=tickets.filter(function(t){return !t.deleted;});if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id;});if(filterUser)return base.filter(function(t){return t.submittedBy===filterUser;});return base;},[tickets,curUser,isAdmin,filterUser]);
-  var filtered=useMemo(function(){var q=search.toLowerCase();return scope.filter(function(t){return(!q||(t.title.toLowerCase().includes(q)||t.id.includes(q)));}).sort(function(a,b){var av,bv;if(sortBy==="submittedAt"){av=new Date(a.submittedAt||a.createdAt);bv=new Date(b.submittedAt||b.createdAt);}else{av=a.timeToCreateMins||0;bv=b.timeToCreateMins||0;}if(av<bv)return sortDir==="asc"?-1:1;if(av>bv)return sortDir==="asc"?1:-1;return 0;});},[scope,search,sortBy,sortDir]);
-  function fu(id){return users.find(function(x){return x.id===id;});}function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
-  var totalMins=filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);var avg=filtered.length?totalMins/filtered.length:0;
+  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[rangeMode,setRangeMode]=useState("all");
+  var[view,setView]=useState("list"); // list | day | week | month
+
+  // Compute range dates in PHT
+  var now=nowPHT();
+  var todayStr=getPHTDateStr(new Date().toISOString());
+  var rangeStart=useMemo(function(){
+    if(rangeMode==="day")return todayStr;
+    if(rangeMode==="week"){
+      var d=new Date(now.getTime()-now.getUTCDay()*86400000);
+      return d.getUTCFullYear()+"-"+(d.getUTCMonth()+1).toString().padStart(2,"0")+"-"+d.getUTCDate().toString().padStart(2,"0");
+    }
+    if(rangeMode==="month"){
+      return now.getUTCFullYear()+"-"+(now.getUTCMonth()+1).toString().padStart(2,"0")+"-01";
+    }
+    return null;
+  },[rangeMode,todayStr]);
+
+  var scope=useMemo(function(){
+    var base=tickets.filter(function(t){return !t.deleted;});
+    if(!isAdmin)base=base.filter(function(t){return t.submittedBy===curUser.id||t.assignedTo===curUser.id;});
+    else if(filterUser)base=base.filter(function(t){return t.submittedBy===filterUser||t.assignedTo===filterUser;});
+    if(rangeStart){
+      base=base.filter(function(t){
+        var dateStr=getPHTDateStr(t.createdAt);
+        return dateStr>=rangeStart;
+      });
+    }
+    return base;
+  },[tickets,curUser,isAdmin,filterUser,rangeStart]);
+
+  var filtered=useMemo(function(){
+    var q=search.toLowerCase();
+    return scope.filter(function(t){return(!q||(t.title.toLowerCase().includes(q)||t.id.includes(q)));});
+  },[scope,search]);
+
+  // Totals
+  var totalCreateMins=filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);
+  var avgCreateMins=filtered.length?totalCreateMins/filtered.length:0;
+  var totalActualHrs=filtered.reduce(function(a,t){return a+calcActualTimeSpentHours(t);},0);
+
+  // Per-day breakdown
+  var dayMap={};
+  filtered.forEach(function(t){
+    var dateStr=getPHTDateStr(t.createdAt);
+    if(!dayMap[dateStr])dayMap[dateStr]={date:dateStr,createMins:0,actualHrs:0,count:0};
+    dayMap[dateStr].createMins+=(t.timeToCreateMins||0);
+    dayMap[dateStr].actualHrs+=calcActualTimeSpentHours(t);
+    dayMap[dateStr].count++;
+  });
+  var dayData=Object.values(dayMap).sort(function(a,b){return a.date.localeCompare(b.date);}).slice(-14);
+
+  // Per-week breakdown
+  var weekMap={};
+  filtered.forEach(function(t){
+    var wk=getPHTWeekKey(t.createdAt);
+    if(!weekMap[wk])weekMap[wk]={week:wk,createMins:0,actualHrs:0,count:0};
+    weekMap[wk].createMins+=(t.timeToCreateMins||0);
+    weekMap[wk].actualHrs+=calcActualTimeSpentHours(t);
+    weekMap[wk].count++;
+  });
+  var weekData=Object.values(weekMap).sort(function(a,b){return a.week.localeCompare(b.week);}).slice(-8);
+
+  // Per-month breakdown
+  var monthMap={};
+  filtered.forEach(function(t){
+    var mo=getPHTMonthKey(t.createdAt);
+    if(!monthMap[mo])monthMap[mo]={month:mo,createMins:0,actualHrs:0,count:0};
+    monthMap[mo].createMins+=(t.timeToCreateMins||0);
+    monthMap[mo].actualHrs+=calcActualTimeSpentHours(t);
+    monthMap[mo].count++;
+  });
+  var monthData=Object.values(monthMap).sort(function(a,b){return a.month.localeCompare(b.month);}).slice(-12);
+
+  function fu(id){return users.find(function(x){return x.id===id;});}
+  function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
+
   return<div>
-    <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking</div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-      <Stat label="Total Create Time" value={fmtMs(totalMins)} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets"}/>
-      <Stat label="Avg Create Time" value={fmtMs(avg)} icon="⏱" color="#0ea5e9"/>
+    <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking <span style={{fontSize:11,color:"#64748b",fontWeight:400}}>(PHT)</span></div>
+
+    {/* Summary stats */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginBottom:16}}>
+      <Stat label="Total Form Time" value={fmtMs(totalCreateMins)} icon="✍️" color="#8b5cf6" sub={filtered.length+" tickets"}/>
+      <Stat label="Avg Form Time" value={fmtMs(avgCreateMins)} icon="⏱" color="#0ea5e9"/>
+      <Stat label="Total IT Hours" value={fmtHrs(totalActualHrs)} icon="🔧" color="#6366f1" sub="actual work"/>
+      <Stat label="Avg IT Hours" value={fmtHrs(filtered.length?totalActualHrs/filtered.length:0)} icon="📊" color="#10b981"/>
     </div>
+
+    {/* Filters */}
     <Card style={{marginBottom:14,padding:"12px 14px"}}>
-      <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:8}}/>
-      {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box"}}><option value="">All Users</option>{users.filter(function(u){return u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{flex:1,minWidth:120,padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+        {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box"}}><option value="">All Users</option>{users.filter(function(u){return u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {["all","day","week","month"].map(function(r){return<button key={r} onClick={function(){setRangeMode(r);}} style={{padding:"5px 12px",borderRadius:8,border:"1px solid "+(rangeMode===r?"#6366f1":"#e2e8f0"),background:rangeMode===r?"#6366f1":"#fff",color:rangeMode===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer"}}>{r==="all"?"All Time":r==="day"?"Today":r==="week"?"This Week":"This Month"}</button>;})}
+      </div>
     </Card>
-    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+
+    {/* View toggle */}
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto"}}>
+      {[["list","📋 List"],["day","📅 Daily"],["week","📆 Weekly"],["month","🗓 Monthly"]].map(function(vp){return<button key={vp[0]} onClick={function(){setView(vp[0]);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===vp[0]?"#6366f1":"#f1f5f9",color:view===vp[0]?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{vp[1]}</button>;})}
+    </div>
+
+    {/* Daily view */}
+    {view==="day"&&<Card style={{marginBottom:14}}>
+      <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>📅 Daily IT Hours Spent</div>
+      {dayData.length===0&&<div style={{textAlign:"center",padding:24,color:"#94a3b8"}}>No data in range.</div>}
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={dayData}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+          <XAxis dataKey="date" tick={{fontSize:9}} tickFormatter={function(v){return v.slice(5);}}/>
+          <YAxis tick={{fontSize:9}}/>
+          <Tooltip formatter={function(v,n){return n==="actualHrs"?v.toFixed(2)+"h":fmtMs(v);}}/>
+          <Legend wrapperStyle={{fontSize:10}}/>
+          <Bar dataKey="actualHrs" name="IT Hours" fill="#6366f1" radius={[3,3,0,0]}/>
+          <Bar dataKey="count" name="Tickets" fill="#0ea5e9" radius={[3,3,0,0]}/>
+        </BarChart>
+      </ResponsiveContainer>
+      <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:6}}>
+        {dayData.map(function(d){return<div key={d.date} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#f8fafc",borderRadius:8,fontSize:12}}>
+          <span style={{fontWeight:600,color:"#475569"}}>{d.date}</span>
+          <div style={{display:"flex",gap:12}}>
+            <span style={{color:"#6366f1"}}><strong>{d.actualHrs.toFixed(2)}h</strong> IT work</span>
+            <span style={{color:"#0ea5e9"}}><strong>{d.count}</strong> tickets</span>
+            <span style={{color:"#8b5cf6"}}><strong>{fmtMs(d.createMins)}</strong> form</span>
+          </div>
+        </div>;})}
+      </div>
+    </Card>}
+
+    {/* Weekly view */}
+    {view==="week"&&<Card style={{marginBottom:14}}>
+      <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>📆 Weekly IT Hours Spent</div>
+      {weekData.length===0&&<div style={{textAlign:"center",padding:24,color:"#94a3b8"}}>No data in range.</div>}
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={weekData}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+          <XAxis dataKey="week" tick={{fontSize:8}} tickFormatter={function(v){return "W/"+v.slice(5,10);}}/>
+          <YAxis tick={{fontSize:9}}/>
+          <Tooltip formatter={function(v,n){return n==="actualHrs"?v.toFixed(2)+"h":fmtMs(v);}}/>
+          <Legend wrapperStyle={{fontSize:10}}/>
+          <Bar dataKey="actualHrs" name="IT Hours" fill="#6366f1" radius={[3,3,0,0]}/>
+          <Bar dataKey="count" name="Tickets" fill="#10b981" radius={[3,3,0,0]}/>
+        </BarChart>
+      </ResponsiveContainer>
+      <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:6}}>
+        {weekData.map(function(d){return<div key={d.week} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#f8fafc",borderRadius:8,fontSize:12}}>
+          <span style={{fontWeight:600,color:"#475569"}}>Wk of {d.week.slice(5)}</span>
+          <div style={{display:"flex",gap:12}}>
+            <span style={{color:"#6366f1"}}><strong>{d.actualHrs.toFixed(2)}h</strong> IT work</span>
+            <span style={{color:"#10b981"}}><strong>{d.count}</strong> tickets</span>
+          </div>
+        </div>;})}
+      </div>
+    </Card>}
+
+    {/* Monthly view */}
+    {view==="month"&&<Card style={{marginBottom:14}}>
+      <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>🗓 Monthly IT Hours Spent</div>
+      {monthData.length===0&&<div style={{textAlign:"center",padding:24,color:"#94a3b8"}}>No data in range.</div>}
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={monthData}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+          <XAxis dataKey="month" tick={{fontSize:9}}/>
+          <YAxis tick={{fontSize:9}}/>
+          <Tooltip formatter={function(v,n){return n==="actualHrs"?v.toFixed(2)+"h":fmtMs(v);}}/>
+          <Legend wrapperStyle={{fontSize:10}}/>
+          <Bar dataKey="actualHrs" name="IT Hours" fill="#6366f1" radius={[3,3,0,0]}/>
+          <Bar dataKey="count" name="Tickets" fill="#f59e0b" radius={[3,3,0,0]}/>
+        </BarChart>
+      </ResponsiveContainer>
+      <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:6}}>
+        {monthData.map(function(d){return<div key={d.month} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#f8fafc",borderRadius:8,fontSize:12}}>
+          <span style={{fontWeight:600,color:"#475569"}}>{d.month}</span>
+          <div style={{display:"flex",gap:12}}>
+            <span style={{color:"#6366f1"}}><strong>{d.actualHrs.toFixed(2)}h</strong> IT work</span>
+            <span style={{color:"#f59e0b"}}><strong>{d.count}</strong> tickets</span>
+          </div>
+        </div>;})}
+      </div>
+    </Card>}
+
+    {/* List view */}
+    {view==="list"&&<div style={{display:"flex",flexDirection:"column",gap:8}}>
       {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
-      {filtered.map(function(t){var sub=fu(t.submittedBy);var tt2=ftt(t.typeId);var sm=STATUS_META[t.status]||STATUS_META.Open;var cm=t.timeToCreateMins||0;var cc=cm<=5?"#10b981":cm<=15?"#f59e0b":"#ef4444";
-        return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14}} onClick={function(){setSelTicket(t.id);}}>
+      {filtered.map(function(t){
+        var sub=fu(t.submittedBy);var tt2=ftt(t.typeId);var sm=STATUS_META[t.status]||STATUS_META.Open;
+        var cm=t.timeToCreateMins||0;var cc=cm<=5?"#10b981":cm<=15?"#f59e0b":"#ef4444";
+        var actualH=calcActualTimeSpentHours(t);
+        return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fdt(t.submittedAt||t.createdAt)}</div></div>
+            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fdt(t.submittedAt||t.createdAt)} (PHT)</div></div>
             <Badge label={t.status} color={sm.color} bg={sm.bg}/>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <div style={{display:"flex",alignItems:"center",gap:6}}>{sub&&<Avatar name={sub.name} id={sub.id} size={18}/>}<span style={{fontSize:11,color:"#64748b"}}>{sub?sub.name:"—"}</span></div>
-            <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:36,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,cm/30*100)+"%",background:cc,borderRadius:3}}/></div><span style={{fontSize:12,fontWeight:700,color:cc}}>{fmtMs(cm)}</span></div>
+            <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11}}>
+                <span style={{color:"#64748b"}}>Form:</span>
+                <div style={{width:30,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,cm/30*100)+"%",background:cc,borderRadius:3}}/></div>
+                <span style={{fontWeight:700,color:cc}}>{fmtMs(cm)}</span>
+              </div>
+              <div style={{fontSize:11,display:"flex",alignItems:"center",gap:4}}>
+                <span style={{color:"#64748b"}}>IT Time:</span>
+                <span style={{fontWeight:700,color:"#6366f1"}}>{actualH.toFixed(2)}h</span>
+              </div>
+            </div>
           </div>
         </div>;
       })}
-    </div>
+    </div>}
   </div>;
 }
 
-// ── Reports ───────────────────────────────────────────────────────────────────
+// ── Reports (enhanced with client/location filter + IT hours) ─────────────────
 function PageReports(p){
-  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients;var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};
+  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};
   var[view,setView]=useState("summary");var[range,setRange]=useState("month");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
+  var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");
+
   var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week")return new Date(now.getTime()-7*86400000).toISOString();if(range==="month")return new Date(now.getTime()-30*86400000).toISOString();if(range==="year")return new Date(now.getTime()-365*86400000).toISOString();return new Date(0).toISOString();},[range]);
   var rangeLabel={day:"Today",week:"7 Days",month:"30 Days",year:"12 Mo",all:"All"};
   var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
-  var active=tickets.filter(function(t){return !t.deleted&&new Date(t.createdAt)>=new Date(rangeStart);});
-  var allActive=tickets.filter(function(t){return !t.deleted;});
+
+  // Client's locations for location filter
+  var selClientObj=clients.find(function(c){return c.id===fClient;});
+  var availLocations=selClientObj?selClientObj.locations:[];
+
+  // Base filtered tickets
+  var active=useMemo(function(){
+    return tickets.filter(function(t){
+      if(t.deleted)return false;
+      if(new Date(t.createdAt)<new Date(rangeStart))return false;
+      if(fClient&&t.clientId!==fClient)return false;
+      if(fLocation&&t.locationId!==fLocation)return false;
+      return true;
+    });
+  },[tickets,rangeStart,fClient,fLocation]);
+
+  var allActive=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
   var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
-  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res)};});
+  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),actualHrs:mine.reduce(function(a,tk){return a+calcActualTimeSpentHours(tk);},0)};});
   var totalBreached=active.filter(function(t){return t.slaBreached;}).length;
   var totalSlaRate=calcSlaRate(active);var avgCloseAll=calcAvgClose(calcClosed(active));
   var statusPieData=ALL_STATUSES.map(function(s){return{name:s,value:active.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
+  var totalActualHrs=active.reduce(function(a,t){return a+calcActualTimeSpentHours(t);},0);
+
+  // IT hours per day
+  var dayHrsMap={};
+  active.forEach(function(t){
+    var dateStr=getPHTDateStr(t.createdAt);
+    if(!dayHrsMap[dateStr])dayHrsMap[dateStr]={date:dateStr,hrs:0,count:0};
+    dayHrsMap[dateStr].hrs+=calcActualTimeSpentHours(t);
+    dayHrsMap[dateStr].count++;
+  });
+  var dayHrsData=Object.values(dayHrsMap).sort(function(a,b){return a.date.localeCompare(b.date);}).slice(-14);
+
+  // IT hours per week
+  var weekHrsMap={};
+  active.forEach(function(t){
+    var wk=getPHTWeekKey(t.createdAt);
+    if(!weekHrsMap[wk])weekHrsMap[wk]={week:wk,hrs:0,count:0};
+    weekHrsMap[wk].hrs+=calcActualTimeSpentHours(t);
+    weekHrsMap[wk].count++;
+  });
+  var weekHrsData=Object.values(weekHrsMap).sort(function(a,b){return a.week.localeCompare(b.week);}).slice(-8);
+
+  // IT hours per month
+  var monthHrsMap={};
+  active.forEach(function(t){
+    var mo=getPHTMonthKey(t.createdAt);
+    if(!monthHrsMap[mo])monthHrsMap[mo]={month:mo,hrs:0,count:0};
+    monthHrsMap[mo].hrs+=calcActualTimeSpentHours(t);
+    monthHrsMap[mo].count++;
+  });
+  var monthHrsData=Object.values(monthHrsMap).sort(function(a,b){return a.month.localeCompare(b.month);}).slice(-12);
+
+  // Client issues breakdown
+  var clientBreakdown=useMemo(function(){
+    return clients.map(function(cl){
+      var mine=active.filter(function(t){return t.clientId===cl.id;});
+      var locBreakdown=(cl.locations||[]).map(function(loc){
+        var lmine=mine.filter(function(t){return t.locationId===loc.id;});
+        var typeCount={};
+        lmine.forEach(function(t){
+          var tt2=ticketTypes.find(function(x){return x.id===t.typeId;});
+          var nm=tt2?tt2.name:"Unknown";
+          typeCount[nm]=(typeCount[nm]||0)+1;
+        });
+        return{id:loc.id,name:loc.name,address:loc.address,count:lmine.length,typeCount:typeCount,actualHrs:lmine.reduce(function(a,t){return a+calcActualTimeSpentHours(t);},0)};
+      }).filter(function(l){return l.count>0;}).sort(function(a,b){return b.count-a.count;});
+      var typeCount={};
+      mine.forEach(function(t){
+        var tt2=ticketTypes.find(function(x){return x.id===t.typeId;});
+        var nm=tt2?tt2.name:"Unknown";
+        typeCount[nm]=(typeCount[nm]||0)+1;
+      });
+      return{id:cl.id,name:cl.name,count:mine.length,typeCount:typeCount,locBreakdown:locBreakdown,actualHrs:mine.reduce(function(a,t){return a+calcActualTimeSpentHours(t);},0)};
+    }).filter(function(x){return x.count>0;}).sort(function(a,b){return b.count-a.count;});
+  },[clients,active,ticketTypes]);
+
   var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
   var weeklyTrend=useMemo(function(){return Array.from({length:8},function(_,i){var wEnd=new Date(Date.now()-(7-i)*7*86400000);var wStart=new Date(wEnd.getTime()-7*86400000);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<wEnd;});return{label:"W"+(i+1),total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
 
-  async function generateInsight(){setAiLoading(true);setAiInsight("");var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topTypes:top3.map(function(t){return t.name+" ("+t.total+")";}).join(", "),openCount:allActive.filter(function(t){return t.status==="Open";}).length};try{var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:"IT helpdesk analyst. Analyze and give: top issues, SLA performance, 3 recommendations. Be concise, use bullets.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});var data=await res.json();setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate.");}catch(e){setAiInsight("Error: "+e.message);}setAiLoading(false);}
+  async function generateInsight(){setAiLoading(true);setAiInsight("");var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topTypes:top3.map(function(t){return t.name+" ("+t.total+")";}).join(", "),openCount:allActive.filter(function(t){return t.status==="Open";}).length,totalITHours:totalActualHrs.toFixed(1),topClient:clientBreakdown[0]?clientBreakdown[0].name+" ("+clientBreakdown[0].count+" tickets)":"none"};try{var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:"IT helpdesk analyst. Analyze and give: top issues, SLA performance, 3 recommendations. Be concise, use bullets.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});var data=await res.json();setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate.");}catch(e){setAiInsight("Error: "+e.message);}setAiLoading(false);}
 
-  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
+  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"trend",label:"📈 Trend"},{id:"it_hours",label:"🔧 IT Hours"},{id:"clients",label:"🤝 Clients"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
   return<div>
+    {/* View tabs */}
     <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>
       {VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}
     </div>
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
+
+    {/* Range filter */}
+    <div style={{display:"flex",gap:6,marginBottom:10,overflowX:"auto",paddingBottom:2}}>
       {["day","week","month","year","all"].map(function(r){return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;})}
     </div>
-    <div style={{background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:8,padding:"7px 12px",marginBottom:14,fontSize:12,color:"#4338ca",fontWeight:600}}>{active.length} tickets</div>
+
+    {/* Client / Location filter */}
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      <select value={fClient} onChange={function(e){setFClient(e.target.value);setFLocation("");}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flex:1,minWidth:120}}>
+        <option value="">All Clients</option>
+        {clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}
+      </select>
+      <select value={fLocation} onChange={function(e){setFLocation(e.target.value);}} disabled={!fClient} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flex:1,minWidth:120,background:fClient?"#f8fafc":"#f1f5f9"}}>
+        <option value="">All Locations</option>
+        {availLocations.map(function(l){return<option key={l.id} value={l.id}>{l.name}</option>;})}
+      </select>
+    </div>
+
+    <div style={{background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:8,padding:"7px 12px",marginBottom:14,fontSize:12,color:"#4338ca",fontWeight:600}}>
+      {active.length} tickets {fClient?"· Client: "+clients.find(function(c){return c.id===fClient;})?.name:""}{fLocation?"· "+availLocations.find(function(l){return l.id===fLocation;})?.name:""}
+    </div>
 
     {view==="summary"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
         <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"}/>
         <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9"/>
         <Stat label="Total" value={active.length} icon="🎫" color="#6366f1"/>
-        <Stat label="Closed" value={calcClosed(active).length} icon="✅" color="#10b981"/>
+        <Stat label="IT Hours" value={fmtHrs(totalActualHrs)} icon="🔧" color="#10b981"/>
       </div>
       <Card><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
     </div>}
@@ -772,6 +1219,83 @@ function PageReports(p){
       <Card style={{borderLeft:"4px solid #6366f1"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Insights</div><button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer"}}>{aiLoading?"⏳ Analyzing…":"✨ Generate"}</button></div>{!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}>Ready to analyze your data</div>}{aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}</Card>
     </div>}
 
+    {view==="it_hours"&&<div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+        <Stat label="Daily Avg" value={fmtHrs(dayHrsData.length?dayHrsData.reduce(function(a,d){return a+d.hrs;},0)/dayHrsData.length:0)} icon="📅" color="#6366f1"/>
+        <Stat label="Weekly Total" value={fmtHrs(weekHrsData.length?weekHrsData[weekHrsData.length-1]?.hrs||0:0)} icon="📆" color="#0ea5e9"/>
+        <Stat label="Monthly Total" value={fmtHrs(monthHrsData.length?monthHrsData[monthHrsData.length-1]?.hrs||0:0)} icon="🗓" color="#10b981"/>
+      </div>
+      <Card style={{marginBottom:14}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>📅 IT Hours Per Day (PHT)</div>
+        {dayHrsData.length===0&&<div style={{textAlign:"center",padding:20,color:"#94a3b8"}}>No data.</div>}
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={dayHrsData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+            <XAxis dataKey="date" tick={{fontSize:9}} tickFormatter={function(v){return v.slice(5);}}/>
+            <YAxis tick={{fontSize:9}} unit="h"/>
+            <Tooltip formatter={function(v){return v.toFixed(2)+"h";}}/>
+            <Bar dataKey="hrs" name="IT Hours" fill="#6366f1" radius={[3,3,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+      <Card style={{marginBottom:14}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>📆 IT Hours Per Week (PHT)</div>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={weekHrsData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+            <XAxis dataKey="week" tick={{fontSize:8}} tickFormatter={function(v){return v.slice(5,10);}}/>
+            <YAxis tick={{fontSize:9}} unit="h"/>
+            <Tooltip formatter={function(v){return v.toFixed(2)+"h";}}/>
+            <Bar dataKey="hrs" name="IT Hours" fill="#0ea5e9" radius={[3,3,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+      <Card>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>🗓 IT Hours Per Month (PHT)</div>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={monthHrsData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+            <XAxis dataKey="month" tick={{fontSize:9}}/>
+            <YAxis tick={{fontSize:9}} unit="h"/>
+            <Tooltip formatter={function(v){return v.toFixed(2)+"h";}}/>
+            <Bar dataKey="hrs" name="IT Hours" fill="#10b981" radius={[3,3,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+    </div>}
+
+    {view==="clients"&&<div>
+      {clientBreakdown.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No client data in this range.</div></Card>}
+      {clientBreakdown.map(function(cl){return<Card key={cl.id} style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}><div style={{width:36,height:36,borderRadius:8,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16}}>{cl.name[0]}</div><div><div style={{fontWeight:700,fontSize:14}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>{cl.count} tickets · {cl.actualHrs.toFixed(2)}h IT time</div></div></div>
+          <span style={{fontWeight:800,fontSize:22,color:"#6366f1"}}>{cl.count}</span>
+        </div>
+        {/* Issue types for this client */}
+        {Object.keys(cl.typeCount).length>0&&<div style={{marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#475569",marginBottom:6}}>Issues by Type</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {Object.entries(cl.typeCount).sort(function(a,b){return b[1]-a[1];}).map(function(entry){return<Badge key={entry[0]} label={entry[0]+": "+entry[1]} color="#6366f1"/>;})}
+          </div>
+        </div>}
+        {/* Location breakdown */}
+        {cl.locBreakdown.length>0&&<div>
+          <div style={{fontSize:11,fontWeight:700,color:"#475569",marginBottom:8}}>📍 Locations</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {cl.locBreakdown.map(function(loc){return<div key={loc.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div><div style={{fontWeight:700,fontSize:12}}>📍 {loc.name}</div><div style={{fontSize:10,color:"#64748b"}}>{loc.address}</div></div>
+                <div style={{textAlign:"right"}}><div style={{fontWeight:700,color:"#6366f1"}}>{loc.count} tickets</div><div style={{fontSize:10,color:"#94a3b8"}}>{loc.actualHrs.toFixed(2)}h</div></div>
+              </div>
+              {Object.keys(loc.typeCount).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {Object.entries(loc.typeCount).sort(function(a,b){return b[1]-a[1];}).map(function(entry){return<span key={entry[0]} style={{background:"#eef2ff",color:"#4338ca",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:600}}>{entry[0]}: {entry[1]}</span>;})}
+              </div>}
+            </div>;})}
+          </div>
+        </div>}
+      </Card>;})}
+    </div>}
+
     {view==="by_type"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byType.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
       {byType.map(function(t){return<Card key={t.id}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:700,color:"#6366f1",fontSize:16}}>{t.total}</span></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span><span style={{fontSize:11,color:"#64748b"}}>Avg: <strong>{t.avgClose}h</strong></span></div></Card>;})}
@@ -779,7 +1303,7 @@ function PageReports(p){
 
     {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byUser.map(function(t){return<Card key={t.id}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span></div></Card>;})}
+      {byUser.map(function(t){return<Card key={t.id}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span><span style={{fontSize:11,color:"#64748b"}}>IT Hrs: <strong style={{color:"#6366f1"}}>{t.actualHrs.toFixed(2)}h</strong></span></div></Card>;})}
     </div>}
   </div>;
 }
@@ -989,36 +1513,4 @@ function PageIntegrations(p){
         <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div>
         <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a>
       </div>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1",lineHeight:1.8}}>Set in Vercel → Settings → Environment Variables:<br/><code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_USER</code> and <code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_APP_PASSWORD</code></div>
-      <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>Send Test Email</label>
-      <div style={{display:"flex",gap:8,marginBottom:8}}>
-        <input type="email" value={testTo} onChange={function(e){setTestTo(e.target.value);}} placeholder="recipient@example.com" style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}/>
-        <button onClick={runTest} disabled={sending} style={{padding:"10px 16px",background:sending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:sending?"not-allowed":"pointer",flexShrink:0}}>{sending?"Sending…":"📤 Test"}</button>
-      </div>
-      {status==="ok"&&<div style={{padding:"8px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,fontSize:12,color:"#166534"}}>✅ Test email delivered!</div>}
-      {status==="fail"&&<div style={{padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:12,color:"#dc2626"}}>❌ Failed — check env variables.</div>}
-    </Card>
-    {isAdmin&&<Card style={{borderTop:"3px solid #6366f1"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-        <div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Use <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div></div>
-        <Btn onClick={openNew}>➕ Add Template</Btn>
-      </div>
-      {emailTemplates.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>No templates yet.</div>}
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div><div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subject: {t.subject}</div><div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div></div>
-            <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn></div>
-          </div>
-        </div>;})}
-      </div>
-    </Card>}
-    {tmplModal&&<Modal title={tmplEdit?"Edit Template":"New Email Template"} onClose={function(){setTmplModal(false);}}>
-      <FInput label="Template Name *" value={tmplForm.name} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{name:e.target.value});});}} placeholder="e.g. Initial Response"/>
-      <FInput label="Subject *" value={tmplForm.subject} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{subject:e.target.value});});}} placeholder="Re: Your IT Request"/>
-      <FTextarea label="Body *" value={tmplForm.body} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{body:e.target.value});});}} rows={8} placeholder={"Hi {{client_name}},\n\nThank you for reaching out...\n\nBest regards,\n{{agent_name}}"}/>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>💡 <strong>{"{{client_name}}"}</strong> and <strong>{"{{agent_name}}"}</strong> auto-fill on tickets.</div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setTmplModal(false);}}>Cancel</Btn><Btn onClick={saveTmpl}>{tmplEdit?"Save Changes":"Create Template"}</Btn></div>
-    </Modal>}
-  </div>;
-}
+      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1",lineHeight:1.8}}>Set in Vercel → Settings → Environment Variables:<br/><code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_USER</code> and <code style={{background:"#e0f2fe",padding:"1
