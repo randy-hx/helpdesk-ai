@@ -1218,16 +1218,68 @@ function PageTimeTracking(p){
 // ── Reports ───────────────────────────────────────────────────────────────────
 function PageReports(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};var allTimeSessions=p.allTimeSessions||[];
-  var[view,setView]=useState("summary");var[range,setRange]=useState("month");var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
+
+  // Build month options: current month going back 12 months
+  var MONTH_OPTS=useMemo(function(){
+    var opts=[];
+    var now=new Date();
+    for(var i=0;i<13;i++){
+      var d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      var val=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+      var lbl=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+      opts.push({value:val,label:lbl});
+    }
+    return opts;
+  },[]);
+
+  var nowStr=(function(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
+
+  var[view,setView]=useState("summary");
+  // range can be: "day","week","month-YYYY-MM","year","all"
+  var[range,setRange]=useState("month-"+nowStr);
+  var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
   var selClientObj=clients.find(function(c){return c.id===fClient;});
   var availLocations=selClientObj?selClientObj.locations:[];
   function handleClientChange(v){setFClient(v);setFLocation("");}
 
-  var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week")return new Date(now.getTime()-7*86400000).toISOString();if(range==="month")return new Date(now.getTime()-30*86400000).toISOString();if(range==="year")return new Date(now.getTime()-365*86400000).toISOString();return new Date(0).toISOString();},[range]);
-  var rangeLabel={day:"Today",week:"7 Days",month:"30 Days",year:"12 Mo",all:"All"};
+  var rangeStart=useMemo(function(){
+    var now=new Date();
+    if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();
+    if(range==="week"){
+      // Start of current week (Monday)
+      var dow=now.getDay();// 0=Sun
+      var diffToMon=dow===0?6:dow-1;
+      var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);
+      return mon.toISOString();
+    }
+    if(range.startsWith("month-")){
+      var parts=range.slice(6).split("-");
+      return new Date(parseInt(parts[0]),parseInt(parts[1])-1,1).toISOString();
+    }
+    if(range==="year")return new Date(now.getFullYear(),0,1).toISOString();
+    return new Date(0).toISOString();
+  },[range]);
+
+  var rangeEnd=useMemo(function(){
+    var now=new Date();
+    if(range==="week"){
+      var dow=now.getDay();
+      var diffToMon=dow===0?6:dow-1;
+      var sun=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon+6,23,59,59,999);
+      return sun.toISOString();
+    }
+    if(range.startsWith("month-")){
+      var parts=range.slice(6).split("-");
+      // Last day of the selected month
+      return new Date(parseInt(parts[0]),parseInt(parts[1]),0,23,59,59,999).toISOString();
+    }
+    return null; // no upper bound for others
+  },[range]);
+
+  var rangeLabel={day:"Today",week:"This Week",year:"This Year",all:"All Time"};
   var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
 
-  var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(new Date(t.createdAt)<new Date(rangeStart))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,fClient,fLocation]);
+  var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;var d=new Date(t.createdAt);if(d<new Date(rangeStart))return false;if(rangeEnd&&d>new Date(rangeEnd))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,rangeEnd,fClient,fLocation]);
   var allActive=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,fClient,fLocation]);
 
   function loggedMins(ticketArr){
@@ -1246,7 +1298,22 @@ function PageReports(p){
   var totalLoggedMins=loggedMins(active);
   var statusPieData=ALL_STATUSES.map(function(s){return{name:s,value:active.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
   var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
-  var weeklyTrend=useMemo(function(){return Array.from({length:8},function(_,i){var wEnd=new Date(Date.now()-(7-i)*7*86400000);var wStart=new Date(wEnd.getTime()-7*86400000);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<wEnd;});return{label:"W"+(i+1),total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
+  // Weekly trend — weeks start on Monday
+  var weeklyTrend=useMemo(function(){
+    // Find the most recent Monday (or today if Monday)
+    var now=new Date();
+    var dow=now.getDay(); // 0=Sun
+    var diffToMon=dow===0?6:dow-1;
+    var thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);
+    return Array.from({length:8},function(_,i){
+      // i=0 is 7 weeks ago, i=7 is current week
+      var wStart=new Date(thisMon.getTime()-(7-i)*7*86400000);
+      var wEnd=new Date(wStart.getTime()+7*86400000-1);
+      var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<=wEnd;});
+      var lbl=wStart.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+      return{label:lbl,total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};
+    });
+  },[allActive]);
 
   var byClient=useMemo(function(){
     return clients.map(function(cl){
@@ -1262,12 +1329,14 @@ function PageReports(p){
     }).filter(Boolean).sort(function(a,b){return b.total-a.total;});
   },[clients,allActive,ticketTypes,allTimeSessions]);
 
+  // AI insight — routed through /api/ai-insight to avoid CORS
   async function generateInsight(){
     setAiLoading(true);setAiInsight("");
     var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate,topLocations:c.byLoc.slice(0,3).map(function(l){return l.name+" ("+l.total+" tickets, "+(l.loggedMins/60).toFixed(1)+"h logged)";})};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
     try{
-      var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. 📍 Locations/clients needing most attention\n3. ⏱ IT hours analysis — are logged hours proportionate to ticket volume? Any tech working significantly more/less?\n4. 💡 3 actionable recommendations\n\nBe concise. Use bullet points. Note: IT hours are actual logged time from a start/stop timer, not wall-clock time.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
-      var data=await res.json();setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");
+      var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. 📍 Locations/clients needing most attention\n3. ⏱ IT hours analysis — are logged hours proportionate to ticket volume? Any tech working significantly more/less?\n4. 💡 3 actionable recommendations\n\nBe concise. Use bullet points. Note: IT hours are actual logged time from a start/stop timer, not wall-clock time.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
+      var data=await res.json();
+      setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");
     }catch(e){setAiInsight("Error: "+e.message);}
     setAiLoading(false);
   }
