@@ -827,56 +827,171 @@ function TicketDetail(p){
 // ── Time Tracking ─────────────────────────────────────────────────────────────
 function PageTimeTracking(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
-  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");
-  var scope=useMemo(function(){var base=tickets.filter(function(t){return !t.deleted;});if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id||t.assignedTo===curUser.id;});if(filterUser)return base.filter(function(t){return t.assignedTo===filterUser;});return base;},[tickets,curUser,isAdmin,filterUser]);
-  var filtered=useMemo(function(){var q=search.toLowerCase();return scope.filter(function(t){return(!q||(t.title.toLowerCase().includes(q)||t.id.includes(q)));});},[scope,search]);
-  function fu(id){return users.find(function(x){return x.id===id;});}
-  function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
 
-  // Get real logged minutes per ticket
-  function ticketMins(ticketId){return allTimeSessions.filter(function(s){return s.ticket_id===ticketId&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
-  var totalMins=filtered.reduce(function(a,t){return a+ticketMins(t.id);},0);
-  var ticketsWithTime=filtered.filter(function(t){return ticketMins(t.id)>0;});
+  var[search,setSearch]=useState("");
+  var[filterUser,setFilterUser]=useState("");
+  var[dateFrom,setDateFrom]=useState("");
+  var[dateTo,setDateTo]=useState("");
+  var[activeTab,setActiveTab]=useState("it_time"); // "it_time" | "create_time"
+
+  var scope=useMemo(function(){
+    var base=tickets.filter(function(t){return !t.deleted;});
+    if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id||t.assignedTo===curUser.id;});
+    if(filterUser)return base.filter(function(t){return t.assignedTo===filterUser||t.submittedBy===filterUser;});
+    return base;
+  },[tickets,curUser,isAdmin,filterUser]);
+
+  var filtered=useMemo(function(){
+    var q=search.toLowerCase();
+    return scope.filter(function(t){
+      if(q&&!t.title.toLowerCase().includes(q)&&!t.id.includes(q))return false;
+      // Date filter — applied to createdAt
+      if(dateFrom){var from=new Date(dateFrom);from.setHours(0,0,0,0);if(new Date(t.createdAt)<from)return false;}
+      if(dateTo){var to=new Date(dateTo);to.setHours(23,59,59,999);if(new Date(t.createdAt)>to)return false;}
+      return true;
+    });
+  },[scope,search,dateFrom,dateTo]);
+
+  function fu(id){return users.find(function(x){return x.id===id;});}
+
+  // Logged IT minutes per ticket (from timer sessions)
+  function ticketMins(ticketId){
+    return allTimeSessions.filter(function(s){return s.ticket_id===ticketId&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
+  }
+
+  var totalITMins=filtered.reduce(function(a,t){return a+ticketMins(t.id);},0);
+  var totalCreateMins=filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);
+  var ticketsWithITTime=filtered.filter(function(t){return ticketMins(t.id)>0;}).length;
+  var avgCreateMins=filtered.length?totalCreateMins/filtered.length:0;
+
+  var selStyle={padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",boxSizing:"border-box"};
 
   return<div>
     <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking</div>
-    <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1"}}>
-      ⏱ IT Hours shown here are <strong>actual logged time</strong> from the Start/Stop timer inside each ticket.
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-      <Stat label="Total IT Hours" value={fmtDuration(totalMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
-      <Stat label="Tickets Timed" value={ticketsWithTime.length+"/"+filtered.length} icon="⏱" color="#0ea5e9"/>
-    </div>
-    <Card style={{marginBottom:14,padding:"12px 14px"}}>
-      <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:8}}/>
-      {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box"}}><option value="">All Technicians</option>{users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>}
-    </Card>
-    <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
-      {filtered.map(function(t){
-        var asgn=fu(t.assignedTo);var sm=STATUS_META[t.status]||STATUS_META.Open;
-        var mins=ticketMins(t.id);
-        var sessions=allTimeSessions.filter(function(s){return s.ticket_id===t.id&&s.ended_at;});
-        var cc=mins===0?"#94a3b8":mins<=60?"#10b981":mins<=240?"#f59e0b":"#ef4444";
-        return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fdt(t.createdAt)}</div></div>
-            <Badge label={t.status} color={sm.color} bg={sm.bg}/>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              {asgn&&<Avatar name={asgn.name} id={asgn.id} size={18}/>}
-              <span style={{fontSize:11,color:"#64748b"}}>{asgn?asgn.name:"Unassigned"}</span>
-              {sessions.length>0&&<span style={{fontSize:10,color:"#94a3b8"}}>· {sessions.length} session{sessions.length!==1?"s":""}</span>}
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              {mins>0&&<div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,mins/240*100)+"%",background:cc,borderRadius:3}}/></div>}
-              <span style={{fontSize:13,fontWeight:700,color:cc}}>{mins>0?fmtDuration(mins):"No time logged"}</span>
-            </div>
-          </div>
-        </div>;
+
+    {/* Tab toggle */}
+    <div style={{display:"flex",gap:6,marginBottom:14}}>
+      {[{id:"it_time",label:"🕐 IT Work Time"},{id:"create_time",label:"📝 Ticket Creation Time"}].map(function(tab){
+        return<button key={tab.id} onClick={function(){setActiveTab(tab.id);}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:activeTab===tab.id?"#6366f1":"#f1f5f9",color:activeTab===tab.id?"#fff":"#475569",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+          {tab.label}
+        </button>;
       })}
     </div>
+
+    {/* Summary stats */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+      {activeTab==="it_time"?<>
+        <Stat label="Total IT Hours" value={fmtDuration(totalITMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
+        <Stat label="Tickets Timed" value={ticketsWithITTime+"/"+filtered.length} icon="⏱" color="#0ea5e9"/>
+      </>:<>
+        <Stat label="Total Create Time" value={fmtMs(totalCreateMins)} icon="📝" color="#f59e0b" sub={filtered.length+" tickets"}/>
+        <Stat label="Avg Create Time" value={fmtMs(avgCreateMins)} icon="⏱" color="#0ea5e9"/>
+      </>}
+    </div>
+
+    {/* Filters */}
+    <Card style={{marginBottom:14,padding:"12px 14px"}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
+        <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets…" style={Object.assign({},selStyle,{width:"100%"})}/>
+        {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}>
+          <option value="">All Users</option>
+          <optgroup label="── IT Staff ──">
+            {users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name} ({ROLE_META[u.role]?.label||u.role})</option>;})}
+          </optgroup>
+          <optgroup label="── End Users ──">
+            {users.filter(function(u){return !IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}
+          </optgroup>
+        </select>}
+      </div>
+      {/* Date range */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,alignItems:"center"}}>
+        <div>
+          <label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>From</label>
+          <input type="date" value={dateFrom} onChange={function(e){setDateFrom(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/>
+        </div>
+        <div>
+          <label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>To</label>
+          <input type="date" value={dateTo} onChange={function(e){setDateTo(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/>
+        </div>
+      </div>
+      {(dateFrom||dateTo)&&<button onClick={function(){setDateFrom("");setDateTo("");}} style={{marginTop:8,padding:"5px 12px",border:"1px solid #c7d2fe",borderRadius:6,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer"}}>✕ Clear dates</button>}
+    </Card>
+
+    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>
+      Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}
+      {(dateFrom||dateTo)&&<span style={{color:"#6366f1",fontWeight:600}}> · Date filtered</span>}
+    </div>
+
+    {/* IT Work Time tab */}
+    {activeTab==="it_time"&&<div>
+      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#0369a1"}}>
+        ⏱ Hours shown are <strong>actual logged time</strong> from the Start/Stop timer inside each ticket.
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
+        {filtered.map(function(t){
+          var asgn=fu(t.assignedTo);var sm=STATUS_META[t.status]||STATUS_META.Open;
+          var mins=ticketMins(t.id);
+          var sessions=allTimeSessions.filter(function(s){return s.ticket_id===t.id&&s.ended_at;});
+          var cc=mins===0?"#94a3b8":mins<=60?"#10b981":mins<=240?"#f59e0b":"#ef4444";
+          return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+              <div style={{flex:1,overflow:"hidden"}}>
+                <div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+                <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Created: {fdt(t.createdAt)}</div>
+              </div>
+              <Badge label={t.status} color={sm.color} bg={sm.bg}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                {asgn&&<Avatar name={asgn.name} id={asgn.id} size={18}/>}
+                <span style={{fontSize:11,color:"#64748b"}}>{asgn?asgn.name:"Unassigned"}</span>
+                {sessions.length>0&&<span style={{fontSize:10,color:"#94a3b8"}}>· {sessions.length} session{sessions.length!==1?"s":""}</span>}
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                {mins>0&&<div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,mins/240*100)+"%",background:cc,borderRadius:3}}/></div>}
+                <span style={{fontSize:13,fontWeight:700,color:cc}}>{mins>0?fmtDuration(mins):"No time logged"}</span>
+              </div>
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>}
+
+    {/* Ticket Creation Time tab */}
+    {activeTab==="create_time"&&<div>
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#92400e"}}>
+        📝 This tracks how long each user took to <strong>fill in and submit</strong> the ticket form — from when they opened it to when they clicked Submit.
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
+        {filtered.map(function(t){
+          var sub=fu(t.submittedBy);var sm=STATUS_META[t.status]||STATUS_META.Open;
+          var cm=t.timeToCreateMins||0;
+          var cc=cm<=2?"#10b981":cm<=10?"#f59e0b":"#ef4444";
+          var pct=Math.min(100,cm/15*100);
+          return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+              <div style={{flex:1,overflow:"hidden"}}>
+                <div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+                <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Submitted: {fdt(t.submittedAt||t.createdAt)}</div>
+              </div>
+              <Badge label={t.status} color={sm.color} bg={sm.bg}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                {sub&&<Avatar name={sub.name} id={sub.id} size={18}/>}
+                <span style={{fontSize:11,color:"#64748b"}}>{sub?sub.name:"Unknown"}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:cc,borderRadius:3}}/></div>
+                <span style={{fontSize:13,fontWeight:700,color:cc}}>{cm>0?fmtMs(cm):"—"}</span>
+              </div>
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>}
   </div>;
 }
 
