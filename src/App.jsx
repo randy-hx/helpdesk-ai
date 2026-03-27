@@ -525,28 +525,26 @@ export default function App(){
     return function(){supabase.removeChannel(sub);};
   },[]);
 
-  // Auto-reassign check every 5 min
+  // Auto-reassign check every 5 min — only runs on interval, not on every render
   useEffect(function(){
-    if(!tickets.length||!users.length)return;
     function checkReassignments(){
       var manager=findItManager(users);
-      if(!manager)return;
+      if(!manager||!tickets.length)return;
       var needsUpdate=[];
       tickets.forEach(function(t){
         if(t.deleted||t.status==="Closed")return;
-        // Off-shift reassign
         if(t.assignedTo&&t.assignedTo!==manager.id){
           var sch=schedules[t.assignedTo];
           if(sch&&!isCurrentlyOnShift(sch)){
             needsUpdate.push({ticket:t,reason:"Tech off-shift → IT Manager"});
           }
         }
-        // 12h unassigned escalation
         if(!t.assignedTo&&needsEscalationToManager(t)){
           needsUpdate.push({ticket:t,reason:"Unassigned 12h+ → IT Manager"});
         }
       });
       if(needsUpdate.length>0){
+        var ids=needsUpdate.map(function(x){return x.ticket.id;});
         setTicketsR(function(prev){
           return prev.map(function(t){
             var match=needsUpdate.find(function(x){return x.ticket.id===t.id;});
@@ -557,10 +555,11 @@ export default function App(){
         });
       }
     }
-    checkReassignments();
+    // Only run on a timer — NOT triggered by ticket/user changes to avoid loops
     var iv=setInterval(checkReassignments,5*60*1000);
     return function(){clearInterval(iv);};
-  },[tickets,users,schedules]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
   function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
