@@ -773,7 +773,34 @@ function PageDashboard(p){
       <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981"/>
       <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
     </div>
-    {breaches.length>0&&<Card style={{marginBottom:16,borderLeft:"4px solid #ef4444",background:"#fef2f2"}}><div style={{fontWeight:700,color:"#dc2626",marginBottom:10,fontSize:13}}>🚨 SLA Breach Alerts</div>{breaches.slice(0,5).map(function(t){return<div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"8px 10px",borderRadius:8,border:"1px solid #fecaca",marginBottom:6,gap:8}}><span style={{fontWeight:600,fontSize:12,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn></div>;})}</Card>}
+    {breaches.length>0&&<div style={{background:"#fef2f2",border:"2px solid #ef4444",borderRadius:12,padding:14,marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+        <span style={{fontSize:18}}>🚨</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:800,color:"#dc2626",fontSize:14}}>SLA Breach Alerts</div>
+          <div style={{fontSize:11,color:"#ef4444"}}>{breaches.length} ticket{breaches.length!==1?"s":""} past their SLA threshold</div>
+        </div>
+        <Badge label={breaches.length+" BREACHED"} color="#ef4444"/>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {breaches.slice(0,5).map(function(t){
+          var pri=PRI_META[t.priority]||PRI_META.medium;
+          var asgn=users.find(function(u){return u.id===t.assignedTo;});
+          return<div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fecaca",gap:8}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+              <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}>
+                <Badge label={pri.label} color={pri.color} bg={pri.bg}/>
+                <Badge label={t.status} color={STATUS_META[t.status]?.color||"#6366f1"}/>
+                {asgn&&<span style={{fontSize:10,color:"#64748b"}}>👤 {asgn.name}</span>}
+              </div>
+            </div>
+            <Btn size="sm" variant="danger" onClick={function(){setSelTicket(t.id);}}>View →</Btn>
+          </div>;
+        })}
+        {breaches.length>5&&<div style={{fontSize:11,color:"#ef4444",textAlign:"center",fontWeight:600}}>+{breaches.length-5} more breached tickets — check the Tickets page</div>}
+      </div>
+    </div>}
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(280px,1fr))",gap:14,marginBottom:14}}>
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{byStatus.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>7-Day Trend</div><ResponsiveContainer width="100%" height={180}><AreaChart data={daily}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="lbl" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:9}}/><Area type="monotone" dataKey="created" stroke="#6366f1" fill="#eef2ff" name="Created"/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed"/></AreaChart></ResponsiveContainer></Card>
@@ -1453,27 +1480,185 @@ function PageCompanies(p){
 // ── Clients ───────────────────────────────────────────────────────────────────
 function PageClients(p){
   var clients=p.clients;var setClients=p.setClients;var companies=p.companies;var addLog=p.addLog;var showToast=p.showToast;var dbSaveClient=p.dbSaveClient;var dbDeleteClient=p.dbDeleteClient;
-  var[modal,setModal]=useState(null);var[selCl,setSelCl]=useState(null);var[form,setForm]=useState({});var[lForm,setLForm]=useState({});
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}function lfld(k,v){setLForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  async function saveCl(){if(!form.name){showToast("Name required","error");return;}if(modal==="newCl"){var nc=Object.assign({},form,{id:uid(),locations:[]});await dbSaveClient(nc);setClients(function(prev){return prev.concat([nc]);});addLog("CLIENT_CREATED",nc.id,"Client \""+nc.name+"\" added");showToast("Client added");}else{var updated=Object.assign({},form,{locations:clients.find(function(c){return c.id===form.id;})?.locations||[]});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===form.id?updated:c;});});showToast("Updated");}setModal(null);}
-  async function saveLoc(){if(!lForm.name||!lForm.address){showToast("Name and address required","error");return;}var cl=clients.find(function(c){return c.id===selCl;});if(!cl)return;var newLocs;if(modal==="newLoc"){var nl=Object.assign({},lForm,{id:uid()});newLocs=cl.locations.concat([nl]);}else{newLocs=cl.locations.map(function(l){return l.id===lForm.id?Object.assign({},lForm):l;});}var updated=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===selCl?updated:c;});});showToast(modal==="newLoc"?"Location added":"Updated");setModal(null);}
+  var[modal,setModal]=useState(null);var[selCl,setSelCl]=useState(null);var[form,setForm]=useState({});
+  // lForm holds the location being edited; contacts is an array of {id,name,email,phone}
+  var[lForm,setLForm]=useState({name:"",address:"",floor:"",contacts:[]});
+  var[newContact,setNewContact]=useState({name:"",email:"",phone:""});
+
+  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
+  function lfld(k,v){setLForm(function(prev){return Object.assign({},prev,{[k]:v});});}
+  function ncfld(k,v){setNewContact(function(prev){return Object.assign({},prev,{[k]:v});});}
+
+  function addContact(){
+    if(!newContact.name.trim()){showToast("Contact name required","error");return;}
+    lfld("contacts",(lForm.contacts||[]).concat([Object.assign({},newContact,{id:uid()})]));
+    setNewContact({name:"",email:"",phone:""});
+  }
+  function removeContact(cid){lfld("contacts",(lForm.contacts||[]).filter(function(c){return c.id!==cid;}));}
+  function updateContact(cid,field,val){
+    lfld("contacts",(lForm.contacts||[]).map(function(c){return c.id===cid?Object.assign({},c,{[field]:val}):c;}));
+  }
+
+  async function saveCl(){
+    if(!form.name){showToast("Name required","error");return;}
+    if(modal==="newCl"){var nc=Object.assign({},form,{id:uid(),locations:[]});await dbSaveClient(nc);setClients(function(prev){return prev.concat([nc]);});addLog("CLIENT_CREATED",nc.id,"Client \""+nc.name+"\" added");showToast("Client added");}
+    else{var updated=Object.assign({},form,{locations:clients.find(function(c){return c.id===form.id;})?.locations||[]});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===form.id?updated:c;});});showToast("Updated");}
+    setModal(null);
+  }
+
+  async function saveLoc(){
+    if(!lForm.name||!lForm.address){showToast("Location name and address required","error");return;}
+    var cl=clients.find(function(c){return c.id===selCl;});if(!cl)return;
+    var locToSave=Object.assign({},lForm,{contacts:lForm.contacts||[]});
+    var newLocs;
+    if(modal==="newLoc"){var nl=Object.assign({},locToSave,{id:uid()});newLocs=cl.locations.concat([nl]);}
+    else{newLocs=cl.locations.map(function(l){return l.id===lForm.id?locToSave:l;});}
+    var updated=Object.assign({},cl,{locations:newLocs});
+    await dbSaveClient(updated);
+    setClients(function(prev){return prev.map(function(c){return c.id===selCl?updated:c;});});
+    showToast(modal==="newLoc"?"Location added":"Location updated");
+    setModal(null);
+  }
+
+  function openNewLoc(clId){
+    setSelCl(clId);
+    setLForm({name:"",address:"",floor:"",contacts:[]});
+    setNewContact({name:"",email:"",phone:""});
+    setModal("newLoc");
+  }
+  function openEditLoc(clId,loc){
+    setSelCl(clId);
+    // Migrate old single-contact format to contacts array if needed
+    var contacts=loc.contacts||(loc.contact?[{id:uid(),name:loc.contact,email:"",phone:""}]:[]);
+    setLForm(Object.assign({},loc,{contacts:contacts}));
+    setNewContact({name:"",email:"",phone:""});
+    setModal("editLoc");
+  }
+
+  var inp={width:"100%",padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
+
   return<div>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Clients ({clients.length})</div><Btn onClick={function(){setForm({name:"",email:"",phone:"",industry:"",companyId:companies[0]?.id||""});setModal("newCl");}}>➕ Add Client</Btn></div>
-    {clients.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No clients yet.</div></Card>}
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>{clients.map(function(cl){var co=companies.find(function(c){return c.id===cl.companyId;});return<Card key={cl.id}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-        <div style={{display:"flex",gap:12,alignItems:"center",flex:1,overflow:"hidden"}}><div style={{width:42,height:42,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div style={{overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {cl.email}</div></div></div>
-        <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},cl));setModal("editCl");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteClient(cl.id);setClients(function(prev){return prev.filter(function(x){return x.id!==cl.id;});});showToast("Removed");}}>🗑</Btn></div>
-      </div>
-      <div style={{background:"#f8fafc",borderRadius:10,padding:12}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div><Btn size="sm" onClick={function(){setSelCl(cl.id);setLForm({name:"",address:"",floor:"",contact:""});setModal("newLoc");}}>➕ Add</Btn></div>
-        {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No locations yet.</div>}
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>{cl.locations.map(function(loc){return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><div style={{fontWeight:700,fontSize:12}}>📍 {loc.name}</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{loc.address}</div>{loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}</div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelCl(cl.id);setLForm(Object.assign({},loc));setModal("editLoc");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){var newLocs=cl.locations.filter(function(l){return l.id!==loc.id;});var updated=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===cl.id?updated:c;});});showToast("Removed");}}>🗑</Btn></div></div></div>;})}</div>
-      </div>
-    </Card>;})}
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}>
+      <div style={{fontWeight:700,fontSize:14}}>Clients ({clients.length})</div>
+      <Btn onClick={function(){setForm({name:"",email:"",phone:"",industry:"",companyId:companies[0]?.id||""});setModal("newCl");}}>➕ Add Client</Btn>
     </div>
-    {(modal==="newCl"||modal==="editCl")&&<Modal title={modal==="newCl"?"Add Client":"Edit Client"} onClose={function(){setModal(null);}}><FInput label="Client Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Email" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompaniesNone(companies)}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveCl}>{modal==="newCl"?"Add Client":"Save"}</Btn></div></Modal>}
-    {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={function(){setModal(null);}}><FInput label="Location Name *" value={lForm.name||""} onChange={function(e){lfld("name",e.target.value);}} placeholder="e.g. HQ — New York"/><FInput label="Address *" value={lForm.address||""} onChange={function(e){lfld("address",e.target.value);}}/><FInput label="Floor / Area" value={lForm.floor||""} onChange={function(e){lfld("floor",e.target.value);}}/><FInput label="On-site Contact" value={lForm.contact||""} onChange={function(e){lfld("contact",e.target.value);}}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save"}</Btn></div></Modal>}
+    {clients.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No clients yet.</div></Card>}
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {clients.map(function(cl){
+        return<Card key={cl.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+            <div style={{display:"flex",gap:12,alignItems:"center",flex:1,overflow:"hidden"}}>
+              <div style={{width:42,height:42,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div>
+              <div style={{overflow:"hidden"}}>
+                <div style={{fontWeight:700,color:"#1e293b",fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cl.name}</div>
+                <div style={{fontSize:11,color:"#64748b"}}>📧 {cl.email||"—"} · 📞 {cl.phone||"—"}</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,flexShrink:0}}>
+              <Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},cl));setModal("editCl");}}>✏️</Btn>
+              <Btn size="sm" variant="danger" onClick={async function(){await dbDeleteClient(cl.id);setClients(function(prev){return prev.filter(function(x){return x.id!==cl.id;});});showToast("Removed");}}>🗑</Btn>
+            </div>
+          </div>
+          <div style={{background:"#f8fafc",borderRadius:10,padding:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div>
+              <Btn size="sm" onClick={function(){openNewLoc(cl.id);}}>➕ Add Location</Btn>
+            </div>
+            {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No locations yet.</div>}
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {cl.locations.map(function(loc){
+                var contacts=loc.contacts||(loc.contact?[{id:"leg",name:loc.contact,email:"",phone:""}]:[]);
+                return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:contacts.length>0?8:0}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div>
+                      <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{loc.address}</div>
+                      {loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}
+                    </div>
+                    <div style={{display:"flex",gap:4,flexShrink:0}}>
+                      <Btn size="sm" variant="ghost" onClick={function(){openEditLoc(cl.id,loc);}}>✏️</Btn>
+                      <Btn size="sm" variant="danger" onClick={async function(){var newLocs=cl.locations.filter(function(l){return l.id!==loc.id;});var updated=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===cl.id?updated:c;});});showToast("Location removed");}}>🗑</Btn>
+                    </div>
+                  </div>
+                  {contacts.length>0&&<div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>👥 Contact Persons</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {contacts.map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
+                        <Avatar name={ct.name} id={ct.id} size={22}/>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}</div>
+                          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                            {ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}
+                            {ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}
+                          </div>
+                        </div>
+                      </div>;})}
+                    </div>
+                  </div>}
+                  {contacts.length===0&&<div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",marginTop:4}}>No contacts added yet.</div>}
+                </div>;
+              })}
+            </div>
+          </div>
+        </Card>;
+      })}
+    </div>
+
+    {/* Client modal */}
+    {(modal==="newCl"||modal==="editCl")&&<Modal title={modal==="newCl"?"Add Client":"Edit Client"} onClose={function(){setModal(null);}}>
+      <FInput label="Client Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/>
+      <FInput label="Email" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/>
+      <FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/>
+      <FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/>
+      <FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompaniesNone(companies)}/>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveCl}>{modal==="newCl"?"Add Client":"Save"}</Btn></div>
+    </Modal>}
+
+    {/* Location modal — with multi-contact */}
+    {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={function(){setModal(null);}} wide>
+      <FInput label="Location Name *" value={lForm.name||""} onChange={function(e){lfld("name",e.target.value);}} placeholder="e.g. HQ — Makati"/>
+      <FInput label="Address *" value={lForm.address||""} onChange={function(e){lfld("address",e.target.value);}}/>
+      <FInput label="Floor / Area" value={lForm.floor||""} onChange={function(e){lfld("floor",e.target.value);}} placeholder="e.g. 3rd Floor, East Wing"/>
+
+      {/* Contact persons section */}
+      <div style={{marginBottom:14}}>
+        <div style={{fontWeight:700,fontSize:12,color:"#475569",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>👥 Contact Persons ({(lForm.contacts||[]).length})</span>
+          <span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>Up to 5 contacts per location</span>
+        </div>
+
+        {/* Existing contacts */}
+        {(lForm.contacts||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+          {(lForm.contacts||[]).map(function(ct,idx){return<div key={ct.id} style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#0369a1"}}>Contact {idx+1}</div>
+              <button onClick={function(){removeContact(ct.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:0,lineHeight:1}}>✕</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr",gap:6}}>
+              <input value={ct.name} onChange={function(e){updateContact(ct.id,"name",e.target.value);}} placeholder="Full Name *" style={inp}/>
+              <input value={ct.email} onChange={function(e){updateContact(ct.id,"email",e.target.value);}} placeholder="Email address" type="email" style={inp}/>
+              <input value={ct.phone} onChange={function(e){updateContact(ct.id,"phone",e.target.value);}} placeholder="Phone number" style={inp}/>
+            </div>
+          </div>;})}
+        </div>}
+
+        {/* Add new contact form */}
+        {(lForm.contacts||[]).length<5&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:10,padding:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>➕ Add Contact Person</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:6,marginBottom:8}}>
+            <input value={newContact.name} onChange={function(e){ncfld("name",e.target.value);}} placeholder="Full Name *" style={inp}/>
+            <input value={newContact.email} onChange={function(e){ncfld("email",e.target.value);}} placeholder="Email address" type="email" style={inp}/>
+            <input value={newContact.phone} onChange={function(e){ncfld("phone",e.target.value);}} placeholder="Phone number" style={inp}/>
+          </div>
+          <Btn size="sm" onClick={addContact} variant="ghost">➕ Add Contact</Btn>
+        </div>}
+      </div>
+
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn>
+        <Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save Location"}</Btn>
+      </div>
+    </Modal>}
   </div>;
 }
 
@@ -1505,4 +1690,73 @@ function PageTicketTypes(p){
   </div>;
 }
 
-// ── Activity Log ──────────────────────────────
+// ── Activity Log ──────────────────────────────────────────────────────────────
+const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},ROLE_CREATED:{icon:"🏷️",color:"#10b981",label:"Role Created"},ROLE_UPDATED:{icon:"🏷️",color:"#0ea5e9",label:"Role Updated"},ROLE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Role Deleted"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},LOCATION_ADDED:{icon:"📍",color:"#10b981",label:"Location Added"},LOCATION_REMOVED:{icon:"📍",color:"#ef4444",label:"Location Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
+function PageActivityLog(p){
+  var logs=p.logs;var users=p.users;var[filter,setFilter]=useState("");
+  function fu(id){return users.find(function(x){return x.id===id;});}
+  var filtered=filter?logs.filter(function(l){return l.action===filter;}):logs;
+  return<div>
+    <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}><div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div><select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return<option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select></div>
+    <Card style={{padding:0}}>
+      {filtered.length===0&&<div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No activity found</div>}
+      {filtered.map(function(log,i){var am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action};var actor=fu(log.userId);return<div key={log.id} style={{display:"flex",gap:12,padding:"12px 16px",borderBottom:i<filtered.length-1?"1px solid #f1f5f9":"none",alignItems:"flex-start"}}><div style={{width:32,height:32,borderRadius:8,background:am.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{am.icon}</div><div style={{flex:1,minWidth:0}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><Badge label={am.label} color={am.color}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(log.timestamp)}</span></div><div style={{fontSize:12,color:"#334155",marginTop:4,overflow:"hidden",textOverflow:"ellipsis"}}>{log.detail}</div>{actor&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Avatar name={actor.name} id={actor.id} size={14}/>By {actor.name}</div>}</div></div>;})}
+    </Card>
+  </div>;
+}
+
+// ── Integrations ──────────────────────────────────────────────────────────────
+function PageIntegrations(p){
+  var emailTemplates=p.emailTemplates||[];var setEmailTemplates=p.setEmailTemplates||function(){};var isAdmin=p.isAdmin;var showToast=p.showToast;
+  var[testTo,setTestTo]=useState("");var[sending,setSending]=useState(false);var[status,setStatus]=useState("");
+  var[tmplModal,setTmplModal]=useState(false);var[tmplForm,setTmplForm]=useState({name:"",subject:"",body:"",defaultCC:""});var[tmplEdit,setTmplEdit]=useState(null);
+  function openNew(){setTmplForm({name:"",subject:"",body:"",defaultCC:""});setTmplEdit(null);setTmplModal(true);}
+  function openEdit(t){setTmplForm({name:t.name,subject:t.subject,body:t.body,defaultCC:t.defaultCC||""});setTmplEdit(t.id);setTmplModal(true);}
+  async function saveTmpl(){if(!tmplForm.name.trim()||!tmplForm.subject.trim()||!tmplForm.body.trim()){showToast("Name, subject, and body required","error");return;}var t={id:tmplEdit||uid(),name:tmplForm.name.trim(),subject:tmplForm.subject.trim(),body:tmplForm.body.trim(),defaultCC:tmplForm.defaultCC.trim(),createdAt:new Date().toISOString()};await dbSaveEmailTemplate(t);setEmailTemplates(function(prev){return tmplEdit?prev.map(function(x){return x.id===tmplEdit?t:x;}):prev.concat([t]);});showToast(tmplEdit?"Template updated!":"Template created!");setTmplModal(false);}
+  async function deleteTmpl(id){await dbDeleteEmailTemplate(id);setEmailTemplates(function(prev){return prev.filter(function(x){return x.id!==id;});});showToast("Template deleted");}
+  async function runTest(){if(!testTo.trim()){showToast("Enter a recipient email","error");return;}setSending(true);setStatus("");try{var r=await callSendEmail({to:testTo.trim(),subject:"Hoptix Test",body:"Your email integration is working!"});if(r.success){setStatus("ok");showToast("📧 Test sent!");}else{setStatus("fail");showToast("Failed: "+r.error,"error");}}catch(e){setStatus("fail");showToast("Error: "+e.message,"error");}setSending(false);}
+  return<div style={{maxWidth:600}}>
+    <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🔌 Integrations</div>
+    <div style={{fontSize:12,color:"#64748b",marginBottom:20}}>Configure your email provider.</div>
+    <Card style={{borderTop:"3px solid #6366f1",marginBottom:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a></div>
+      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1",lineHeight:1.8}}>Set in Vercel → Settings → Environment Variables:<br/><code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_USER</code> and <code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_APP_PASSWORD</code></div>
+      <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>Send Test Email</label>
+      <div style={{display:"flex",gap:8,marginBottom:8}}><input type="email" value={testTo} onChange={function(e){setTestTo(e.target.value);}} placeholder="recipient@example.com" style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}/><button onClick={runTest} disabled={sending} style={{padding:"10px 16px",background:sending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:sending?"not-allowed":"pointer",flexShrink:0}}>{sending?"Sending…":"📤 Test"}</button></div>
+      {status==="ok"&&<div style={{padding:"8px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,fontSize:12,color:"#166534"}}>✅ Test email delivered!</div>}
+      {status==="fail"&&<div style={{padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:12,color:"#dc2626"}}>❌ Failed — check env variables.</div>}
+    </Card>
+    {isAdmin&&<Card style={{borderTop:"3px solid #6366f1"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div>
+          <div style={{fontSize:11,color:"#64748b",marginTop:2}}>Variables: <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div>
+        </div>
+        <Btn onClick={openNew}>➕ Add Template</Btn>
+      </div>
+      {emailTemplates.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>No templates yet.</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+            <div style={{flex:1,overflow:"hidden"}}>
+              <div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div>
+              <div style={{fontSize:11,color:"#64748b",marginBottom:2}}>Subject: {t.subject}</div>
+              {t.defaultCC&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Default CC: {t.defaultCC}</div>}
+              <div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div>
+            </div>
+            <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn></div>
+          </div>
+        </div>;})}
+      </div>
+    </Card>}
+    {tmplModal&&<Modal title={tmplEdit?"Edit Template":"New Email Template"} onClose={function(){setTmplModal(false);}}>
+      <FInput label="Template Name *" value={tmplForm.name} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{name:e.target.value});});}} placeholder="e.g. Initial Response"/>
+      <FInput label="Subject *" value={tmplForm.subject} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{subject:e.target.value});});}} placeholder="Re: Your IT Request"/>
+      {/* Default CC field on the template */}
+      <FInput label="Default CC (optional)" value={tmplForm.defaultCC} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{defaultCC:e.target.value});});}} placeholder="manager@company.com, lead@company.com" type="text"/>
+      <FTextarea label="Body *" value={tmplForm.body} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{body:e.target.value});});}} rows={8} placeholder={"Hi {{client_name}},\n\nThank you for reaching out...\n\nBest regards,\n{{agent_name}}"}/>
+      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>💡 <strong>{"{{client_name}}"}</strong> and <strong>{"{{agent_name}}"}</strong> auto-fill on tickets. The Default CC will pre-fill the CC field when this template is selected.</div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setTmplModal(false);}}>Cancel</Btn><Btn onClick={saveTmpl}>{tmplEdit?"Save Changes":"Create Template"}</Btn></div>
+    </Modal>}
+  </div>;
+}
