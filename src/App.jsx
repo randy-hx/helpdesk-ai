@@ -146,18 +146,21 @@ function getStatusSla(ticket,slaConfig,schedules){
 
 // Calculate actual time spent on a ticket (from statusHistory: time between status changes while In Progress)
 function calcActualTimeSpentHours(ticket){
-  var hist=(ticket.statusHistory||[]).slice().sort(function(a,b){return new Date(a.timestamp)-new Date(b.timestamp);});
+  if(!ticket||!ticket.statusHistory||ticket.statusHistory.length===0)return 0;
+  var hist=ticket.statusHistory.slice().sort(function(a,b){return new Date(a.timestamp)-new Date(b.timestamp);});
   var total=0;
   for(var i=0;i<hist.length-1;i++){
     if(hist[i].status==="In Progress"){
-      total+=(new Date(hist[i+1].timestamp)-new Date(hist[i].timestamp))/3600000;
+      var diff=(new Date(hist[i+1].timestamp)-new Date(hist[i].timestamp))/3600000;
+      if(diff>0&&diff<720)total+=diff; // cap at 720h (30 days) per segment to avoid bad data
     }
   }
-  // If currently In Progress, count up to now
-  if(ticket.status==="In Progress"&&hist.length>0){
+  // If currently In Progress, count up to now (max 72h to avoid runaway)
+  if(ticket.status==="In Progress"){
     var last=hist[hist.length-1];
-    if(last.status==="In Progress"){
-      total+=(Date.now()-new Date(last.timestamp))/3600000;
+    if(last&&last.status==="In Progress"){
+      var elapsed=(Date.now()-new Date(last.timestamp))/3600000;
+      if(elapsed>0&&elapsed<720)total+=elapsed;
     }
   }
   return total;
@@ -486,10 +489,27 @@ export default function App(){
   function setPage(v){if(v!=="integrations")saveState("hd_page",v);setPageR(v);setSidebarOpen(false);}
   var addLog=useCallback(function(action,target,detail,uId){var entry={id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};setLogsR(function(p){return[entry].concat(p).slice(0,500);});dbAddLog(entry);},[curUser]);
   var showToast=useCallback(function(msg,type){setToast({msg,type:type||"ok"});setTimeout(function(){setToast(null);},3500);},[]);
-  useEffect(function(){function check(){setBreaches(tickets.filter(function(t){if(t.deleted||t.status==="Closed")return false;var s=getStatusSla(t,statusSla,schedules);return s&&s.breached;}));}check();var iv=setInterval(check,30000);return function(){clearInterval(iv);};},[tickets,statusSla,schedules]);
+  useEffect(function(){
+    function check(){
+      var now=Date.now();
+      setBreaches(function(prev){
+        var next=tickets.filter(function(t){
+          if(t.deleted||t.status==="Closed")return false;
+          var s=getStatusSla(t,statusSla,schedules);
+          return s&&s.breached;
+        });
+        // Only update state if the list actually changed (avoid re-render loop)
+        if(prev.length===next.length&&prev.every(function(t,i){return t.id===next[i].id;}))return prev;
+        return next;
+      });
+    }
+    check();
+    var iv=setInterval(check,30000);
+    return function(){clearInterval(iv);};
+  },[tickets,statusSla,schedules]);
   useEffect(function(){
     if(!curUser)return;
-    async function fetchReplies(){try{var res=await fetch("/api/fetch-replies");if(!res.ok)return;var data=await res.json();if(!data.replies||!data.replies.length)return;var updated=tickets.slice();data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});setTickets(function(){return updated;});setInboxAlerts(function(prev){return prev.concat(data.replies);});showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");}catch(e){}}
+    async function fetchReplies(){try{var res=await fetch("/api/fetch-replies");if(!res.ok)return;var data=await res.json();if(!data.replies||!data.replies.length)return;setTicketsR(function(prev){var updated=prev.slice();var hasNew=false;data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;hasNew=true;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});if(hasNew)data.replies.forEach(function(r){dbSaveTicket(updated.find(function(t){return t.id===r.ticketId;})||{});});return updated;});setInboxAlerts(function(prev){return prev.concat(data.replies);});showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");}catch(e){}}
     fetchReplies();var iv=setInterval(fetchReplies,60000);return function(){clearInterval(iv);};
   },[curUser]);
 
