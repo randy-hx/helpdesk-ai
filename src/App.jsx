@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import React from "react";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from "recharts";
 import { supabase } from './supabase.js';
-import { dbGetUsers, dbSaveUser, dbDeleteUser, dbGetPassword, dbSetPassword, dbGetCompanies, dbSaveCompany, dbDeleteCompany, dbGetClients, dbSaveClient, dbDeleteClient, dbGetTicketTypes, dbSaveTicketType, dbDeleteTicketType, dbGetTickets, dbSaveTicket, dbGetLogs, dbAddLog, dbGetSchedules, dbSaveSchedule, dbGetEmailTemplates, dbSaveEmailTemplate, dbDeleteEmailTemplate } from './db.js';
+import { dbGetUsers, dbSaveUser, dbDeleteUser, dbGetPassword, dbSetPassword, dbGetCompanies, dbSaveCompany, dbDeleteCompany, dbGetClients, dbSaveClient, dbDeleteClient, dbGetTicketTypes, dbSaveTicketType, dbDeleteTicketType, dbGetTickets, dbSaveTicket, dbGetLogs, dbAddLog, dbGetSchedules, dbSaveSchedule, dbGetEmailTemplates, dbSaveEmailTemplate, dbDeleteEmailTemplate, dbGetTimeSessions, dbSaveTimeSession, dbGetAllTimeSessions } from './db.js';
 
 const PAL = ["#6366f1","#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ef4444","#ec4899","#f97316"];
 const STATUS_META = { "Open":{color:"#f59e0b",bg:"#fef3c7"}, "In Progress":{color:"#6366f1",bg:"#eef2ff"}, "Pending":{color:"#0ea5e9",bg:"#e0f2fe"}, "Escalated":{color:"#ef4444",bg:"#fee2e2"}, "Closed":{color:"#94a3b8",bg:"#f1f5f9"} };
@@ -23,12 +23,25 @@ const inits   = function(n){ if(!n)return"??"; var p=n.trim().split(" ").filter(
 const avCol   = function(id){ return PAL[Math.abs((id||"").split("").reduce(function(a,c){return a+c.charCodeAt(0);},0))%PAL.length]; };
 const slaColor= function(r){ return r>=90?"#10b981":r>=75?"#f59e0b":"#ef4444"; };
 const fmtMs   = function(mins){ if(!mins&&mins!==0)return"—"; var s=mins*60; if(s<60)return s.toFixed(2)+"s"; if(s<3600){var m=Math.floor(mins);var sc=parseFloat(((mins-m)*60).toFixed(2));return m+"m "+sc+"s";} var h=Math.floor(mins/60);var rm=mins-h*60;var m2=Math.floor(rm);var s2=parseFloat(((rm-m2)*60).toFixed(2));return h+"h "+m2+"m "+s2+"s"; };
-const fmtHrs  = function(h){ if(!h&&h!==0)return"0h"; var hh=Math.floor(h); var mm=Math.round((h-hh)*60); return mm>0?hh+"h "+mm+"m":hh+"h"; };
 const pieLabel= function(p){ return p.value>0?p.name+": "+p.value:""; };
 const fmtHour = function(h){ if(h===0)return"12:00 AM"; if(h<12)return h+":00 AM"; if(h===12)return"12:00 PM"; return (h-12)+":00 PM"; };
-const calcTicketHours = function(t){
-  var end = t.closedAt ? new Date(t.closedAt) : new Date();
-  return Math.max(0,(end - new Date(t.createdAt))/3600000);
+
+// Format minutes as "Xh Ym" for display
+const fmtDuration = function(mins){
+  if(!mins||mins<=0)return"0m";
+  var h=Math.floor(mins/60);
+  var m=Math.round(mins%60);
+  if(h===0)return m+"m";
+  if(m===0)return h+"h";
+  return h+"h "+m+"m";
+};
+
+// Format a live elapsed seconds counter as HH:MM:SS
+const fmtElapsed = function(secs){
+  var h=Math.floor(secs/3600);
+  var m=Math.floor((secs%3600)/60);
+  var s=secs%60;
+  return (h>0?String(h).padStart(2,"0")+":":"")+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
 };
 
 function useIsMobile(){ var[mob,setMob]=useState(window.innerWidth<768); useEffect(function(){function h(){setMob(window.innerWidth<768);}window.addEventListener("resize",h);return function(){window.removeEventListener("resize",h);};},[]);return mob; }
@@ -55,6 +68,13 @@ function getStatusSla(ticket,slaConfig,schedules){
   var spent=schedule?calcBusinessHoursElapsed(new Date(entry).getTime(),Date.now(),schedule):(Date.now()-new Date(entry).getTime())/3600000;
   var pct=Math.min(100,Math.round(spent/allowed*100));var breached=spent>allowed;var remaining=Math.max(0,allowed-spent);var onShift=isCurrentlyOnShift(schedule);
   return{hoursAllowed:allowed,hoursSpent:parseFloat(spent.toFixed(2)),pct,breached,remaining:parseFloat(remaining.toFixed(2)),enteredAt:entry,onShift,hasSchedule:!!schedule,schedule};
+}
+
+// Sum real logged minutes from time_sessions for a set of ticket IDs
+function sumLoggedMinutes(sessions, ticketIds){
+  return sessions
+    .filter(function(s){ return ticketIds?ticketIds.includes(s.ticket_id):true; })
+    .reduce(function(sum,s){ return sum+(s.duration_minutes||0); },0);
 }
 
 async function callSendEmail(opts){
@@ -110,6 +130,142 @@ function FSelect(p){var label=p.label;var options=p.options||[];var rest=Object.
 function FTextarea(p){var label=p.label;var rest=Object.assign({},p);delete rest.label;return<div style={{marginBottom:14}}>{label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>{label}</label>}<textarea rows={4} style={{width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",resize:"vertical",boxSizing:"border-box"}} {...rest}/></div>;}
 function Btn(p){var v=p.variant||"primary";var sm=p.size==="sm";var base={border:"none",cursor:"pointer",borderRadius:8,fontWeight:600,fontSize:sm?11:13,display:"inline-flex",alignItems:"center",gap:4,padding:sm?"6px 12px":"10px 18px"};var cols={primary:{background:"#6366f1",color:"#fff"},danger:{background:"#ef4444",color:"#fff"},success:{background:"#10b981",color:"#fff"},warning:{background:"#f59e0b",color:"#fff"},ghost:{background:"#f1f5f9",color:"#475569"}};var rest=Object.assign({},p);delete rest.variant;delete rest.size;return<button style={Object.assign({},base,cols[v]||cols.primary,p.style||{})} {...rest}>{p.children}</button>;}
 function FocusInput(p){var[focused,setFocused]=useState(false);var extraPad=p.extraPad;var rest=Object.assign({},p);delete rest.extraPad;return<input {...rest} onFocus={function(){setFocused(true);}} onBlur={function(){setFocused(false);}} style={{width:"100%",padding:extraPad?"12px 44px 12px 14px":"12px 14px",border:"1.5px solid "+(focused?"#0ea5e9":"#e2e8f0"),borderRadius:10,fontSize:15,outline:"none",boxSizing:"border-box",background:"#f8fafc",transition:"border-color .2s"}}/>;}
+
+// ── Time Session Timer Component ──────────────────────────────────────────────
+function TicketTimer(p){
+  var ticketId=p.ticketId;
+  var curUser=p.curUser;
+  var users=p.users;
+
+  var[sessions,setSessions]=useState([]);
+  var[activeSession,setActiveSession]=useState(null); // {id, started_at}
+  var[elapsed,setElapsed]=useState(0); // seconds
+  var[note,setNote]=useState("");
+  var[loading,setLoading]=useState(true);
+  var intervalRef=useRef(null);
+
+  // Load existing sessions
+  useEffect(function(){
+    dbGetTimeSessions(ticketId).then(function(data){
+      setSessions(data);
+      // Check if there's an open session (no ended_at) by this user
+      var open=data.find(function(s){return s.user_id===curUser.id&&!s.ended_at;});
+      if(open){
+        setActiveSession({id:open.id,started_at:open.started_at});
+        setElapsed(Math.floor((Date.now()-new Date(open.started_at))/1000));
+      }
+      setLoading(false);
+    });
+  },[ticketId]);
+
+  // Live tick when timer is running
+  useEffect(function(){
+    if(activeSession){
+      intervalRef.current=setInterval(function(){
+        setElapsed(function(e){return e+1;});
+      },1000);
+    } else {
+      clearInterval(intervalRef.current);
+    }
+    return function(){clearInterval(intervalRef.current);};
+  },[activeSession]);
+
+  async function startTimer(){
+    var now=new Date().toISOString();
+    var session={id:uid(),ticket_id:ticketId,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:note.trim()||null,created_at:now};
+    await dbSaveTimeSession(session);
+    setSessions(function(prev){return prev.concat([session]);});
+    setActiveSession({id:session.id,started_at:now});
+    setElapsed(0);
+  }
+
+  async function stopTimer(){
+    if(!activeSession)return;
+    var now=new Date().toISOString();
+    var mins=parseFloat(((Date.now()-new Date(activeSession.started_at))/60000).toFixed(4));
+    var updated=sessions.find(function(s){return s.id===activeSession.id;});
+    if(!updated)return;
+    var finished=Object.assign({},updated,{ended_at:now,duration_minutes:mins,note:note.trim()||updated.note||null});
+    await dbSaveTimeSession(finished);
+    setSessions(function(prev){return prev.map(function(s){return s.id===finished.id?finished:s;});});
+    setActiveSession(null);
+    setElapsed(0);
+    setNote("");
+  }
+
+  function fu(id){return users.find(function(u){return u.id===id;});}
+
+  var completedSessions=sessions.filter(function(s){return s.ended_at;});
+  var totalMins=completedSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
+
+  if(loading)return<div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>Loading timer…</div>;
+
+  return<div>
+    {/* Timer display */}
+    <div style={{background:activeSession?"linear-gradient(135deg,#064e3b,#065f46)":"linear-gradient(135deg,#1e1b4b,#312e81)",borderRadius:16,padding:24,textAlign:"center",marginBottom:16}}>
+      <div style={{fontSize:11,fontWeight:700,color:activeSession?"#6ee7b7":"#a5b4fc",textTransform:"uppercase",letterSpacing:2,marginBottom:8}}>
+        {activeSession?"⏱ Timer Running":"⏸ Timer Stopped"}
+      </div>
+      <div style={{fontSize:48,fontWeight:800,color:"#fff",fontVariantNumeric:"tabular-nums",letterSpacing:2,marginBottom:16,fontFamily:"'Courier New',monospace"}}>
+        {fmtElapsed(elapsed)}
+      </div>
+      {!activeSession&&(
+        <div style={{marginBottom:12}}>
+          <input value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What are you working on? (optional)" style={{width:"100%",padding:"10px 14px",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,fontSize:13,outline:"none",background:"rgba(255,255,255,.1)",color:"#fff",boxSizing:"border-box"}}/>
+        </div>
+      )}
+      {activeSession?(
+        <button onClick={stopTimer} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>
+          ⏹ Stop &amp; Save
+        </button>
+      ):(
+        <button onClick={startTimer} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>
+          ▶ Start Timer
+        </button>
+      )}
+    </div>
+
+    {/* Total summary */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+      <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:12,textAlign:"center"}}>
+        <div style={{fontSize:22,fontWeight:800,color:"#059669"}}>{fmtDuration(totalMins)}</div>
+        <div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginTop:2}}>Total IT Hours</div>
+      </div>
+      <div style={{background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:10,padding:12,textAlign:"center"}}>
+        <div style={{fontSize:22,fontWeight:800,color:"#6366f1"}}>{completedSessions.length}</div>
+        <div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginTop:2}}>Sessions Logged</div>
+      </div>
+    </div>
+
+    {/* Session log */}
+    {completedSessions.length>0&&<div>
+      <div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>📋 Session Log</div>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {completedSessions.slice().reverse().map(function(s){
+          var worker=fu(s.user_id);
+          return<div key={s.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                {worker&&<Avatar name={worker.name} id={worker.id} size={18}/>}
+                <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{worker?worker.name:"Unknown"}</span>
+                <Badge label={fmtDuration(s.duration_minutes)} color="#6366f1"/>
+              </div>
+              <div style={{fontSize:10,color:"#94a3b8"}}>{fdt(s.started_at)} → {fdt(s.ended_at)}</div>
+              {s.note&&<div style={{fontSize:11,color:"#475569",marginTop:4,fontStyle:"italic"}}>"{s.note}"</div>}
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>}
+
+    {completedSessions.length===0&&!activeSession&&(
+      <div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>
+        <div style={{fontSize:28,marginBottom:6}}>⏱</div>
+        No time logged yet. Start the timer when you begin working.
+      </div>
+    )}
+  </div>;
+}
 
 // ── Schedule Editor ───────────────────────────────────────────────────────────
 function ScheduleEditor(p){
@@ -296,6 +452,7 @@ export default function App(){
   var[tickets,setTicketsR]=useState([]);var[ticketTypes,setTTR]=useState([]);
   var[statusSla,setStatusSlaR]=useState(DEFAULT_STATUS_SLA);var[schedules,setSchedulesR]=useState({});
   var[logs,setLogsR]=useState([]);var[emailTemplates,setEmailTemplates]=useState([]);
+  var[allTimeSessions,setAllTimeSessions]=useState([]); // global sessions for reports
   var[curUser,setCurUserR]=useState(function(){return loadState("hd_curUser",null);});
   var[page,setPageR]=useState(function(){try{var s=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
   var[selTicket,setSelTicket]=useState(null);var[toast,setToast]=useState(null);
@@ -305,13 +462,30 @@ export default function App(){
   var isMobile=useIsMobile();
 
   useEffect(function(){
-    async function loadAll(){setLoading(true);var[u,co,cl,tt,tkt,lg,sch,et]=await Promise.all([dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),dbGetTickets(),dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates()]);setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);setLoading(false);}
+    async function loadAll(){
+      setLoading(true);
+      var[u,co,cl,tt,tkt,lg,sch,et,ts]=await Promise.all([dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),dbGetTickets(),dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates(),dbGetAllTimeSessions()]);
+      setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);setAllTimeSessions(ts);
+      setLoading(false);
+    }
     loadAll();
   },[]);
+
+  // Refresh all time sessions after any timer stop (called from TicketDetail)
+  var refreshTimeSessions=useCallback(async function(){
+    var ts=await dbGetAllTimeSessions();
+    setAllTimeSessions(ts);
+  },[]);
+
   useEffect(function(){
-    var sub=supabase.channel('tickets-changes').on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(){dbGetTickets().then(function(t){setTicketsR(t);});}).on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){dbGetUsers().then(function(u){setUsers(u);});}).subscribe();
+    var sub=supabase.channel('tickets-changes')
+      .on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(){dbGetTickets().then(function(t){setTicketsR(t);});})
+      .on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){dbGetUsers().then(function(u){setUsers(u);});})
+      .on('postgres_changes',{event:'*',schema:'public',table:'time_sessions'},function(){dbGetAllTimeSessions().then(function(ts){setAllTimeSessions(ts);});})
+      .subscribe();
     return function(){supabase.removeChannel(sub);};
   },[]);
+
   async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
   function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
   function setPage(v){if(v!=="integrations")saveState("hd_page",v);setPageR(v);setSidebarOpen(false);}
@@ -359,14 +533,8 @@ export default function App(){
   return<ErrorBoundary>
     <div style={{display:"flex",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:"#f8fafc",fontSize:13,overflow:"hidden"}}>
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}button:active{opacity:.8}.nv:hover{background:rgba(14,165,233,.15)!important;color:#7dd3fc!important}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:767px){.hide-mobile{display:none!important}.desktop-only{display:none!important}}`}</style>
-
       {!isMobile&&sidebar}
-
-      {isMobile&&sidebarOpen&&<div style={{position:"fixed",inset:0,zIndex:8888,display:"flex"}}>
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={function(){setSidebarOpen(false);}}/>
-        <div style={{position:"relative",zIndex:1,width:260,height:"100%"}}>{sidebar}</div>
-      </div>}
-
+      {isMobile&&sidebarOpen&&<div style={{position:"fixed",inset:0,zIndex:8888,display:"flex"}}><div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={function(){setSidebarOpen(false);}}/><div style={{position:"relative",zIndex:1,width:260,height:"100%"}}>{sidebar}</div></div>}
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
         <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:isMobile?"10px 16px":"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -380,15 +548,13 @@ export default function App(){
             <button onClick={function(){setShowProfile(true);}} style={{display:"flex",alignItems:"center",gap:6,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"5px 10px 5px 5px",cursor:"pointer"}}><Avatar name={curUser.name} id={curUser.id} size={26}/>{!isMobile&&<div style={{textAlign:"left"}}><div style={{fontWeight:700,fontSize:11}}>{curUser.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div>}<span style={{fontSize:10,color:"#94a3b8"}}>▼</span></button>
           </div>
         </div>
-
         {toast&&<div style={{position:"fixed",top:isMobile?70:20,right:12,left:isMobile?12:"auto",zIndex:10000,background:toast.type==="error"?"#ef4444":"#10b981",color:"#fff",padding:"10px 16px",borderRadius:10,fontWeight:600,fontSize:13,boxShadow:"0 4px 20px rgba(0,0,0,.2)",textAlign:"center"}}>{toast.msg}</div>}
-
         <div style={{flex:1,overflowY:"auto",padding:isMobile?"12px":"24px",paddingBottom:isMobile?"80px":"24px",WebkitOverflowScrolling:"touch"}}>
-          {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches} isMobile={isMobile}/>}
+          {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
           {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile}/>}
           {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage}/>}
-          {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile}/>}
-          {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules}/>}
+          {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
+          {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules} allTimeSessions={allTimeSessions}/>}
           {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
           {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast} dbSaveCompany={dbSaveCompany} dbDeleteCompany={dbDeleteCompany}/>}
           {page==="clients"      &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast} dbSaveClient={dbSaveClient} dbDeleteClient={dbDeleteClient}/>}
@@ -396,21 +562,12 @@ export default function App(){
           {page==="activity_log" &&<PageActivityLog logs={logs} users={users}/>}
           {page==="integrations" &&<PageIntegrations showToast={showToast} addLog={addLog} emailTemplates={emailTemplates} setEmailTemplates={setEmailTemplates} curUser={curUser} isAdmin={isAdmin}/>}
         </div>
-
         {isMobile&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #e2e8f0",display:"flex",zIndex:8000,boxShadow:"0 -2px 10px rgba(0,0,0,.08)"}}>
-          {bottomNav.map(function(n){var active=page===n.id;return<button key={n.id} onClick={function(){setPage(n.id);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-            <span style={{fontSize:20}}>{n.icon}</span>
-            <span style={{fontSize:9,fontWeight:active?700:500,color:active?"#6366f1":"#94a3b8"}}>{n.label}</span>
-            {active&&<div style={{width:4,height:4,borderRadius:"50%",background:"#6366f1"}}/>}
-          </button>;})}
-          <button onClick={function(){setSidebarOpen(true);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-            <span style={{fontSize:20}}>☰</span>
-            <span style={{fontSize:9,fontWeight:500,color:"#94a3b8"}}>More</span>
-          </button>
+          {bottomNav.map(function(n){var active=page===n.id;return<button key={n.id} onClick={function(){setPage(n.id);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:20}}>{n.icon}</span><span style={{fontSize:9,fontWeight:active?700:500,color:active?"#6366f1":"#94a3b8"}}>{n.label}</span>{active&&<div style={{width:4,height:4,borderRadius:"50%",background:"#6366f1"}}/>}</button>;})}
+          <button onClick={function(){setSidebarOpen(true);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:20}}>☰</span><span style={{fontSize:9,fontWeight:500,color:"#94a3b8"}}>More</span></button>
         </div>}
       </div>
-
-      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}}/>}
+      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}} refreshTimeSessions={refreshTimeSessions}/>}
       {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
@@ -418,12 +575,12 @@ export default function App(){
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 function PageDashboard(p){
-  var tickets=p.tickets;var allTickets=p.allTickets||p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients;var setPage=p.setPage;var setSelTicket=p.setSelTicket;var breaches=p.breaches;var isMobile=p.isMobile;
+  var tickets=p.tickets;var allTickets=p.allTickets||p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var setPage=p.setPage;var setSelTicket=p.setSelTicket;var breaches=p.breaches;var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
   var byStatus=ALL_STATUSES.map(function(s){return{name:s,value:tickets.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
-  var byPri=Object.keys(PRI_META).map(function(k){return{name:PRI_META[k].label,value:tickets.filter(function(t){return t.priority===k;}).length,color:PRI_META[k].color};});
   var daily=Array.from({length:7},function(_,i){var d=new Date(Date.now()-(6-i)*86400000);return{lbl:d.toLocaleDateString("en",{weekday:"short"}),created:tickets.filter(function(t){return new Date(t.createdAt).toDateString()===d.toDateString();}).length,closed:tickets.filter(function(t){return t.closedAt&&new Date(t.closedAt).toDateString()===d.toDateString();}).length};});
   var techs=users.filter(function(u){return["it_technician","it_manager"].includes(u.role);});
   var byType=ticketTypes.map(function(tt,i){return{name:tt.name,value:tickets.filter(function(t){return t.typeId===tt.id;}).length,fill:PAL[i%PAL.length]};}).filter(function(x){return x.value>0;});
+  var totalLoggedMins=allTimeSessions.filter(function(s){return s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
   return<div>
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:16}}>
       <Stat label="Total" value={tickets.length} icon="🎫" color="#6366f1"/>
@@ -431,7 +588,7 @@ function PageDashboard(p){
       <Stat label="In Progress" value={tickets.filter(function(t){return t.status==="In Progress";}).length} icon="⚙️" color="#6366f1"/>
       <Stat label="Escalated" value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed"/>
       <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981"/>
-      <Stat label="SLA Breaches" value={breaches.length} icon="🚨" color="#ef4444"/>
+      <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
     </div>
     {breaches.length>0&&<Card style={{marginBottom:16,borderLeft:"4px solid #ef4444",background:"#fef2f2"}}><div style={{fontWeight:700,color:"#dc2626",marginBottom:10,fontSize:13}}>🚨 SLA Breach Alerts</div>{breaches.slice(0,5).map(function(t){return<div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"8px 10px",borderRadius:8,border:"1px solid #fecaca",marginBottom:6,gap:8}}><span style={{fontWeight:600,fontSize:12,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn></div>;})}</Card>}
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(280px,1fr))",gap:14,marginBottom:14}}>
@@ -439,7 +596,7 @@ function PageDashboard(p){
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>7-Day Trend</div><ResponsiveContainer width="100%" height={180}><AreaChart data={daily}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="lbl" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:9}}/><Area type="monotone" dataKey="created" stroke="#6366f1" fill="#eef2ff" name="Created"/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed"/></AreaChart></ResponsiveContainer></Card>
     </div>
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
-      <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Technician Workload</div>{techs.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No technicians yet.</div>}{techs.map(function(t){var open=tickets.filter(function(tk){return tk.assignedTo===t.id&&tk.status!=="Closed";}).length;var total=tickets.filter(function(tk){return tk.assignedTo===t.id;}).length;return<div key={t.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar name={t.name} id={t.id} size={26}/><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600}}><span>{t.name}</span><span style={{color:"#6366f1"}}>{open}/{total}</span></div><div style={{background:"#e2e8f0",borderRadius:4,height:5,marginTop:4}}><div style={{background:"#6366f1",height:5,borderRadius:4,width:(total?Math.min(100,Math.round(open/total*100)):0)+"%"}}/></div></div></div>;})}</Card>
+      <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Technician Workload</div>{techs.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No technicians yet.</div>}{techs.map(function(t){var open=tickets.filter(function(tk){return tk.assignedTo===t.id&&tk.status!=="Closed";}).length;var total=tickets.filter(function(tk){return tk.assignedTo===t.id;}).length;var techMins=allTimeSessions.filter(function(s){return s.user_id===t.id&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);return<div key={t.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar name={t.name} id={t.id} size={26}/><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600}}><span>{t.name}</span><span style={{color:"#6366f1"}}>{open}/{total} · <span style={{color:"#8b5cf6"}}>{fmtDuration(techMins)}</span></span></div><div style={{background:"#e2e8f0",borderRadius:4,height:5,marginTop:4}}><div style={{background:"#6366f1",height:5,borderRadius:4,width:(total?Math.min(100,Math.round(open/total*100)):0)+"%"}}/></div></div></div>;})}</Card>
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Tickets by Type</div>{byType.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No tickets yet.</div>}{byType.slice(0,6).map(function(t,i){return<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #f1f5f9"}}><span style={{fontSize:12,color:"#475569"}}>{t.name}</span><Badge label={t.value} color={PAL[i%PAL.length]}/></div>;})}</Card>
     </div>
   </div>;
@@ -449,123 +606,52 @@ function PageDashboard(p){
 function PageTickets(p){
   var tickets=p.tickets;var users=p.users;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
   var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setSelTicket=p.setSelTicket;var setPage=p.setPage;var isAdmin=p.isAdmin;var statusSla=p.statusSla;var schedules=p.schedules||{};var isMobile=p.isMobile;
-  var[search,setSearch]=useState("");
-  var[fStat,setFStat]=useState("");
-  var[fPri,setFPri]=useState("");
-  var[fType,setFType]=useState("");
-  // ── NEW: Assigned To filter — default to self for techs so they see their queue immediately
-  var[fAssignee,setFAssignee]=useState(function(){
-    return (p.curUser && IT_ROLES.includes(p.curUser.role) && p.curUser.role !== "admin" && p.curUser.role !== "it_manager")
-      ? p.curUser.id : "";
-  });
-
-  var techUsers=useMemo(function(){
-    return users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});
-  },[users]);
-
-  var filtered=tickets.filter(function(t){
-    var q=search.toLowerCase();
-    return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))
-      &&(!fStat||t.status===fStat)
-      &&(!fPri||t.priority===fPri)
-      &&(!fType||t.typeId===fType)
-      &&(!fAssignee||(fAssignee==="unassigned"?!t.assignedTo:t.assignedTo===fAssignee));
-  });
-
+  var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");
+  var[fAssignee,setFAssignee]=useState(function(){return(p.curUser&&IT_ROLES.includes(p.curUser.role)&&p.curUser.role!=="admin"&&p.curUser.role!=="it_manager")?p.curUser.id:"";});
+  var techUsers=useMemo(function(){return users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});},[users]);
+  var filtered=tickets.filter(function(t){var q=search.toLowerCase();return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType)&&(!fAssignee||(fAssignee==="unassigned"?!t.assignedTo:t.assignedTo===fAssignee));});
   function delTicket(id){setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});});addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted");showToast("Ticket deleted");}
-  function fu(id){return users.find(function(x){return x.id===id;});}
-  function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
-  function fcl(id){return clients.find(function(x){return x.id===id;});}
-
+  function fu(id){return users.find(function(x){return x.id===id;});}function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}function fcl(id){return clients.find(function(x){return x.id===id;});}
   var selStyle={padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0};
-
   return<div>
-    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-      <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none"}}/>
-      <Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn>
-    </div>
-
-    {/* Filter row */}
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4,flexWrap:isMobile?"wrap":"nowrap"}}>
-      <select value={fStat} onChange={function(e){setFStat(e.target.value);}} style={selStyle}>
-        <option value="">All Status</option>
-        {ALL_STATUSES.map(function(s){return<option key={s} value={s}>{s}</option>;})}
-      </select>
-      <select value={fPri} onChange={function(e){setFPri(e.target.value);}} style={selStyle}>
-        <option value="">All Priority</option>
-        {Object.keys(PRI_META).map(function(k){return<option key={k} value={k}>{PRI_META[k].label}</option>;})}
-      </select>
-      <select value={fType} onChange={function(e){setFType(e.target.value);}} style={selStyle}>
-        <option value="">All Types</option>
-        {ticketTypes.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}
-      </select>
-      {/* ── NEW Assigned To filter ── */}
-      <select value={fAssignee} onChange={function(e){setFAssignee(e.target.value);}} style={Object.assign({},selStyle,{background:fAssignee?"#eef2ff":"",color:fAssignee?"#4338ca":"",fontWeight:fAssignee?700:400})}>
-        <option value="">All Assignees</option>
-        <option value="unassigned">— Unassigned —</option>
-        {techUsers.map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}
-      </select>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}><input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none"}}/><Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn></div>
+    <div style={{display:"flex",gap:6,marginBottom:8,overflowX:"auto",paddingBottom:4,flexWrap:isMobile?"wrap":"nowrap"}}>
+      <select value={fStat} onChange={function(e){setFStat(e.target.value);}} style={selStyle}><option value="">All Status</option>{ALL_STATUSES.map(function(s){return<option key={s} value={s}>{s}</option>;})}</select>
+      <select value={fPri} onChange={function(e){setFPri(e.target.value);}} style={selStyle}><option value="">All Priority</option>{Object.keys(PRI_META).map(function(k){return<option key={k} value={k}>{PRI_META[k].label}</option>;})}</select>
+      <select value={fType} onChange={function(e){setFType(e.target.value);}} style={selStyle}><option value="">All Types</option>{ticketTypes.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>
+      <select value={fAssignee} onChange={function(e){setFAssignee(e.target.value);}} style={Object.assign({},selStyle,{background:fAssignee?"#eef2ff":"",color:fAssignee?"#4338ca":"",fontWeight:fAssignee?700:400})}><option value="">All Assignees</option><option value="unassigned">— Unassigned —</option>{techUsers.map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>
       {fAssignee&&<button onClick={function(){setFAssignee("");}} style={{padding:"7px 10px",border:"1px solid #c7d2fe",borderRadius:8,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer",flexShrink:0}}>✕ Clear</button>}
     </div>
-
-    {/* Result count */}
-    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>
-      Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}
-      {fAssignee&&fAssignee!=="unassigned"&&<span> assigned to <strong style={{color:"#6366f1"}}>{fu(fAssignee)?.name||"?"}</strong></span>}
-      {fAssignee==="unassigned"&&<span> that are <strong style={{color:"#ef4444"}}>unassigned</strong></span>}
-    </div>
-
-    {isMobile?(
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found</div></Card>}
-        {filtered.map(function(t){
-          var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);
-          var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;
-          var sSla=getStatusSla(t,statusSla,schedules);
-          return<div key={t.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:14,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}} onClick={function(){setSelTicket(t.id);}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}>
-              <div style={{flex:1}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,marginBottom:2}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ago(t.createdAt)}</div></div>
-              {t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>📬 New</span>}
-            </div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-              <Badge label={t.status} color={sm.color} bg={sm.bg}/>
-              <Badge label={pri.label} color={pri.color} bg={pri.bg}/>
-              {type&&<Badge label={type.name} color={type.color||"#94a3b8"}/>}
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{fontSize:11,color:"#64748b"}}>{asgn?<span>👤 {asgn.name}</span>:<span style={{color:"#ef4444"}}>Unassigned</span>}{client&&<span> · 🤝 {client.name}</span>}</div>
-              {sSla&&<div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h"}</div>}
-            </div>
-            {isAdmin&&<div style={{marginTop:8,display:"flex",justifyContent:"flex-end"}} onClick={function(e){e.stopPropagation();delTicket(t.id);}}><Btn size="sm" variant="danger">🗑 Delete</Btn></div>}
-          </div>;
-        })}
-      </div>
-    ):(
-      <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}>
-          <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Assigned To","SLA",""].map(function(h){return<th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
-          <tbody>
-            {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found</td></tr>}
-            {filtered.map(function(t,i){
-              var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);
-              var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;
-              var sSla=getStatusSla(t,statusSla,schedules);
-              return<tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
-                <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id.slice(-6)}</td>
-                <td style={{padding:"9px 12px",maxWidth:200}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>📬</span>}</td>
-                <td style={{padding:"9px 12px"}}><Badge label={type?.name||"—"} color={type?.color||"#94a3b8"}/></td>
-                <td style={{padding:"9px 12px"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/></td>
-                <td style={{padding:"9px 12px"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/></td>
-                <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{client?<span>🤝 {client.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
-                <td style={{padding:"9px 12px"}}>{asgn?<div style={{display:"flex",alignItems:"center",gap:5}}><Avatar name={asgn.name} id={asgn.id} size={20}/><span style={{fontSize:11}}>{asgn.name}</span></div>:<span style={{fontSize:11,color:"#ef4444"}}>Unassigned</span>}</td>
-                <td style={{padding:"9px 12px",minWidth:120}}>{sSla?<div><div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600,marginBottom:2}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h left"}</div><div style={{height:4,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div></div>:<span style={{fontSize:10,color:"#94a3b8"}}>—</span>}</td>
-                <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn>{isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}</div></td>
-              </tr>;
-            })}
-          </tbody>
-        </table>
-      </div>
-    )}
+    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}{fAssignee&&fAssignee!=="unassigned"&&<span> assigned to <strong style={{color:"#6366f1"}}>{fu(fAssignee)?.name||"?"}</strong></span>}{fAssignee==="unassigned"&&<span> that are <strong style={{color:"#ef4444"}}>unassigned</strong></span>}</div>
+    {isMobile?(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found</div></Card>}
+      {filtered.map(function(t){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
+        return<div key={t.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:14,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}} onClick={function(){setSelTicket(t.id);}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}><div style={{flex:1}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,marginBottom:2}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ago(t.createdAt)}</div></div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>📬 New</span>}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}><Badge label={t.status} color={sm.color} bg={sm.bg}/><Badge label={pri.label} color={pri.color} bg={pri.bg}/>{type&&<Badge label={type.name} color={type.color||"#94a3b8"}/>}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:11,color:"#64748b"}}>{asgn?<span>👤 {asgn.name}</span>:<span style={{color:"#ef4444"}}>Unassigned</span>}{client&&<span> · 🤝 {client.name}</span>}</div>{sSla&&<div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h"}</div>}</div>
+          {isAdmin&&<div style={{marginTop:8,display:"flex",justifyContent:"flex-end"}} onClick={function(e){e.stopPropagation();delTicket(t.id);}}><Btn size="sm" variant="danger">🗑 Delete</Btn></div>}
+        </div>;})}
+    </div>):(<div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}>
+        <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Assigned To","SLA",""].map(function(h){return<th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
+        <tbody>
+          {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found</td></tr>}
+          {filtered.map(function(t,i){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
+            return<tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
+              <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id.slice(-6)}</td>
+              <td style={{padding:"9px 12px",maxWidth:200}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>📬</span>}</td>
+              <td style={{padding:"9px 12px"}}><Badge label={type?.name||"—"} color={type?.color||"#94a3b8"}/></td>
+              <td style={{padding:"9px 12px"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/></td>
+              <td style={{padding:"9px 12px"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/></td>
+              <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{client?<span>🤝 {client.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
+              <td style={{padding:"9px 12px"}}>{asgn?<div style={{display:"flex",alignItems:"center",gap:5}}><Avatar name={asgn.name} id={asgn.id} size={20}/><span style={{fontSize:11}}>{asgn.name}</span></div>:<span style={{fontSize:11,color:"#ef4444"}}>Unassigned</span>}</td>
+              <td style={{padding:"9px 12px",minWidth:120}}>{sSla?<div><div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600,marginBottom:2}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h left"}</div><div style={{height:4,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div></div>:<span style={{fontSize:10,color:"#94a3b8"}}>—</span>}</td>
+              <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn>{isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}</div></td>
+            </tr>;})}
+        </tbody>
+      </table>
+    </div>)}
   </div>;
 }
 
@@ -579,7 +665,6 @@ function PageNewTicket(p){
   var selType=ticketTypes.find(function(t){return t.id===form.typeId;});
   var selClient=clients.find(function(c){return c.id===form.clientId;});var availLocs=selClient?selClient.locations:[];
   var ACCEPTED=["image/jpeg","image/png","image/gif","image/webp","video/mp4","video/quicktime","video/webm"];
-  function fmtSize(b){return b>1048576?(b/1048576).toFixed(1)+"MB":(b/1024).toFixed(0)+"KB";}
   function processFiles(files){Array.from(files).forEach(function(file){if(!ACCEPTED.includes(file.type)){showToast("Unsupported: "+file.name,"error");return;}if(file.size>20*1024*1024){showToast(file.name+" > 20MB","error");return;}var r=new FileReader();r.onload=function(e){setAttachments(function(prev){if(prev.length>=10){showToast("Max 10 attachments","error");return prev;}return prev.concat([{id:uid(),name:file.name,type:file.type,size:file.size,dataUrl:e.target.result}]);});};r.readAsDataURL(file);});}
   function removeAtt(id){setAttachments(function(prev){return prev.filter(function(a){return a.id!==id;});});}
   function handlePreview(){
@@ -629,16 +714,16 @@ function TicketDetail(p){
   var tickets=p.tickets||[];var liveTicket=tickets.find(function(t){return t.id===ticket.id;})||ticket;
   var companies=p.companies;var clients=p.clients;var curUser=p.curUser;var isAdmin=p.isAdmin;var isTech=p.isTech;
   var addLog=p.addLog;var showToast=p.showToast;var onClose=p.onClose;var statusSla=p.statusSla;var schedules=p.schedules||{};
+  var refreshTimeSessions=p.refreshTimeSessions||function(){};
   var[tab,setTab]=useState("details");var[status,setStatus]=useState(ticket.status);var[asgn,setAsgn]=useState(ticket.assignedTo||"");var[note,setNote]=useState("");var[typeId,setTypeId]=useState(ticket.typeId||"");
-  var[msgTo,setMsgTo]=useState("");var[msgCC,setMsgCC]=useState("");var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);var[msgBody,setMsgBody]=useState("");
+  var[msgTo,setMsgTo]=useState("");var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);var[msgBody,setMsgBody]=useState("");
   var emailTemplates=p.emailTemplates||[];var clients2=p.clients||[];var assignedUser=users.find(function(u){return u.id===ticket.assignedTo;});
-  function applyTemplate(tid){var tmpl=emailTemplates.find(function(t){return t.id===tid;});if(!tmpl)return;var cl2=clients2.find(function(c){return c.id===ticket.clientId;});var loc2=cl2?cl2.locations.find(function(l){return l.id===ticket.locationId;}):null;var body=tmpl.body.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");var subj=tmpl.subject.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");if(cl2)subj=subj+(loc2?" — "+cl2.name+", "+loc2.name:" — "+cl2.name);setMsgSubj(subj);setMsgBody(body);}
+  function applyTemplate(tid){var tmpl=emailTemplates.find(function(t){return t.id===tid;});if(!tmpl)return;var cl2=clients2.find(function(c){return c.id===ticket.clientId;});var loc2=cl2?cl2.locations.find(function(l){return l.id===ticket.locationId;}):null;var body=tmpl.body.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");var subj=tmpl.subject.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");setMsgSubj(subj);setMsgBody(body);}
   var[emailSending,setEmailSending]=useState(false);
   function fu(id){return users.find(function(x){return x.id===id;});}
   var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;});var co=companies.find(function(c){return c.id===ticket.companyId;});var client=clients.find(function(c){return c.id===ticket.clientId;});var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
   if(!ticket)return null;
   var sSla=getStatusSla(ticket,statusSla,schedules);
-  var createMins=ticket.timeToCreateMins||0;
 
   function saveStatus(){
     var statusChanged=status!==ticket.status;
@@ -657,24 +742,26 @@ function TicketDetail(p){
     if(!msgTo.trim()||!msgBody.trim()){showToast("Recipient and body required","error");return;}
     setEmailSending(true);
     var toList=msgTo.split(",").map(function(e){return e.trim();});
-    var ccList=msgCC?msgCC.split(",").map(function(e){return e.trim();}).filter(Boolean):[];
     var msgId=uid();
-    var msg={id:msgId,from:curUser.id,fromEmail:curUser.email,to:[],toEmails:toList,cc:ccList,subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false,status:"sending"};
+    var msg={id:msgId,from:curUser.id,fromEmail:curUser.email,to:[],toEmails:toList,cc:[],subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false,status:"sending"};
     setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{conversations:(t.conversations||[]).concat([msg])}):t;});});
     var results=await Promise.all(toList.map(function(email){return callSendEmail({to:email,subject:msgSubj,body:msgBody});}));
     var allOk=results.every(function(r){return r.success;});
     var failMsg=!allOk?results.filter(function(r){return !r.success;}).map(function(r){return r.error;}).join(", "):"";
     var finalConvs=(ticket.conversations||[]).concat([msg]).map(function(c){return c.id===msgId?Object.assign({},c,{status:allOk?"sent":"failed",failReason:failMsg}):c;});
     setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;return Object.assign({},t,{conversations:finalConvs});});});
-    var updatedConvs=(ticket.conversations||[]).concat([msg]).map(function(c){return c.id===msgId?Object.assign({},c,{status:allOk?"sent":"failed",failReason:failMsg}):c;});
-    await dbSaveTicket(Object.assign({},ticket,{conversations:updatedConvs}));
+    await dbSaveTicket(Object.assign({},ticket,{conversations:finalConvs}));
     addLog("EMAIL_SENT",ticket.id,"Email to "+msgTo);showToast(allOk?"📧 Email sent!":"⚠️ Failed",allOk?"ok":"error");
-    setEmailSending(false);if(allOk){setMsgTo("");setMsgCC("");setMsgBody("");}
+    setEmailSending(false);if(allOk){setMsgTo("");setMsgBody("");}
   }
 
-  var TABS=["details","status","email","chat","history"].filter(function(t){if(t==="status")return isTech;return true;});
-  var tabLabels={details:"📋",status:"🔄",email:"📧",chat:"💬",history:"📜"};
-  var tabFullLabels={details:"Details",status:"Status",email:"Email",chat:"Chat",history:"History"};
+  // Tabs: timer tab only for techs
+  var TABS=["details","status","timer","email","chat","history"].filter(function(t){
+    if(t==="status"||t==="timer")return isTech;
+    return true;
+  });
+  var tabLabels={details:"📋",status:"🔄",timer:"⏱️",email:"📧",chat:"💬",history:"📜"};
+  var tabFullLabels={details:"Details",status:"Status",timer:"Timer",email:"Email",chat:"Chat",history:"History"};
 
   return<Modal title={ticket.title} onClose={onClose} wide>
     {liveTicket.hasUnreadReply&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
@@ -711,6 +798,9 @@ function TicketDetail(p){
       <Btn onClick={saveStatus} style={{width:"100%"}}>💾 Save Changes</Btn>
     </div>}
 
+    {/* ── TIMER TAB ── */}
+    {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions}/>}
+
     {tab==="email"&&<div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{fontWeight:700,color:"#1e293b"}}>📧 Send Email</div>
@@ -723,10 +813,7 @@ function TicketDetail(p){
       <div style={{fontWeight:700,color:"#1e293b",marginBottom:10}}>📬 Conversation Trail ({(liveTicket.conversations||[]).length})</div>
       {(liveTicket.conversations||[]).length===0&&<div style={{color:"#94a3b8",fontSize:13}}>No messages yet.</div>}
       {(liveTicket.conversations||[]).map(function(m){var isReply=m.isExternal||m.status==="received";return<div key={m.id} style={{background:isReply?"#f0fdf4":"#f8fafc",border:"1px solid "+(isReply?"#bbf7d0":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:10}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:4}}>
-          <div style={{fontWeight:700,fontSize:12,color:isReply?"#166534":"#1e293b"}}>{isReply?"📬 REPLY":"📧"} {isReply?(m.fromName||m.fromEmail):m.fromEmail}</div>
-          <div style={{display:"flex",gap:4,alignItems:"center"}}>{m.status==="sent"&&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}{m.status==="failed"&&<span style={{fontSize:10,color:"#ef4444"}}>❌</span>}<span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div>
-        </div>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:4}}><div style={{fontWeight:700,fontSize:12,color:isReply?"#166534":"#1e293b"}}>{isReply?"📬 REPLY":"📧"} {isReply?(m.fromName||m.fromEmail):m.fromEmail}</div><div style={{display:"flex",gap:4,alignItems:"center"}}>{m.status==="sent"&&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}{m.status==="failed"&&<span style={{fontSize:10,color:"#ef4444"}}>❌</span>}<span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div></div>
         <div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div>
         <div style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>
       </div>;})}
@@ -739,33 +826,53 @@ function TicketDetail(p){
 
 // ── Time Tracking ─────────────────────────────────────────────────────────────
 function PageTimeTracking(p){
-  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;
-  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[sortBy,setSortBy]=useState("submittedAt");var[sortDir,setSortDir]=useState("desc");
-  var scope=useMemo(function(){var base=tickets.filter(function(t){return !t.deleted;});if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id;});if(filterUser)return base.filter(function(t){return t.submittedBy===filterUser;});return base;},[tickets,curUser,isAdmin,filterUser]);
-  var filtered=useMemo(function(){var q=search.toLowerCase();return scope.filter(function(t){return(!q||(t.title.toLowerCase().includes(q)||t.id.includes(q)));}).sort(function(a,b){var av,bv;if(sortBy==="submittedAt"){av=new Date(a.submittedAt||a.createdAt);bv=new Date(b.submittedAt||b.createdAt);}else{av=a.timeToCreateMins||0;bv=b.timeToCreateMins||0;}if(av<bv)return sortDir==="asc"?-1:1;if(av>bv)return sortDir==="asc"?1:-1;return 0;});},[scope,search,sortBy,sortDir]);
-  function fu(id){return users.find(function(x){return x.id===id;});}function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
-  var totalMins=filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);var avg=filtered.length?totalMins/filtered.length:0;
+  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
+  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");
+  var scope=useMemo(function(){var base=tickets.filter(function(t){return !t.deleted;});if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id||t.assignedTo===curUser.id;});if(filterUser)return base.filter(function(t){return t.assignedTo===filterUser;});return base;},[tickets,curUser,isAdmin,filterUser]);
+  var filtered=useMemo(function(){var q=search.toLowerCase();return scope.filter(function(t){return(!q||(t.title.toLowerCase().includes(q)||t.id.includes(q)));});},[scope,search]);
+  function fu(id){return users.find(function(x){return x.id===id;});}
+  function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
+
+  // Get real logged minutes per ticket
+  function ticketMins(ticketId){return allTimeSessions.filter(function(s){return s.ticket_id===ticketId&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
+  var totalMins=filtered.reduce(function(a,t){return a+ticketMins(t.id);},0);
+  var ticketsWithTime=filtered.filter(function(t){return ticketMins(t.id)>0;});
+
   return<div>
     <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking</div>
+    <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1"}}>
+      ⏱ IT Hours shown here are <strong>actual logged time</strong> from the Start/Stop timer inside each ticket.
+    </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-      <Stat label="Total Create Time" value={fmtMs(totalMins)} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets"}/>
-      <Stat label="Avg Create Time" value={fmtMs(avg)} icon="⏱" color="#0ea5e9"/>
+      <Stat label="Total IT Hours" value={fmtDuration(totalMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
+      <Stat label="Tickets Timed" value={ticketsWithTime.length+"/"+filtered.length} icon="⏱" color="#0ea5e9"/>
     </div>
     <Card style={{marginBottom:14,padding:"12px 14px"}}>
       <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:8}}/>
-      {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box"}}><option value="">All Users</option>{users.filter(function(u){return u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>}
+      {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box"}}><option value="">All Technicians</option>{users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>}
     </Card>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
-      {filtered.map(function(t){var sub=fu(t.submittedBy);var tt2=ftt(t.typeId);var sm=STATUS_META[t.status]||STATUS_META.Open;var cm=t.timeToCreateMins||0;var cc=cm<=5?"#10b981":cm<=15?"#f59e0b":"#ef4444";
-        return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14}} onClick={function(){setSelTicket(t.id);}}>
+      {filtered.map(function(t){
+        var asgn=fu(t.assignedTo);var sm=STATUS_META[t.status]||STATUS_META.Open;
+        var mins=ticketMins(t.id);
+        var sessions=allTimeSessions.filter(function(s){return s.ticket_id===t.id&&s.ended_at;});
+        var cc=mins===0?"#94a3b8":mins<=60?"#10b981":mins<=240?"#f59e0b":"#ef4444";
+        return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fdt(t.submittedAt||t.createdAt)}</div></div>
+            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fdt(t.createdAt)}</div></div>
             <Badge label={t.status} color={sm.color} bg={sm.bg}/>
           </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>{sub&&<Avatar name={sub.name} id={sub.id} size={18}/>}<span style={{fontSize:11,color:"#64748b"}}>{sub?sub.name:"—"}</span></div>
-            <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:36,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,cm/30*100)+"%",background:cc,borderRadius:3}}/></div><span style={{fontSize:12,fontWeight:700,color:cc}}>{fmtMs(cm)}</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              {asgn&&<Avatar name={asgn.name} id={asgn.id} size={18}/>}
+              <span style={{fontSize:11,color:"#64748b"}}>{asgn?asgn.name:"Unassigned"}</span>
+              {sessions.length>0&&<span style={{fontSize:10,color:"#94a3b8"}}>· {sessions.length} session{sessions.length!==1?"s":""}</span>}
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {mins>0&&<div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,mins/240*100)+"%",background:cc,borderRadius:3}}/></div>}
+              <span style={{fontSize:13,fontWeight:700,color:cc}}>{mins>0?fmtDuration(mins):"No time logged"}</span>
+            </div>
           </div>
         </div>;
       })}
@@ -775,315 +882,175 @@ function PageTimeTracking(p){
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 function PageReports(p){
-  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};
-  var[view,setView]=useState("summary");
-  var[range,setRange]=useState("month");
-  // ── NEW: Client + Location filters
-  var[fClient,setFClient]=useState("");
-  var[fLocation,setFLocation]=useState("");
-  var[aiInsight,setAiInsight]=useState("");
-  var[aiLoading,setAiLoading]=useState(false);
-
-  // Derive available locations from selected client
+  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};var allTimeSessions=p.allTimeSessions||[];
+  var[view,setView]=useState("summary");var[range,setRange]=useState("month");var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
   var selClientObj=clients.find(function(c){return c.id===fClient;});
   var availLocations=selClientObj?selClientObj.locations:[];
-
-  // Reset location when client changes
   function handleClientChange(v){setFClient(v);setFLocation("");}
 
-  var rangeStart=useMemo(function(){
-    var now=new Date();
-    if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();
-    if(range==="week")return new Date(now.getTime()-7*86400000).toISOString();
-    if(range==="month")return new Date(now.getTime()-30*86400000).toISOString();
-    if(range==="year")return new Date(now.getTime()-365*86400000).toISOString();
-    return new Date(0).toISOString();
-  },[range]);
-
+  var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week")return new Date(now.getTime()-7*86400000).toISOString();if(range==="month")return new Date(now.getTime()-30*86400000).toISOString();if(range==="year")return new Date(now.getTime()-365*86400000).toISOString();return new Date(0).toISOString();},[range]);
   var rangeLabel={day:"Today",week:"7 Days",month:"30 Days",year:"12 Mo",all:"All"};
   var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
 
-  // Base filtered set — apply range + client + location
-  var active=useMemo(function(){
-    return tickets.filter(function(t){
-      if(t.deleted)return false;
-      if(new Date(t.createdAt)<new Date(rangeStart))return false;
-      if(fClient&&t.clientId!==fClient)return false;
-      if(fLocation&&t.locationId!==fLocation)return false;
-      return true;
-    });
-  },[tickets,rangeStart,fClient,fLocation]);
+  var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(new Date(t.createdAt)<new Date(rangeStart))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,fClient,fLocation]);
+  var allActive=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,fClient,fLocation]);
 
-  var allActive=useMemo(function(){
-    return tickets.filter(function(t){
-      if(t.deleted)return false;
-      if(fClient&&t.clientId!==fClient)return false;
-      if(fLocation&&t.locationId!==fLocation)return false;
-      return true;
-    });
-  },[tickets,fClient,fLocation]);
-
-  // Helper: total IT hours for a set of tickets
-  function sumITHours(arr){
-    return arr.reduce(function(sum,t){
-      var end=t.closedAt?new Date(t.closedAt):new Date();
-      var hrs=Math.max(0,(end-new Date(t.createdAt))/3600000);
-      return sum+hrs;
-    },0);
+  // Real logged minutes for a set of ticket IDs
+  function loggedMins(ticketArr){
+    var ids=ticketArr.map(function(t){return t.id;});
+    return allTimeSessions.filter(function(s){return ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
+  }
+  // Real logged minutes for a user
+  function userLoggedMins(userId,ticketArr){
+    var ids=ticketArr.map(function(t){return t.id;});
+    return allTimeSessions.filter(function(s){return s.user_id===userId&&ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
   }
 
-  var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),itHours:sumITHours(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
-  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),itHours:sumITHours(mine)};});
+  var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:loggedMins(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
+  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:userLoggedMins(t.id,active)};});
   var totalBreached=active.filter(function(t){return t.slaBreached;}).length;
   var totalSlaRate=calcSlaRate(active);var avgCloseAll=calcAvgClose(calcClosed(active));
-  var totalITHours=sumITHours(active);
+  var totalLoggedMins=loggedMins(active);
   var statusPieData=ALL_STATUSES.map(function(s){return{name:s,value:active.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
   var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
   var weeklyTrend=useMemo(function(){return Array.from({length:8},function(_,i){var wEnd=new Date(Date.now()-(7-i)*7*86400000);var wStart=new Date(wEnd.getTime()-7*86400000);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<wEnd;});return{label:"W"+(i+1),total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
 
-  // ── Client / Location breakdown
   var byClient=useMemo(function(){
     return clients.map(function(cl){
       var cTickets=allActive.filter(function(t){return t.clientId===cl.id;});
       if(cTickets.length===0)return null;
       var byLoc=(cl.locations||[]).map(function(loc){
         var lT=cTickets.filter(function(t){return t.locationId===loc.id;});
-        var typeBreakdown=ticketTypes.map(function(tt){
-          var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;
-          return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;
-        }).filter(Boolean);
-        return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,itHours:sumITHours(lT),slaRate:calcSlaRate(lT),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};
+        var typeBreakdown=ticketTypes.map(function(tt){var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;}).filter(Boolean);
+        return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(lT),slaRate:calcSlaRate(lT),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};
       }).filter(function(l){return l.total>0;});
       var noLoc=cTickets.filter(function(t){return !t.locationId;});
-      return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,itHours:sumITHours(cTickets),slaRate:calcSlaRate(cTickets),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};
+      return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(cTickets),slaRate:calcSlaRate(cTickets),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};
     }).filter(Boolean).sort(function(a,b){return b.total-a.total;});
-  },[clients,allActive,ticketTypes]);
+  },[clients,allActive,ticketTypes,allTimeSessions]);
 
-  // AI insight
   async function generateInsight(){
     setAiLoading(true);setAiInsight("");
-    var summary={
-      totalTickets:allActive.length,
-      slaRate:calcSlaRate(allActive),
-      breached:allActive.filter(function(t){return t.slaBreached;}).length,
-      topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),
-      openCount:allActive.filter(function(t){return t.status==="Open";}).length,
-      escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,
-      totalITHours:parseFloat(sumITHours(allActive).toFixed(1)),
-      clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,itHours:parseFloat(c.itHours.toFixed(1)),slaRate:c.slaRate,topLocations:c.byLoc.slice(0,3).map(function(l){return l.name+" ("+l.total+" tickets, "+l.itHours.toFixed(1)+"h IT)";})};}).slice(0,8),
-      filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"
-    };
+    var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate,topLocations:c.byLoc.slice(0,3).map(function(l){return l.name+" ("+l.total+" tickets, "+(l.loggedMins/60).toFixed(1)+"h logged)";})};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
     try{
-      var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. 📍 Locations/clients needing most attention\n3. ⏱ IT hours analysis — are hours proportionate to ticket volume?\n4. 💡 3 actionable recommendations\n\nBe concise. Use bullet points. Focus on patterns that management can act on.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
-      var data=await res.json();
-      setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");
+      var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. 📍 Locations/clients needing most attention\n3. ⏱ IT hours analysis — are logged hours proportionate to ticket volume? Any tech working significantly more/less?\n4. 💡 3 actionable recommendations\n\nBe concise. Use bullet points. Note: IT hours are actual logged time from a start/stop timer, not wall-clock time.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
+      var data=await res.json();setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");
     }catch(e){setAiInsight("Error: "+e.message);}
     setAiLoading(false);
   }
 
   var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"by_client",label:"🤝 By Client"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
-
-  // Active filter pill display
-  var filterLabel="";
-  if(fClient){filterLabel=selClientObj?.name||"Client";if(fLocation){var lObj=availLocations.find(function(l){return l.id===fLocation;});filterLabel+=" → "+(lObj?.name||"Location");}}
+  var filterLabel="";if(fClient){filterLabel=selClientObj?.name||"Client";if(fLocation){var lObj=availLocations.find(function(l){return l.id===fLocation;});filterLabel+=" → "+(lObj?.name||"Location");}}
 
   return<div>
-    {/* View tabs */}
-    <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>
-      {VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}
-    </div>
+    <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>{VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}</div>
 
-    {/* ── NEW: Client / Location filter bar ── */}
+    {/* Client/Location filter */}
     <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
       <span style={{fontSize:11,fontWeight:700,color:"#64748b",flexShrink:0}}>🔍 Filter:</span>
-      <select value={fClient} onChange={function(e){handleClientChange(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}>
-        <option value="">All Clients</option>
-        {clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}
-      </select>
-      {fClient&&availLocations.length>0&&(
-        <select value={fLocation} onChange={function(e){setFLocation(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}>
-          <option value="">All Locations</option>
-          {availLocations.map(function(l){return<option key={l.id} value={l.id}>{l.name}</option>;})}
-        </select>
-      )}
-      {filterLabel&&(
-        <div style={{display:"flex",alignItems:"center",gap:6,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 10px"}}>
-          <span style={{fontSize:11,fontWeight:700,color:"#4338ca"}}>📍 {filterLabel}</span>
-          <button onClick={function(){setFClient("");setFLocation("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:13,padding:0,lineHeight:1}}>✕</button>
-        </div>
-      )}
-      <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{active.length} tickets</div>
+      <select value={fClient} onChange={function(e){handleClientChange(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Clients</option>{clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}</select>
+      {fClient&&availLocations.length>0&&<select value={fLocation} onChange={function(e){setFLocation(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Locations</option>{availLocations.map(function(l){return<option key={l.id} value={l.id}>{l.name}</option>;})}</select>}
+      {filterLabel&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 10px"}}><span style={{fontSize:11,fontWeight:700,color:"#4338ca"}}>📍 {filterLabel}</span><button onClick={function(){setFClient("");setFLocation("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:13,padding:0,lineHeight:1}}>✕</button></div>}
+      <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{active.length} tickets · {fmtDuration(totalLoggedMins)} logged</div>
     </div>
 
     {/* Range filter */}
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
-      {["day","week","month","year","all"].map(function(r){return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;})}
-    </div>
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>{["day","week","month","year","all"].map(function(r){return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;})}</div>
 
-    {/* ── SUMMARY VIEW ── */}
+    {/* SUMMARY */}
     {view==="summary"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
         <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"}/>
         <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9"/>
         <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1"/>
-        <Stat label="IT Hours Spent" value={totalITHours.toFixed(1)+"h"} icon="🕐" color="#8b5cf6" sub={"across "+active.length+" tickets"}/>
+        <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
       </div>
       <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
-
-      {/* AI Analysis card always in summary */}
       <Card style={{borderLeft:"4px solid #6366f1"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div>
-            <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div>
-            <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{filterLabel?"Filtered: "+filterLabel:"All clients & locations"}</div>
-          </div>
-          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer",flexShrink:0}}>
-            {aiLoading?"⏳ Analyzing…":"✨ Analyze Now"}
-          </button>
+          <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{filterLabel?"Filtered: "+filterLabel:"All clients & locations"} · Hours are actual logged time</div></div>
+          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer",flexShrink:0}}>{aiLoading?"⏳ Analyzing…":"✨ Analyze Now"}</button>
         </div>
-        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}>
-          <div style={{fontSize:28,marginBottom:8}}>🔍</div>
-          Click "Analyze Now" to get AI insights on your biggest issues and where they're occurring.
-        </div>}
-        {aiLoading&&<div style={{textAlign:"center",padding:20,color:"#6366f1",fontSize:13}}>
-          <div style={{fontSize:28,marginBottom:8}}>⏳</div>Analyzing {active.length} tickets{filterLabel?" for "+filterLabel:""}…
-        </div>}
+        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>🔍</div>Click "Analyze Now" for AI insights on your biggest issues, where they're occurring, and how IT time is being spent.</div>}
+        {aiLoading&&<div style={{textAlign:"center",padding:20,color:"#6366f1",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>⏳</div>Analyzing {active.length} tickets…</div>}
         {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
       </Card>
     </div>}
 
-    {/* ── BY CLIENT VIEW ── */}
+    {/* BY CLIENT */}
     {view==="by_client"&&<div>
-      {byClient.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>
-        <div style={{fontSize:32,marginBottom:8}}>🤝</div>
-        No client data yet. Assign clients to tickets to see this report.
-      </div></Card>}
-
-      {byClient.map(function(cl){
-        return<Card key={cl.id} style={{marginBottom:16}}>
-          {/* Client header */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}>
-            <div style={{display:"flex",gap:10,alignItems:"center"}}>
-              <div style={{width:40,height:40,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div>
-              <div>
-                <div style={{fontWeight:800,color:"#1e293b",fontSize:14}}>{cl.name}</div>
-                <div style={{fontSize:11,color:"#64748b"}}>{cl.email}</div>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              <div style={{textAlign:"center",background:"#f8fafc",borderRadius:8,padding:"6px 12px",minWidth:60}}>
-                <div style={{fontSize:18,fontWeight:800,color:"#6366f1"}}>{cl.total}</div>
-                <div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Tickets</div>
-              </div>
-              <div style={{textAlign:"center",background:"#fef3c7",borderRadius:8,padding:"6px 12px",minWidth:60}}>
-                <div style={{fontSize:18,fontWeight:800,color:"#f59e0b"}}>{cl.open}</div>
-                <div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Open</div>
-              </div>
-              <div style={{textAlign:"center",background:"#eef2ff",borderRadius:8,padding:"6px 12px",minWidth:60}}>
-                <div style={{fontSize:18,fontWeight:800,color:"#6366f1"}}>{cl.itHours.toFixed(1)}h</div>
-                <div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>IT Hours</div>
-              </div>
-              <div style={{textAlign:"center",background:cl.slaRate>=90?"#f0fdf4":cl.slaRate>=75?"#fffbeb":"#fef2f2",borderRadius:8,padding:"6px 12px",minWidth:60}}>
-                <div style={{fontSize:18,fontWeight:800,color:slaColor(cl.slaRate)}}>{cl.slaRate}%</div>
-                <div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>SLA</div>
-              </div>
-            </div>
+      {byClient.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>🤝</div>No client data yet.</div></Card>}
+      {byClient.map(function(cl){return<Card key={cl.id} style={{marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}><div style={{width:40,height:40,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div><div style={{fontWeight:800,color:"#1e293b",fontSize:14}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>{cl.email}</div></div></div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <div style={{textAlign:"center",background:"#f8fafc",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#6366f1"}}>{cl.total}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Tickets</div></div>
+            <div style={{textAlign:"center",background:"#fef3c7",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#f59e0b"}}>{cl.open}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Open</div></div>
+            <div style={{textAlign:"center",background:"#eef2ff",borderRadius:8,padding:"6px 12px",minWidth:70}}><div style={{fontSize:15,fontWeight:800,color:"#6366f1"}}>{fmtDuration(cl.loggedMins)}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>IT Time</div></div>
+            <div style={{textAlign:"center",background:cl.slaRate>=90?"#f0fdf4":cl.slaRate>=75?"#fffbeb":"#fef2f2",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:slaColor(cl.slaRate)}}>{cl.slaRate}%</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>SLA</div></div>
           </div>
-
-          {/* Location breakdown */}
-          {cl.byLoc.length>0&&<div>
-            <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8,letterSpacing:0.5}}>📍 Locations</div>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {cl.byLoc.map(function(loc){
-                var worstColor=loc.slaRate<75?"#fef2f2":loc.slaRate<90?"#fffbeb":"#f8fafc";
-                return<div key={loc.id} style={{background:worstColor,border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:6}}>
-                    <div>
-                      <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div>
-                      {loc.address&&<div style={{fontSize:10,color:"#64748b"}}>{loc.address}</div>}
-                    </div>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      <Badge label={loc.total+" tickets"} color="#6366f1"/>
-                      <Badge label={loc.open+" open"} color={loc.open>0?"#f59e0b":"#10b981"}/>
-                      <Badge label={loc.itHours.toFixed(1)+"h IT"} color="#8b5cf6"/>
-                      <Badge label={loc.slaRate+"% SLA"} color={slaColor(loc.slaRate)}/>
-                      {loc.breached>0&&<Badge label={loc.breached+" breached"} color="#ef4444"/>}
-                    </div>
-                  </div>
-                  {/* Issue type breakdown for this location */}
-                  {loc.typeBreakdown.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {loc.typeBreakdown.sort(function(a,b){return b.count-a.count;}).map(function(tb){
-                      return<div key={tb.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}>
-                        <div style={{width:7,height:7,borderRadius:"50%",background:tb.color||"#6366f1",flexShrink:0}}/>
-                        <span style={{fontSize:11,color:"#334155",fontWeight:600}}>{tb.name}</span>
-                        <span style={{fontSize:11,color:"#6366f1",fontWeight:800}}>×{tb.count}</span>
-                      </div>;
-                    })}
-                  </div>}
-                </div>;
-              })}
-              {cl.noLoc>0&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#94a3b8"}}>
-                + {cl.noLoc} ticket{cl.noLoc>1?"s":""} with no location assigned
-              </div>}
-            </div>
-          </div>}
-          {cl.byLoc.length===0&&cl.total>0&&<div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic"}}>{cl.total} tickets with no location assigned</div>}
-        </Card>;
-      })}
+        </div>
+        {cl.byLoc.length>0&&<div>
+          <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8,letterSpacing:0.5}}>📍 Locations</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {cl.byLoc.map(function(loc){var worstColor=loc.slaRate<75?"#fef2f2":loc.slaRate<90?"#fffbeb":"#f8fafc";return<div key={loc.id} style={{background:worstColor,border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div>{loc.address&&<div style={{fontSize:10,color:"#64748b"}}>{loc.address}</div>}</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <Badge label={loc.total+" tickets"} color="#6366f1"/>
+                  <Badge label={loc.open+" open"} color={loc.open>0?"#f59e0b":"#10b981"}/>
+                  <Badge label={fmtDuration(loc.loggedMins)+" IT"} color="#8b5cf6"/>
+                  <Badge label={loc.slaRate+"% SLA"} color={slaColor(loc.slaRate)}/>
+                  {loc.breached>0&&<Badge label={loc.breached+" breached"} color="#ef4444"/>}
+                </div>
+              </div>
+              {loc.typeBreakdown.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{loc.typeBreakdown.sort(function(a,b){return b.count-a.count;}).map(function(tb){return<div key={tb.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}><div style={{width:7,height:7,borderRadius:"50%",background:tb.color||"#6366f1",flexShrink:0}}/><span style={{fontSize:11,color:"#334155",fontWeight:600}}>{tb.name}</span><span style={{fontSize:11,color:"#6366f1",fontWeight:800}}>×{tb.count}</span></div>;})}</div>}
+            </div>;})}
+            {cl.noLoc>0&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#94a3b8"}}>+ {cl.noLoc} ticket{cl.noLoc>1?"s":""} with no location assigned</div>}
+          </div>
+        </div>}
+      </Card>;})}
     </div>}
 
-    {/* ── TREND VIEW ── */}
+    {/* TREND */}
     {view==="trend"&&<div>
       <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Weekly Volume</div><ResponsiveContainer width="100%" height={200}><AreaChart data={weeklyTrend}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="label" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Area type="monotone" dataKey="total" stroke="#6366f1" fill="#eef2ff" name="Total" strokeWidth={2}/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed" strokeWidth={2}/></AreaChart></ResponsiveContainer></Card>
-
       <Card style={{borderLeft:"4px solid #6366f1"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div>
-            <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div>
-            {filterLabel&&<div style={{fontSize:11,color:"#64748b",marginTop:2}}>Filtered: {filterLabel}</div>}
-          </div>
-          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer"}}>
-            {aiLoading?"⏳ Analyzing…":"✨ Generate"}
-          </button>
+          <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div>
+          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer"}}>{aiLoading?"⏳ Analyzing…":"✨ Generate"}</button>
         </div>
         {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}>Ready to analyze your data</div>}
         {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
       </Card>
     </div>}
 
-    {/* ── BY TYPE VIEW ── */}
+    {/* BY TYPE */}
     {view==="by_type"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byType.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
       {byType.map(function(t){return<Card key={t.id}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-          <Badge label={t.name} color={t.color}/>
-          <span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span>
-        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span></div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
           <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
           <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
-          <span style={{fontSize:11,color:"#64748b"}}>Avg: <strong>{t.avgClose}h</strong></span>
-          <span style={{fontSize:11,color:"#8b5cf6"}}>IT Hours: <strong>{t.itHours.toFixed(1)}h</strong></span>
+          <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
+          <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
         </div>
       </Card>;})}
     </div>}
 
-    {/* ── PER USER VIEW ── */}
+    {/* PER USER */}
     {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
       {byUser.map(function(t){return<Card key={t.id}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-          <Avatar name={t.name} id={t.id} size={32}/>
-          <div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div>
-          <span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span>
-        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
           <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
           <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
           <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
-          <span style={{fontSize:11,color:"#8b5cf6"}}>IT Hours: <strong>{t.itHours.toFixed(1)}h</strong></span>
+          <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
         </div>
       </Card>;})}
     </div>}
@@ -1131,18 +1098,8 @@ function PageUsers(p){
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {users.map(function(u){var co=companies.find(function(c){return c.id===u.companyId;});var rm=roles[u.role]||{label:u.role,color:"#6366f1"};
         return<Card key={u.id} style={{padding:14}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-            <Avatar name={u.name} id={u.id} size={36}/>
-            <div style={{flex:1,overflow:"hidden"}}>
-              <div style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
-              <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
-            </div>
-            <Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/>
-          </div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-            <Badge label={rm.label} color={rm.color}/>
-            {co&&<span style={{fontSize:11,color:"#64748b"}}>🏢 {co.name}</span>}
-          </div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar name={u.name} id={u.id} size={36}/><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div></div><Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/></div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}><Badge label={rm.label} color={rm.color}/>{co&&<span style={{fontSize:11,color:"#64748b"}}>🏢 {co.name}</span>}</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️ Edit</Btn>
             <Btn size="sm" variant="ghost" onClick={function(){setPwModal(u);setNewPw("");setPwErr("");}}>🔑 Password</Btn>
@@ -1241,10 +1198,7 @@ function PageTicketTypes(p){
   var SLA_DESC={"Open":"Acknowledgement time","In Progress":"Resolution time","Pending":"Awaiting requester","Escalated":"Senior staff response","Closed":"No SLA"};
   return<div>
     <Card style={{marginBottom:20,borderTop:"3px solid #6366f1"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>⏱ Status SLA Thresholds</div></div>
-        <div style={{display:"flex",gap:8}}><Btn size="sm" variant="ghost" onClick={function(){setSlaEdit(Object.assign({},DEFAULT_STATUS_SLA));setSlaChanged(true);}}>↺ Reset</Btn><Btn size="sm" variant={slaChanged?"primary":"ghost"} onClick={saveSla} style={{opacity:slaChanged?1:0.5}}>💾 Save</Btn></div>
-      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>⏱ Status SLA Thresholds</div></div><div style={{display:"flex",gap:8}}><Btn size="sm" variant="ghost" onClick={function(){setSlaEdit(Object.assign({},DEFAULT_STATUS_SLA));setSlaChanged(true);}}>↺ Reset</Btn><Btn size="sm" variant={slaChanged?"primary":"ghost"} onClick={saveSla} style={{opacity:slaChanged?1:0.5}}>💾 Save</Btn></div></div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {ALL_STATUSES.map(function(status){var sm=STATUS_META[status];var isClosed=status==="Closed";var val=slaEdit[status];return<div key={status} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:sm.color}}/><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{status}</div></div>{!isClosed&&val!==null?<Badge label={val+"h"} color={sm.color}/>:<Badge label="No SLA" color="#94a3b8"/>}</div><div style={{fontSize:11,color:"#64748b",marginBottom:isClosed?0:10}}>{SLA_DESC[status]}</div>{!isClosed&&<div style={{display:"flex",alignItems:"center",gap:8}}><input type="number" min="0.5" step="0.5" value={val===null||val===undefined?"":val} onChange={function(e){updateSlaField(status,e.target.value);}} style={{width:80,padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#fff",boxSizing:"border-box"}}/><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>hours</span></div>}</div>;})}
       </div>
@@ -1266,10 +1220,7 @@ function PageActivityLog(p){
   function fu(id){return users.find(function(x){return x.id===id;});}
   var filtered=filter?logs.filter(function(l){return l.action===filter;}):logs;
   return<div>
-    <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
-      <div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div>
-      <select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return<option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select>
-    </div>
+    <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}><div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div><select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return<option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select></div>
     <Card style={{padding:0}}>
       {filtered.length===0&&<div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No activity found</div>}
       {filtered.map(function(log,i){var am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action};var actor=fu(log.userId);return<div key={log.id} style={{display:"flex",gap:12,padding:"12px 16px",borderBottom:i<filtered.length-1?"1px solid #f1f5f9":"none",alignItems:"flex-start"}}><div style={{width:32,height:32,borderRadius:8,background:am.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{am.icon}</div><div style={{flex:1,minWidth:0}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><Badge label={am.label} color={am.color}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(log.timestamp)}</span></div><div style={{fontSize:12,color:"#334155",marginTop:4,overflow:"hidden",textOverflow:"ellipsis"}}>{log.detail}</div>{actor&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Avatar name={actor.name} id={actor.id} size={14}/>By {actor.name}</div>}</div></div>;})}
@@ -1291,33 +1242,17 @@ function PageIntegrations(p){
     <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🔌 Integrations</div>
     <div style={{fontSize:12,color:"#64748b",marginBottom:20}}>Configure your email provider.</div>
     <Card style={{borderTop:"3px solid #6366f1",marginBottom:20}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div>
-        <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a>
-      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a></div>
       <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1",lineHeight:1.8}}>Set in Vercel → Settings → Environment Variables:<br/><code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_USER</code> and <code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_APP_PASSWORD</code></div>
       <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>Send Test Email</label>
-      <div style={{display:"flex",gap:8,marginBottom:8}}>
-        <input type="email" value={testTo} onChange={function(e){setTestTo(e.target.value);}} placeholder="recipient@example.com" style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}/>
-        <button onClick={runTest} disabled={sending} style={{padding:"10px 16px",background:sending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:sending?"not-allowed":"pointer",flexShrink:0}}>{sending?"Sending…":"📤 Test"}</button>
-      </div>
+      <div style={{display:"flex",gap:8,marginBottom:8}}><input type="email" value={testTo} onChange={function(e){setTestTo(e.target.value);}} placeholder="recipient@example.com" style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}/><button onClick={runTest} disabled={sending} style={{padding:"10px 16px",background:sending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:sending?"not-allowed":"pointer",flexShrink:0}}>{sending?"Sending…":"📤 Test"}</button></div>
       {status==="ok"&&<div style={{padding:"8px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,fontSize:12,color:"#166534"}}>✅ Test email delivered!</div>}
       {status==="fail"&&<div style={{padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:12,color:"#dc2626"}}>❌ Failed — check env variables.</div>}
     </Card>
     {isAdmin&&<Card style={{borderTop:"3px solid #6366f1"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-        <div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Use <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div></div>
-        <Btn onClick={openNew}>➕ Add Template</Btn>
-      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Use <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div></div><Btn onClick={openNew}>➕ Add Template</Btn></div>
       {emailTemplates.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>No templates yet.</div>}
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div><div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subject: {t.subject}</div><div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div></div>
-            <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn></div>
-          </div>
-        </div>;})}
-      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>{emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div><div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subject: {t.subject}</div><div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div></div><div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn></div></div></div>;})}</div>
     </Card>}
     {tmplModal&&<Modal title={tmplEdit?"Edit Template":"New Email Template"} onClose={function(){setTmplModal(false);}}>
       <FInput label="Template Name *" value={tmplForm.name} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{name:e.target.value});});}} placeholder="e.g. Initial Response"/>
