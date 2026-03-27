@@ -12,46 +12,147 @@ const IT_ROLES = ["admin","it_manager","it_technician"];
 const DEFAULT_STATUS_SLA = { "Open":2, "In Progress":8, "Pending":24, "Escalated":1, "Closed":null };
 const DOW_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const DEFAULT_ROLES = { admin:{label:"Administrator",color:"#dc2626",system:true}, it_manager:{label:"IT Manager",color:"#7c3aed",system:true}, it_technician:{label:"IT Technician",color:"#2563eb",system:true}, end_user:{label:"End User",color:"#059669",system:true} };
+// PHT = UTC+8
+const PHT_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function nowPHT() { return new Date(Date.now() + PHT_OFFSET_MS); }
+function toPHT(isoStr) { return isoStr ? new Date(new Date(isoStr).getTime() + PHT_OFFSET_MS) : null; }
+function phtHourMin(isoStr) {
+  if (!isoStr) return { hour: 0, min: 0 };
+  var d = toPHT(isoStr);
+  return { hour: d.getUTCHours(), min: d.getUTCMinutes() };
+}
+function phtDow(isoStr) {
+  if (!isoStr) return nowPHT().getUTCDay();
+  return toPHT(isoStr).getUTCDay();
+}
+
 function loadRoles(){ try{ var s=localStorage.getItem("hd_roles"); return s?Object.assign({},DEFAULT_ROLES,JSON.parse(s)):Object.assign({},DEFAULT_ROLES); }catch(e){ return Object.assign({},DEFAULT_ROLES); } }
 function saveRoles(v){ try{ localStorage.setItem("hd_roles",JSON.stringify(v)); }catch(e){} }
 var ROLE_META = loadRoles();
 
 const uid   = function(){ return "id_"+Date.now()+"_"+Math.random().toString(36).slice(2,6); };
-const fdt   = function(iso){ return iso?new Date(iso).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—"; };
-const fdtFull = function(iso){ return iso?new Date(iso).toLocaleString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}):"—"; };
+const fdt   = function(iso){ return iso?new Date(iso).toLocaleString("en-PH",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Manila"}):"—"; };
+const fdtFull = function(iso){ return iso?new Date(iso).toLocaleString("en-PH",{weekday:"short",month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",timeZone:"Asia/Manila"}):"—"; };
 const ago   = function(iso){ if(!iso)return"—"; var m=Math.floor((Date.now()-new Date(iso))/60000); if(m<1)return"just now"; if(m<60)return m+"m ago"; var h=Math.floor(m/60); if(h<24)return h+"h ago"; return Math.floor(h/24)+"d ago"; };
 const inits = function(n){ if(!n)return"??"; var p=n.trim().split(" ").filter(Boolean); return p.length>=2?(p[0][0]+p[1][0]).toUpperCase():n.slice(0,2).toUpperCase(); };
 const avCol = function(id){ return PAL[Math.abs((id||"").split("").reduce(function(a,c){return a+c.charCodeAt(0);},0))%PAL.length]; };
 const slaColor = function(r){ return r>=90?"#10b981":r>=75?"#f59e0b":"#ef4444"; };
 const fmtMs = function(mins){ if(!mins&&mins!==0)return"—"; var s=mins*60; if(s<60)return s.toFixed(2)+"s"; if(s<3600){var m=Math.floor(mins);var sc=parseFloat(((mins-m)*60).toFixed(2));return m+"m "+sc+"s";} var h=Math.floor(mins/60);var rm=mins-h*60;var m2=Math.floor(rm);var s2=parseFloat(((rm-m2)*60).toFixed(2));return h+"h "+m2+"m "+s2+"s"; };
+const fmtHrs = function(h){ if(!h&&h!==0)return"—"; return h.toFixed(1)+"h"; };
 const pieLabel = function(p){ return p.value>0?p.name+": "+p.value:""; };
-const fmtHour = function(h){ if(h===0)return"12:00 AM"; if(h<12)return h+":00 AM"; if(h===12)return"12:00 PM"; return (h-12)+":00 PM"; };
-const fmtSchedule = function(sch){ if(!sch||!sch.days||!sch.days.length)return"No schedule (24/7)"; var d=sch.days.slice().sort(function(a,b){return a-b;}).map(function(d){return DOW_LABELS[d];}).join(", "); return d+" · "+fmtHour(sch.startHour)+" – "+fmtHour(sch.endHour); };
+
+// Format half-hour slots e.g. 9.5 → "9:30 AM"
+function fmtHalfHour(val) {
+  var h = Math.floor(val);
+  var m = val % 1 === 0.5 ? "30" : "00";
+  if (h === 0) return "12:"+m+" AM";
+  if (h < 12) return h+":"+m+" AM";
+  if (h === 12) return "12:"+m+" PM";
+  return (h-12)+":"+m+" PM";
+}
+
+function loadRoles(){ try{ var s=localStorage.getItem("hd_roles"); return s?Object.assign({},DEFAULT_ROLES,JSON.parse(s)):Object.assign({},DEFAULT_ROLES); }catch(e){ return Object.assign({},DEFAULT_ROLES); } }
+function saveRoles(v){ try{ localStorage.setItem("hd_roles",JSON.stringify(v)); }catch(e){} }
 
 function useIsMobile(){ var[mob,setMob]=useState(window.innerWidth<768); useEffect(function(){function h(){setMob(window.innerWidth<768);}window.addEventListener("resize",h);return function(){window.removeEventListener("resize",h);};},[]);return mob; }
 
-function calcBusinessHoursElapsed(startMs,endMs,schedule){
-  if(!schedule||!schedule.days||!schedule.days.length)return(endMs-startMs)/3600000;
-  var total=0,cur=startMs;
-  while(cur<endMs){var d=new Date(cur);var dow=d.getDay();var ds=new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.startHour,0,0,0).getTime();var de=new Date(d.getFullYear(),d.getMonth(),d.getDate(),schedule.endHour,0,0,0).getTime();if(schedule.days.includes(dow)){var os=Math.max(cur,ds);var oe=Math.min(endMs,de);if(oe>os)total+=(oe-os)/3600000;}cur=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1,0,0,0,0).getTime();}
+// ── Per-day schedule helpers ──────────────────────────────────────────────────
+// Schedule v2: { days: [{ dow:0, startHalf:9, endHalf:17.5 }] }
+// startHalf / endHalf are half-hour slot values (e.g. 9 = 9:00, 9.5 = 9:30)
+function buildDefaultDaySchedule(dow) {
+  return { dow, startHalf: 9, endHalf: 17 };
+}
+function scheduleIsV2(sch) {
+  return sch && Array.isArray(sch.days) && sch.days.length > 0 && typeof sch.days[0] === "object";
+}
+function migrateScheduleV1toV2(sch) {
+  if (!sch) return null;
+  if (scheduleIsV2(sch)) return sch;
+  // v1: { days:[0,1,2], startHour:9, endHour:17 }
+  if (!sch.days || !sch.days.length) return null;
+  return {
+    days: sch.days.map(function(dow) {
+      return { dow, startHalf: sch.startHour || 9, endHalf: sch.endHour || 17 };
+    })
+  };
+}
+
+function calcBusinessHoursElapsed(startMs, endMs, schedule) {
+  var sch = schedule ? migrateScheduleV1toV2(schedule) : null;
+  if (!sch || !sch.days || !sch.days.length) return (endMs - startMs) / 3600000;
+  var total = 0, cur = startMs;
+  while (cur < endMs) {
+    var d = new Date(cur + PHT_OFFSET_MS); // PHT date
+    var dow = d.getUTCDay();
+    var dayConf = sch.days.find(function(x) { return x.dow === dow; });
+    if (dayConf) {
+      var dayStartMs = cur - (cur % 86400000) + dayConf.startHalf * 3600000;
+      var dayEndMs = cur - (cur % 86400000) + dayConf.endHalf * 3600000;
+      // Adjust for PHT offset difference
+      var baseDay = new Date(cur + PHT_OFFSET_MS);
+      var midnightPHT = Date.UTC(baseDay.getUTCFullYear(), baseDay.getUTCMonth(), baseDay.getUTCDate()) - PHT_OFFSET_MS;
+      var ds = midnightPHT + dayConf.startHalf * 3600000;
+      var de = midnightPHT + dayConf.endHalf * 3600000;
+      var os = Math.max(cur, ds);
+      var oe = Math.min(endMs, de);
+      if (oe > os) total += (oe - os) / 3600000;
+    }
+    var tomorrow = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+    cur = Date.UTC(tomorrow.getUTCFullYear(), tomorrow.getUTCMonth(), tomorrow.getUTCDate()) - PHT_OFFSET_MS;
+  }
   return total;
 }
-function isCurrentlyOnShift(schedule){ if(!schedule||!schedule.days||!schedule.days.length)return true; var now=new Date();var dow=now.getDay();var h=now.getHours()+(now.getMinutes()/60);return schedule.days.includes(dow)&&h>=schedule.startHour&&h<schedule.endHour; }
+
+function isCurrentlyOnShift(schedule) {
+  var sch = schedule ? migrateScheduleV1toV2(schedule) : null;
+  if (!sch || !sch.days || !sch.days.length) return true;
+  var now = nowPHT();
+  var dow = now.getUTCDay();
+  var half = now.getUTCHours() + now.getUTCMinutes() / 60;
+  var dayConf = sch.days.find(function(x) { return x.dow === dow; });
+  return dayConf ? (half >= dayConf.startHalf && half < dayConf.endHalf) : false;
+}
+
 function calcSlaRate(arr){ return arr.length?Math.round((1-arr.filter(function(t){return t.slaBreached;}).length/arr.length)*100):100; }
 function calcAvgClose(arr){ return arr.length?Math.round(arr.reduce(function(a,t){return a+(new Date(t.closedAt||t.updatedAt)-new Date(t.createdAt))/3600000;},0)/arr.length):0; }
 function calcClosed(arr){ return arr.filter(function(t){return t.status==="Closed";}); }
 function loadStatusSla(){ try{var s=localStorage.getItem("hd_statusSla");return s?JSON.parse(s):DEFAULT_STATUS_SLA;}catch(e){return DEFAULT_STATUS_SLA;} }
 function saveStatusSlaStore(v){ try{localStorage.setItem("hd_statusSla",JSON.stringify(v));}catch(e){} }
-function getStatusSla(ticket,slaConfig,schedules){
-  var cfg=slaConfig||loadStatusSla();var allowed=cfg[ticket.status];
-  if(allowed===null||allowed===undefined)return null;
-  var hist=ticket.statusHistory||[];var entry=null;
-  for(var i=hist.length-1;i>=0;i--){if(hist[i].status===ticket.status&&!hist[i]._noSlaReset){entry=hist[i].timestamp;break;}}
-  if(!entry)entry=ticket.updatedAt||ticket.createdAt;
-  var schedule=schedules&&ticket.assignedTo?schedules[ticket.assignedTo]:null;
-  var spent=schedule?calcBusinessHoursElapsed(new Date(entry).getTime(),Date.now(),schedule):(Date.now()-new Date(entry).getTime())/3600000;
-  var pct=Math.min(100,Math.round(spent/allowed*100));var breached=spent>allowed;var remaining=Math.max(0,allowed-spent);var onShift=isCurrentlyOnShift(schedule);
-  return{hoursAllowed:allowed,hoursSpent:parseFloat(spent.toFixed(2)),pct,breached,remaining:parseFloat(remaining.toFixed(2)),enteredAt:entry,onShift,hasSchedule:!!schedule,schedule};
+function getStatusSla(ticket, slaConfig, schedules) {
+  var cfg = slaConfig || loadStatusSla();
+  var allowed = cfg[ticket.status];
+  if (allowed === null || allowed === undefined) return null;
+  var hist = ticket.statusHistory || [];
+  var entry = null;
+  for (var i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].status === ticket.status && !hist[i]._noSlaReset) { entry = hist[i].timestamp; break; }
+  }
+  if (!entry) entry = ticket.updatedAt || ticket.createdAt;
+  var schedule = schedules && ticket.assignedTo ? schedules[ticket.assignedTo] : null;
+  var spent = schedule ? calcBusinessHoursElapsed(new Date(entry).getTime(), Date.now(), schedule) : (Date.now() - new Date(entry).getTime()) / 3600000;
+  var pct = Math.min(100, Math.round(spent / allowed * 100));
+  var breached = spent > allowed;
+  var remaining = Math.max(0, allowed - spent);
+  var onShift = isCurrentlyOnShift(schedule);
+  return { hoursAllowed: allowed, hoursSpent: parseFloat(spent.toFixed(2)), pct, breached, remaining: parseFloat(remaining.toFixed(2)), enteredAt: entry, onShift, hasSchedule: !!schedule, schedule };
+}
+
+// ── Auto-reassignment logic ───────────────────────────────────────────────────
+function findItManager(users) {
+  return users.find(function(u) { return u.role === "it_manager" && u.active; }) || null;
+}
+function shouldReassignToManager(ticket, schedules, users) {
+  if (!ticket.assignedTo || ticket.status === "Closed") return false;
+  var schedule = schedules[ticket.assignedTo];
+  if (!schedule) return false;
+  return !isCurrentlyOnShift(schedule);
+}
+// Check if ticket has been unassigned/open for 12h
+function needsEscalationToManager(ticket) {
+  if (ticket.assignedTo || ticket.status === "Closed") return false;
+  var createdMs = new Date(ticket.createdAt).getTime();
+  return (Date.now() - createdMs) > 12 * 3600000;
 }
 
 async function callSendEmail(opts){
@@ -77,14 +178,39 @@ function optLocs(l){return[mkOpt("","— Select Location —")].concat(l.map(fun
 function optTypes(t){return t.map(function(x){return mkOpt(x.id,x.name+" — "+(PRI_META[x.priority]?.label||x.priority)+", SLA "+x.slaHours+"h");});}
 function optTechs(u){return[mkOpt("","— Unassigned —")].concat(u.filter(function(x){return IT_ROLES.includes(x.role)&&x.active;}).map(function(x){return mkOpt(x.id,x.name+" ("+(ROLE_META[x.role]?.label||x.role)+")");}));}
 function optAssignees(u){return[mkOpt("","— Auto-assign —")].concat(u.filter(function(x){return IT_ROLES.includes(x.role)&&x.active;}).map(function(x){return mkOpt(x.id,x.name+" ("+(ROLE_META[x.role]?.label||x.role)+")");}));}
-function aiAssign(title,desc,typeId,users,types){
+function aiAssign(title,desc,typeId,users,types,schedules){
   var tt=types.find(function(t){return t.id===typeId;});
-  if(tt&&tt.defaultAssignee){var u=users.find(function(u){return u.id===tt.defaultAssignee&&u.active;});if(u)return{id:u.id,reason:"Type \""+tt.name+"\" → "+u.name};}
+  var manager=findItManager(users);
+  // Check default assignee availability
+  if(tt&&tt.defaultAssignee){
+    var u=users.find(function(u){return u.id===tt.defaultAssignee&&u.active;});
+    if(u){
+      var sch=schedules?schedules[u.id]:null;
+      if(!sch||isCurrentlyOnShift(sch))return{id:u.id,reason:"Type \""+tt.name+"\" → "+u.name};
+      if(manager)return{id:manager.id,reason:"Type \""+tt.name+"\" default "+u.name+" off-shift → IT Manager "+manager.name};
+    }
+  }
   var text=(title+" "+desc).toLowerCase();
-  for(var i=0;i<types.length;i++){var t=types[i];if(!t.defaultAssignee)continue;var kws=t.keywords||[];for(var j=0;j<kws.length;j++){if(text.includes(kws[j].toLowerCase())){var u2=users.find(function(u){return u.id===t.defaultAssignee&&u.active;});if(u2)return{id:u2.id,reason:"Keyword \""+kws[j]+"\" → "+u2.name};}}}
+  for(var i=0;i<types.length;i++){
+    var t=types[i];if(!t.defaultAssignee)continue;
+    var kws=t.keywords||[];
+    for(var j=0;j<kws.length;j++){
+      if(text.includes(kws[j].toLowerCase())){
+        var u2=users.find(function(u){return u.id===t.defaultAssignee&&u.active;});
+        if(u2){
+          var sch2=schedules?schedules[u2.id]:null;
+          if(!sch2||isCurrentlyOnShift(sch2))return{id:u2.id,reason:"Keyword \""+kws[j]+"\" → "+u2.name};
+          if(manager)return{id:manager.id,reason:"Keyword match "+u2.name+" off-shift → IT Manager "+manager.name};
+        }
+      }
+    }
+  }
   var techs=users.filter(function(u){return u.role==="it_technician"&&u.active;});
-  if(techs.length)return{id:techs[0].id,reason:"Load-balanced → "+techs[0].name};
-  return{id:null,reason:"No technician available"};
+  // Pick available tech
+  var availTech=techs.find(function(u){var sch=schedules?schedules[u.id]:null;return!sch||isCurrentlyOnShift(sch);});
+  if(availTech)return{id:availTech.id,reason:"Load-balanced → "+availTech.name};
+  if(manager)return{id:manager.id,reason:"No tech available → IT Manager "+manager.name};
+  return{id:null,reason:"No staff available"};
 }
 
 // ── UI Primitives ─────────────────────────────────────────────────────────────
@@ -108,34 +234,107 @@ function FTextarea(p){var label=p.label;var rest=Object.assign({},p);delete rest
 function Btn(p){var v=p.variant||"primary";var sm=p.size==="sm";var base={border:"none",cursor:"pointer",borderRadius:8,fontWeight:600,fontSize:sm?11:13,display:"inline-flex",alignItems:"center",gap:4,padding:sm?"6px 12px":"10px 18px"};var cols={primary:{background:"#6366f1",color:"#fff"},danger:{background:"#ef4444",color:"#fff"},success:{background:"#10b981",color:"#fff"},warning:{background:"#f59e0b",color:"#fff"},ghost:{background:"#f1f5f9",color:"#475569"}};var rest=Object.assign({},p);delete rest.variant;delete rest.size;return<button style={Object.assign({},base,cols[v]||cols.primary,p.style||{})} {...rest}>{p.children}</button>;}
 function FocusInput(p){var[focused,setFocused]=useState(false);var extraPad=p.extraPad;var rest=Object.assign({},p);delete rest.extraPad;return<input {...rest} onFocus={function(){setFocused(true);}} onBlur={function(){setFocused(false);}} style={{width:"100%",padding:extraPad?"12px 44px 12px 14px":"12px 14px",border:"1.5px solid "+(focused?"#0ea5e9":"#e2e8f0"),borderRadius:10,fontSize:15,outline:"none",boxSizing:"border-box",background:"#f8fafc",transition:"border-color .2s"}}/>;}
 
-// ── Schedule Editor ───────────────────────────────────────────────────────────
-function ScheduleEditor(p){
-  var userId=p.userId;var schedules=p.schedules;var onChange=p.onChange;
-  var existing=schedules[userId]||null;
-  var[enabled,setEnabled]=useState(!!existing);
-  var[days,setDays]=useState(existing?existing.days:[1,2,3,4,5]);
-  var[startHour,setStartHour]=useState(existing?existing.startHour:9);
-  var[endHour,setEndHour]=useState(existing?existing.endHour:17);
-  function toggleDay(d){var nd=days.includes(d)?days.filter(function(x){return x!==d;}):days.concat([d]);setDays(nd);emit(enabled,nd,startHour,endHour);}
-  function emit(en,ds,sh,eh){onChange(userId,en?{days:ds,startHour:sh,endHour:eh}:null);}
-  function handleEnable(v){setEnabled(v);emit(v,days,startHour,endHour);}
-  var hours=Array.from({length:24},function(_,i){return mkOpt(i,fmtHour(i));});
-  return<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:14,marginBottom:14}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <div style={{fontWeight:700,color:"#0369a1",fontSize:13}}>🗓 Work Schedule</div>
-      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:600,color:enabled?"#0369a1":"#64748b"}}>
-        <input type="checkbox" checked={enabled} onChange={function(e){handleEnable(e.target.checked);}} style={{width:16,height:16,accentColor:"#0369a1"}}/>
-        {enabled?"Enabled":"Off (24/7)"}
-      </label>
+// ── Per-Day Schedule Editor (PHT, 30-min intervals) ───────────────────────────
+function ScheduleEditor(p) {
+  var userId = p.userId;
+  var schedules = p.schedules;
+  var onChange = p.onChange;
+  var readOnly = p.readOnly || false;
+
+  var existing = schedules[userId] ? migrateScheduleV1toV2(schedules[userId]) : null;
+  var[enabled, setEnabled] = useState(!!existing);
+  // days is array of {dow, startHalf, endHalf}
+  var[days, setDays] = useState(existing ? existing.days : []);
+
+  // 30-min slot options 0=midnight .. 23.5
+  var halfHourOpts = [];
+  for (var h = 0; h <= 23.5; h += 0.5) {
+    halfHourOpts.push(mkOpt(h, fmtHalfHour(h) + " PHT"));
+  }
+
+  function toggleDay(dow) {
+    if (readOnly) return;
+    var existing2 = days.find(function(d) { return d.dow === dow; });
+    var newDays;
+    if (existing2) {
+      newDays = days.filter(function(d) { return d.dow !== dow; });
+    } else {
+      newDays = days.concat([buildDefaultDaySchedule(dow)]).sort(function(a, b) { return a.dow - b.dow; });
+    }
+    setDays(newDays);
+    emit(enabled, newDays);
+  }
+
+  function updateDayTime(dow, field, val) {
+    if (readOnly) return;
+    var newDays = days.map(function(d) {
+      if (d.dow !== dow) return d;
+      return Object.assign({}, d, { [field]: parseFloat(val) });
+    });
+    setDays(newDays);
+    emit(enabled, newDays);
+  }
+
+  function emit(en, ds) {
+    onChange(userId, en && ds.length ? { days: ds } : null);
+  }
+
+  function handleEnable(v) {
+    if (readOnly) return;
+    setEnabled(v);
+    emit(v, days);
+  }
+
+  return <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: 14, marginBottom: 14 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, color: "#0369a1", fontSize: 13 }}>🗓 Work Schedule <span style={{ fontSize: 10, color: "#64748b", fontWeight: 400 }}>(Philippine Time)</span></div>
+      {!readOnly && <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 600, color: enabled ? "#0369a1" : "#64748b" }}>
+        <input type="checkbox" checked={enabled} onChange={function(e) { handleEnable(e.target.checked); }} style={{ width: 16, height: 16, accentColor: "#0369a1" }} />
+        {enabled ? "Enabled" : "Off (24/7)"}
+      </label>}
+      {readOnly && <Badge label={enabled ? "Scheduled" : "24/7"} color={enabled ? "#0369a1" : "#94a3b8"} />}
     </div>
-    {enabled&&<>
-      <div style={{marginBottom:10}}><div style={{fontSize:11,fontWeight:700,color:"#475569",marginBottom:6,textTransform:"uppercase"}}>Working Days</div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{DOW_LABELS.map(function(label,i){var active=days.includes(i);return<button key={i} type="button" onClick={function(){toggleDay(i);}} style={{padding:"6px 10px",borderRadius:6,border:"1.5px solid "+(active?"#0369a1":"#e2e8f0"),background:active?"#0369a1":"#fff",color:active?"#fff":"#64748b",fontSize:12,fontWeight:700,cursor:"pointer"}}>{label}</button>;})}</div>
+
+    {enabled && <>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 6, textTransform: "uppercase" }}>Working Days (tap to toggle)</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {DOW_LABELS.map(function(label, i) {
+            var active = days.some(function(d) { return d.dow === i; });
+            return <button key={i} type="button" onClick={function() { toggleDay(i); }} disabled={readOnly}
+              style={{ padding: "6px 10px", borderRadius: 6, border: "1.5px solid " + (active ? "#0369a1" : "#e2e8f0"), background: active ? "#0369a1" : "#fff", color: active ? "#fff" : "#64748b", fontSize: 12, fontWeight: 700, cursor: readOnly ? "default" : "pointer" }}>{label}</button>;
+          })}
+        </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div><label style={{display:"block",fontSize:11,fontWeight:700,color:"#475569",marginBottom:4}}>Start</label><select value={startHour} onChange={function(e){var n=parseInt(e.target.value);setStartHour(n);emit(enabled,days,n,endHour);}} style={{width:"100%",padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box"}}>{hours.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
-        <div><label style={{display:"block",fontSize:11,fontWeight:700,color:"#475569",marginBottom:4}}>End</label><select value={endHour} onChange={function(e){var n=parseInt(e.target.value);setEndHour(n);emit(enabled,days,startHour,n);}} style={{width:"100%",padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box"}}>{hours.filter(function(o){return o.value>startHour;}).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
-      </div>
+
+      {days.sort(function(a,b){return a.dow-b.dow;}).map(function(dayConf) {
+        return <div key={dayConf.dow} style={{ background: "#fff", border: "1px solid #bae6fd", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, color: "#0369a1", fontSize: 12, marginBottom: 8 }}>{DOW_LABELS[dayConf.dow]}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Start (PHT)</label>
+              <select disabled={readOnly} value={dayConf.startHalf}
+                onChange={function(e) { updateDayTime(dayConf.dow, "startHalf", e.target.value); }}
+                style={{ width: "100%", padding: "7px 8px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 12, outline: "none", background: "#f8fafc", boxSizing: "border-box" }}>
+                {halfHourOpts.filter(function(o) { return o.value < dayConf.endHalf; }).map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option>; })}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 4 }}>End (PHT)</label>
+              <select disabled={readOnly} value={dayConf.endHalf}
+                onChange={function(e) { updateDayTime(dayConf.dow, "endHalf", e.target.value); }}
+                style={{ width: "100%", padding: "7px 8px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 12, outline: "none", background: "#f8fafc", boxSizing: "border-box" }}>
+                {halfHourOpts.filter(function(o) { return o.value > dayConf.startHalf; }).map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option>; })}
+              </select>
+            </div>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>
+            Hours: <strong>{(dayConf.endHalf - dayConf.startHalf).toFixed(1)}h</strong> · {fmtHalfHour(dayConf.startHalf)} – {fmtHalfHour(dayConf.endHalf)} PHT
+          </div>
+        </div>;
+      })}
+
+      {days.length === 0 && <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "8px 0" }}>No working days selected yet.</div>}
     </>}
   </div>;
 }
@@ -252,7 +451,7 @@ function LoginPage(p){
         {view==="signup"&&<><BackBtn onClick={function(){setView("login");setSigErr("");}} /><h2 style={{fontSize:18,fontWeight:700,color:"#1e293b",margin:"0 0 16px"}}>Create an Account 🚀</h2>
           <FInput label="Full Name *" value={sigName} onChange={function(e){setSigName(e.target.value);}} placeholder="Jane Smith"/>
           <FInput label="Work Email *" type="email" value={sigEmail} onChange={function(e){setSigEmail(e.target.value);}} placeholder="you@company.com"/>
-          <FInput label="Phone" type="tel" value={sigPhone} onChange={function(e){setSigPhone(e.target.value);}} placeholder="+1-555-0100"/>
+          <FInput label="Phone" type="tel" value={sigPhone} onChange={function(e){setSigPhone(e.target.value);}} placeholder="+63-917-000-0000"/>
           <FInput label="Department" value={sigDept} onChange={function(e){setSigDept(e.target.value);}} placeholder="Sales"/>
           <div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Password *</label><FocusInput type={showP2?"text":"password"} value={sigPass} onChange={function(e){setSigPass(e.target.value);}} placeholder="Min 8 chars" extraPad/><button type="button" onClick={function(){setShowP2(!showP2);}} style={{position:"absolute",right:12,top:30,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showP2?"🙈":"👁️"}</button></div>
           <div style={{position:"relative",marginBottom:sigPass.length>0?4:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Confirm Password *</label><FocusInput type={showP3?"text":"password"} value={sigConf} onChange={function(e){setSigConf(e.target.value);}} placeholder="Repeat" extraPad/><button type="button" onClick={function(){setShowP3(!showP3);}} style={{position:"absolute",right:12,top:30,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showP3?"🙈":"👁️"}</button></div>
@@ -269,21 +468,40 @@ function LoginPage(p){
   </div>;
 }
 
-// ── Profile Modal ─────────────────────────────────────────────────────────────
+// ── Profile Modal (with schedule for techs) ───────────────────────────────────
 function ProfileModal(p){
   var curUser=p.curUser;var setUsers=p.setUsers;var setCurUser=p.setCurUser;var showToast=p.showToast;var addLog=p.addLog;var onClose=p.onClose;
+  var schedules=p.schedules||{};var setSchedules=p.setSchedules||function(){};var dbSaveSchedule=p.dbSaveSchedule||function(){};
   var[tab,setTab]=useState("profile");var[name,setName]=useState(curUser.name);var[phone,setPhone]=useState(curUser.phone||"");var[dept,setDept]=useState(curUser.dept||"");
   var[curPw,setCurPw]=useState("");var[newPw,setNewPw]=useState("");var[confPw,setConfPw]=useState("");
   var[showC,setShowC]=useState(false);var[showN,setShowN]=useState(false);var[showK,setShowK]=useState(false);
   var[pwErr,setPwErr]=useState("");var[pwOk,setPwOk]=useState("");var[saving,setSaving]=useState(false);
+  var isTechRole = IT_ROLES.includes(curUser.role);
   var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
+
+  function handleScheduleChange(userId, sch) {
+    setSchedules(function(prev) { var n = Object.assign({}, prev); if (sch === null) delete n[userId]; else n[userId] = sch; return n; });
+    dbSaveSchedule(userId, sch);
+  }
+
   async function saveProfile(){if(!name.trim()){showToast("Name cannot be empty","error");return;}setSaving(true);var updated=Object.assign({},curUser,{name:name.trim(),phone:phone.trim(),dept:dept.trim()});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?updated:u;});});setCurUser(updated);addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile");showToast("✅ Profile updated!");setSaving(false);onClose();}
   async function changePw(){setPwErr("");setPwOk("");if(!curPw){setPwErr("Enter your current password.");return;}var existingPw=await dbGetPassword(curUser.id);if(curPw!==existingPw){setPwErr("Current password is incorrect.");return;}if(newPw.length<8){setPwErr("Min 8 characters.");return;}if(newPw!==confPw){setPwErr("Passwords do not match.");return;}if(newPw===curPw){setPwErr("Must differ from current.");return;}setSaving(true);await dbSetPassword(curUser.id,newPw);addLog("PASSWORD_CHANGED",curUser.id,curUser.name+" changed password");setSaving(false);setCurPw("");setNewPw("");setConfPw("");setPwOk("✅ Password changed!");showToast("Password updated!");onClose();}
+
+  var tabs = ["profile","password"];
+  if (isTechRole) tabs.push("schedule");
+
   return<Modal title="My Profile" onClose={onClose}>
     <div style={{display:"flex",alignItems:"center",gap:14,padding:"0 0 16px",borderBottom:"1px solid #e2e8f0",marginBottom:16}}><div style={{width:56,height:56,borderRadius:"50%",background:avCol(curUser.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:20,fontWeight:800}}>{inits(curUser.name)}</div><div><div style={{fontWeight:700,fontSize:15}}>{curUser.name}</div><div style={{fontSize:12,color:"#64748b"}}>{curUser.email}</div><div style={{marginTop:4}}><Badge label={ROLE_META[curUser.role]?.label||curUser.role} color={ROLE_META[curUser.role]?.color||"#6366f1"}/></div></div></div>
-    <div style={{display:"flex",gap:6,marginBottom:16}}>{["profile","password"].map(function(t){return<button key={t} onClick={function(){setTab(t);}} style={{flex:1,background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:13,fontWeight:700}}>{t==="profile"?"👤 Profile":"🔑 Password"}</button>;})}</div>
+    <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{tabs.map(function(t){return<button key={t} onClick={function(){setTab(t);}} style={{flex:1,minWidth:80,background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>{t==="profile"?"👤 Profile":t==="password"?"🔑 Password":"🗓 Schedule"}</button>;})}</div>
     {tab==="profile"&&<div><FInput label="Full Name" value={name} onChange={function(e){setName(e.target.value);}}/><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Email</label><input value={curUser.email} disabled style={Object.assign({},inp,{background:"#f1f5f9",color:"#94a3b8"})}/></div><FInput label="Phone" value={phone} onChange={function(e){setPhone(e.target.value);}}/><FInput label="Department" value={dept} onChange={function(e){setDept(e.target.value);}}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={saveProfile} disabled={saving}>{saving?"⏳ Saving…":"💾 Save"}</Btn></div></div>}
     {tab==="password"&&<div><div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Current Password</label><input type={showC?"text":"password"} value={curPw} onChange={function(e){setCurPw(e.target.value);}} placeholder="••••••••" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowC(!showC);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showC?"🙈":"👁️"}</button></div><div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password</label><input type={showN?"text":"password"} value={newPw} onChange={function(e){setNewPw(e.target.value);}} placeholder="Min 8 characters" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowN(!showN);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showN?"🙈":"👁️"}</button></div><div style={{position:"relative",marginBottom:16}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Confirm New Password</label><input type={showK?"text":"password"} value={confPw} onChange={function(e){setConfPw(e.target.value);}} placeholder="Repeat" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowK(!showK);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showK?"🙈":"👁️"}</button></div>{pwErr&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#dc2626",fontSize:13}}>⚠️ {pwErr}</div>}{pwOk&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#166534",fontSize:13}}>{pwOk}</div>}<div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={changePw} disabled={saving}>{saving?"⏳ Saving…":"🔑 Change"}</Btn></div></div>}
+    {tab==="schedule"&&isTechRole&&<div>
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>
+        ⏰ Your schedule determines when tickets are auto-assigned to you. Outside your hours, tickets go to the IT Manager.
+      </div>
+      <ScheduleEditor userId={curUser.id} schedules={schedules} onChange={handleScheduleChange}/>
+      <div style={{display:"flex",justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Done</Btn></div>
+    </div>}
   </Modal>;
 }
 
@@ -309,6 +527,44 @@ export default function App(){
     var sub=supabase.channel('tickets-changes').on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(){dbGetTickets().then(function(t){setTicketsR(t);});}).on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){dbGetUsers().then(function(u){setUsers(u);});}).subscribe();
     return function(){supabase.removeChannel(sub);};
   },[]);
+
+  // Auto-reassign check every 5 min
+  useEffect(function(){
+    if(!tickets.length||!users.length)return;
+    function checkReassignments(){
+      var manager=findItManager(users);
+      if(!manager)return;
+      var needsUpdate=[];
+      tickets.forEach(function(t){
+        if(t.deleted||t.status==="Closed")return;
+        // Off-shift reassign
+        if(t.assignedTo&&t.assignedTo!==manager.id){
+          var sch=schedules[t.assignedTo];
+          if(sch&&!isCurrentlyOnShift(sch)){
+            needsUpdate.push({ticket:t,reason:"Tech off-shift → IT Manager"});
+          }
+        }
+        // 12h unassigned escalation
+        if(!t.assignedTo&&needsEscalationToManager(t)){
+          needsUpdate.push({ticket:t,reason:"Unassigned 12h+ → IT Manager"});
+        }
+      });
+      if(needsUpdate.length>0){
+        setTicketsR(function(prev){
+          return prev.map(function(t){
+            var match=needsUpdate.find(function(x){return x.ticket.id===t.id;});
+            if(!match)return t;
+            var hist={status:t.status,assignedTo:manager.id,timestamp:new Date().toISOString(),changedBy:"system",note:match.reason,_noSlaReset:true};
+            return Object.assign({},t,{assignedTo:manager.id,statusHistory:(t.statusHistory||[]).concat([hist]),updatedAt:new Date().toISOString()});
+          });
+        });
+      }
+    }
+    checkReassignments();
+    var iv=setInterval(checkReassignments,5*60*1000);
+    return function(){clearInterval(iv);};
+  },[tickets,users,schedules]);
+
   async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
   function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
   function setPage(v){if(v!=="integrations")saveState("hd_page",v);setPageR(v);setSidebarOpen(false);}
@@ -344,7 +600,6 @@ export default function App(){
     {id:"integrations",icon:"🔌",label:"Integrations",superAdmin:true},
   ].filter(function(n){if(n.superAdmin)return curUser.role==="admin";if(n.admin)return isAdmin;return true;});
 
-  // Mobile bottom nav — show first 4 items + more
   var bottomNav=NAV.slice(0,4);
   var curNav=NAV.find(function(n){return n.id===page;})||{icon:"",label:"—"};
 
@@ -358,17 +613,10 @@ export default function App(){
     <div style={{display:"flex",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:"#f8fafc",fontSize:13,overflow:"hidden"}}>
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}button:active{opacity:.8}.nv:hover{background:rgba(14,165,233,.15)!important;color:#7dd3fc!important}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:767px){.hide-mobile{display:none!important}.desktop-only{display:none!important}}`}</style>
 
-      {/* Desktop sidebar */}
       {!isMobile&&sidebar}
-
-      {/* Mobile drawer overlay */}
-      {isMobile&&sidebarOpen&&<div style={{position:"fixed",inset:0,zIndex:8888,display:"flex"}}>
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={function(){setSidebarOpen(false);}}/>
-        <div style={{position:"relative",zIndex:1,width:260,height:"100%"}}>{sidebar}</div>
-      </div>}
+      {isMobile&&sidebarOpen&&<div style={{position:"fixed",inset:0,zIndex:8888,display:"flex"}}><div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={function(){setSidebarOpen(false);}}/><div style={{position:"relative",zIndex:1,width:260,height:"100%"}}>{sidebar}</div></div>}
 
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
-        {/* Top bar */}
         <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:isMobile?"10px 16px":"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:8}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             {isMobile&&<button onClick={function(){setSidebarOpen(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:2,color:"#334155",display:"flex",alignItems:"center"}}>☰</button>}
@@ -387,7 +635,7 @@ export default function App(){
         <div style={{flex:1,overflowY:"auto",padding:isMobile?"12px":"24px",paddingBottom:isMobile?"80px":"24px",WebkitOverflowScrolling:"touch"}}>
           {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches} isMobile={isMobile}/>}
           {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile}/>}
-          {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage}/>}
+          {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage} schedules={schedules}/>}
           {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile}/>}
           {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules}/>}
           {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
@@ -398,7 +646,6 @@ export default function App(){
           {page==="integrations" &&<PageIntegrations showToast={showToast} addLog={addLog} emailTemplates={emailTemplates} setEmailTemplates={setEmailTemplates} curUser={curUser} isAdmin={isAdmin}/>}
         </div>
 
-        {/* Mobile bottom navigation */}
         {isMobile&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #e2e8f0",display:"flex",zIndex:8000,boxShadow:"0 -2px 10px rgba(0,0,0,.08)"}}>
           {bottomNav.map(function(n){var active=page===n.id;return<button key={n.id} onClick={function(){setPage(n.id);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
             <span style={{fontSize:20}}>{n.icon}</span>
@@ -413,7 +660,7 @@ export default function App(){
       </div>
 
       {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}}/>}
-      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} onClose={function(){setShowProfile(false);}}/>}
+      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} schedules={schedules} setSchedules={setSchedulesR} dbSaveSchedule={dbSaveSchedule} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
 }
@@ -451,25 +698,42 @@ function PageDashboard(p){
 function PageTickets(p){
   var tickets=p.tickets;var users=p.users;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
   var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setSelTicket=p.setSelTicket;var setPage=p.setPage;var isAdmin=p.isAdmin;var statusSla=p.statusSla;var schedules=p.schedules||{};var isMobile=p.isMobile;
-  var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");
-  var filtered=tickets.filter(function(t){var q=search.toLowerCase();return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType);});
+  var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");var[fAssigned,setFAssigned]=useState("");
+
+  // Default techs to their own tickets
+  useEffect(function(){
+    if(curUser.role==="it_technician"&&!fAssigned){setFAssigned(curUser.id);}
+  },[curUser.id]);
+
+  var filtered=tickets.filter(function(t){
+    var q=search.toLowerCase();
+    return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType)&&(!fAssigned||(fAssigned==="__unassigned__"?!t.assignedTo:t.assignedTo===fAssigned));
+  });
   function delTicket(id){setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});});addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted");showToast("Ticket deleted");}
   function fu(id){return users.find(function(x){return x.id===id;});}
   function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
   function fcl(id){return clients.find(function(x){return x.id===id;});}
+
+  var techUsers=users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});
+
   return<div>
     <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none"}}/>
       <Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn>
     </div>
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4,flexWrap:"wrap"}}>
       <select value={fStat} onChange={function(e){setFStat(e.target.value);}} style={{padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0}}><option value="">All Status</option>{ALL_STATUSES.map(function(s){return<option key={s} value={s}>{s}</option>;})}</select>
       <select value={fPri} onChange={function(e){setFPri(e.target.value);}} style={{padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0}}><option value="">All Priority</option>{Object.keys(PRI_META).map(function(k){return<option key={k} value={k}>{PRI_META[k].label}</option>;})}</select>
       <select value={fType} onChange={function(e){setFType(e.target.value);}} style={{padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0}}><option value="">All Types</option>{ticketTypes.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>
+      <select value={fAssigned} onChange={function(e){setFAssigned(e.target.value);}} style={{padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0}}>
+        <option value="">All Assigned</option>
+        <option value="__unassigned__">Unassigned</option>
+        {techUsers.map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}
+      </select>
     </div>
+    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>{filtered.length} ticket{filtered.length!==1?"s":""} found</div>
 
     {isMobile?(
-      // Mobile card view
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found</div></Card>}
         {filtered.map(function(t){
@@ -482,7 +746,7 @@ function PageTickets(p){
               {t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>📬 New</span>}
             </div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-              <Badge label={sm.bg?t.status:t.status} color={sm.color} bg={sm.bg}/>
+              <Badge label={t.status} color={sm.color} bg={sm.bg}/>
               <Badge label={pri.label} color={pri.color} bg={pri.bg}/>
               {type&&<Badge label={type.name} color={type.color||"#94a3b8"}/>}
             </div>
@@ -495,7 +759,6 @@ function PageTickets(p){
         })}
       </div>
     ):(
-      // Desktop table view
       <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}>
           <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Assigned To","SLA",""].map(function(h){return<th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
@@ -527,7 +790,7 @@ function PageTickets(p){
 // ── New Ticket ────────────────────────────────────────────────────────────────
 function PageNewTicket(p){
   var users=p.users;var companies=p.companies;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
-  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setPage=p.setPage;
+  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setPage=p.setPage;var schedules=p.schedules||{};
   var[form,setForm]=useState({title:"",description:"",typeId:ticketTypes[0]?.id||"",companyId:curUser.companyId||companies[0]?.id||"",clientId:"",locationId:"",externalEmail:"",customTypeName:""});
   var[start]=useState(Date.now());var[preview,setPreview]=useState(null);var[attachments,setAttachments]=useState([]);
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
@@ -539,7 +802,7 @@ function PageNewTicket(p){
   function removeAtt(id){setAttachments(function(prev){return prev.filter(function(a){return a.id!==id;});});}
   function handlePreview(){
     if(!form.title.trim()||!form.description.trim()){showToast("Fill in title and description","error");return;}
-    var assign=aiAssign(form.title,form.description,form.typeId,users,ticketTypes);
+    var assign=aiAssign(form.title,form.description,form.typeId,users,ticketTypes,schedules);
     var tt=ticketTypes.find(function(t){return t.id===form.typeId;});
     var now=new Date().toISOString();var sla=new Date(Date.now()+(tt?tt.slaHours:24)*3600000).toISOString();
     var mins=Math.max(0.017,(Date.now()-start)/60000);
@@ -695,33 +958,114 @@ function TicketDetail(p){
 // ── Time Tracking ─────────────────────────────────────────────────────────────
 function PageTimeTracking(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;
-  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[sortBy,setSortBy]=useState("submittedAt");var[sortDir,setSortDir]=useState("desc");
-  var scope=useMemo(function(){var base=tickets.filter(function(t){return !t.deleted;});if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id;});if(filterUser)return base.filter(function(t){return t.submittedBy===filterUser;});return base;},[tickets,curUser,isAdmin,filterUser]);
-  var filtered=useMemo(function(){var q=search.toLowerCase();return scope.filter(function(t){return(!q||(t.title.toLowerCase().includes(q)||t.id.includes(q)));}).sort(function(a,b){var av,bv;if(sortBy==="submittedAt"){av=new Date(a.submittedAt||a.createdAt);bv=new Date(b.submittedAt||b.createdAt);}else{av=a.timeToCreateMins||0;bv=b.timeToCreateMins||0;}if(av<bv)return sortDir==="asc"?-1:1;if(av>bv)return sortDir==="asc"?1:-1;return 0;});},[scope,search,sortBy,sortDir]);
-  function fu(id){return users.find(function(x){return x.id===id;});}function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}
-  var totalMins=filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);var avg=filtered.length?totalMins/filtered.length:0;
+  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[rangePeriod,setRangePeriod]=useState("all");
+
+  // Compute actual time spent per ticket from status history
+  function computeActualHours(ticket) {
+    // Sum time in non-Closed statuses from status history
+    var hist = (ticket.statusHistory || []).filter(function(h) { return !h._noSlaReset || h.status; });
+    var total = 0;
+    for (var i = 0; i < hist.length; i++) {
+      var entry = hist[i];
+      if (entry.status === "Closed") continue;
+      var start2 = new Date(entry.timestamp).getTime();
+      var end2 = i + 1 < hist.length ? new Date(hist[i+1].timestamp).getTime() : Date.now();
+      total += (end2 - start2) / 3600000;
+    }
+    if (ticket.status === "Closed" && ticket.closedAt) {
+      var created = new Date(ticket.createdAt).getTime();
+      total = (new Date(ticket.closedAt).getTime() - created) / 3600000;
+    }
+    return parseFloat(total.toFixed(2));
+  }
+
+  function getRangeStart() {
+    var now = Date.now();
+    if (rangePeriod === "today") return new Date(new Date(now + PHT_OFFSET_MS).toISOString().slice(0,10) + "T00:00:00+08:00").getTime();
+    if (rangePeriod === "week") return now - 7 * 86400000;
+    if (rangePeriod === "month") return now - 30 * 86400000;
+    return 0;
+  }
+
+  var scope = useMemo(function(){
+    var base = tickets.filter(function(t) { return !t.deleted; });
+    if (!isAdmin) base = base.filter(function(t) { return t.submittedBy === curUser.id; });
+    else if (filterUser) base = base.filter(function(t) { return t.submittedBy === filterUser || t.assignedTo === filterUser; });
+    var rangeStart = getRangeStart();
+    if (rangeStart > 0) base = base.filter(function(t) { return new Date(t.createdAt).getTime() >= rangeStart; });
+    if (search) { var q = search.toLowerCase(); base = base.filter(function(t) { return t.title.toLowerCase().includes(q) || t.id.includes(q); }); }
+    return base;
+  }, [tickets, curUser, isAdmin, filterUser, rangePeriod, search]);
+
+  var totalCreateMins = scope.reduce(function(a,t) { return a + (t.timeToCreateMins || 0); }, 0);
+  var avgCreateMins = scope.length ? totalCreateMins / scope.length : 0;
+  var totalActualHours = scope.reduce(function(a,t) { return a + computeActualHours(t); }, 0);
+
+  function fu(id){return users.find(function(x){return x.id===id;});}
+
+  var RANGE_LABELS = { today:"Today", week:"7 Days", month:"30 Days", all:"All Time" };
+
   return<div>
     <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking</div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-      <Stat label="Total Create Time" value={fmtMs(totalMins)} icon="🕐" color="#8b5cf6" sub={filtered.length+" tickets"}/>
-      <Stat label="Avg Create Time" value={fmtMs(avg)} icon="⏱" color="#0ea5e9"/>
+
+    {/* Stat cards */}
+    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)",gap:10,marginBottom:16}}>
+      <Stat label="Tickets" value={scope.length} icon="🎫" color="#6366f1"/>
+      <Stat label="Total Create Time" value={fmtMs(totalCreateMins)} icon="📝" color="#8b5cf6" sub="form fill time"/>
+      <Stat label="Avg Create Time" value={fmtMs(avgCreateMins)} icon="⏱" color="#0ea5e9"/>
+      <Stat label="Total IT Hours Spent" value={fmtHrs(totalActualHours)} icon="🛠" color="#10b981" sub="actual resolution time"/>
     </div>
+
+    {/* Filters */}
     <Card style={{marginBottom:14,padding:"12px 14px"}}>
-      <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:8}}/>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        {Object.keys(RANGE_LABELS).map(function(r){return<button key={r} onClick={function(){setRangePeriod(r);}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid "+(rangePeriod===r?"#6366f1":"#e2e8f0"),background:rangePeriod===r?"#6366f1":"#fff",color:rangePeriod===r?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>{RANGE_LABELS[r]}</button>;})}
+      </div>
+      <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search…" style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:isAdmin?8:0}}/>
       {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",boxSizing:"border-box"}}><option value="">All Users</option>{users.filter(function(u){return u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>}
     </Card>
+
+    {/* Per-user summary for admins */}
+    {isAdmin&&!filterUser&&<Card style={{marginBottom:14}}>
+      <div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>👥 IT Hours by Technician</div>
+      {users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;}).map(function(u){
+        var myTickets=scope.filter(function(t){return t.assignedTo===u.id;});
+        var hrs=myTickets.reduce(function(a,t){return a+computeActualHours(t);},0);
+        var createMins2=myTickets.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);
+        return<div key={u.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,padding:"8px 10px",background:"#f8fafc",borderRadius:8}}>
+          <Avatar name={u.name} id={u.id} size={28}/>
+          <div style={{flex:1}}><div style={{fontWeight:600,fontSize:12}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{myTickets.length} tickets</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontWeight:700,color:"#10b981",fontSize:13}}>{fmtHrs(hrs)}</div><div style={{fontSize:10,color:"#94a3b8"}}>IT hours</div></div>
+        </div>;
+      })}
+    </Card>}
+
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
-      {filtered.map(function(t){var sub=fu(t.submittedBy);var tt2=ftt(t.typeId);var sm=STATUS_META[t.status]||STATUS_META.Open;var cm=t.timeToCreateMins||0;var cc=cm<=5?"#10b981":cm<=15?"#f59e0b":"#ef4444";
-        return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14}} onClick={function(){setSelTicket(t.id);}}>
+      {scope.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
+      {scope.map(function(t){
+        var sub=fu(t.submittedBy);var asgn=fu(t.assignedTo);var sm=STATUS_META[t.status]||STATUS_META.Open;
+        var cm=t.timeToCreateMins||0;var cc=cm<=5?"#10b981":cm<=15?"#f59e0b":"#ef4444";
+        var actualHrs=computeActualHours(t);
+        return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fdt(t.submittedAt||t.createdAt)}</div></div>
+            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fdt(t.createdAt)}</div></div>
             <Badge label={t.status} color={sm.color} bg={sm.bg}/>
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>{sub&&<Avatar name={sub.name} id={sub.id} size={18}/>}<span style={{fontSize:11,color:"#64748b"}}>{sub?sub.name:"—"}</span></div>
-            <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:36,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,cm/30*100)+"%",background:cc,borderRadius:3}}/></div><span style={{fontSize:12,fontWeight:700,color:cc}}>{fmtMs(cm)}</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
+            <div style={{background:"#f8fafc",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
+              <div style={{fontSize:10,color:"#64748b",fontWeight:600,marginBottom:2}}>Create Time</div>
+              <div style={{fontWeight:700,color:cc,fontSize:13}}>{fmtMs(cm)}</div>
+            </div>
+            <div style={{background:"#f0fdf4",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
+              <div style={{fontSize:10,color:"#64748b",fontWeight:600,marginBottom:2}}>IT Hours Spent</div>
+              <div style={{fontWeight:700,color:"#10b981",fontSize:13}}>{fmtHrs(actualHrs)}</div>
+            </div>
+            <div style={{background:"#f0f9ff",borderRadius:8,padding:"8px 10px",textAlign:"center"}}>
+              <div style={{fontSize:10,color:"#64748b",fontWeight:600,marginBottom:2}}>Assigned To</div>
+              <div style={{fontWeight:600,color:"#0369a1",fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{asgn?asgn.name:"Unassigned"}</div>
+            </div>
           </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>{sub&&<><Avatar name={sub.name} id={sub.id} size={16}/><span style={{fontSize:11,color:"#64748b"}}>Created by {sub.name}</span></>}</div>
         </div>;
       })}
     </div>
@@ -731,38 +1075,107 @@ function PageTimeTracking(p){
 // ── Reports ───────────────────────────────────────────────────────────────────
 function PageReports(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients;var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};
-  var[view,setView]=useState("summary");var[range,setRange]=useState("month");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
+  var[view,setView]=useState("summary");var[range,setRange]=useState("month");
+  var[filterClient,setFilterClient]=useState("");var[filterLocation,setFilterLocation]=useState("");
+  var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
+
   var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week")return new Date(now.getTime()-7*86400000).toISOString();if(range==="month")return new Date(now.getTime()-30*86400000).toISOString();if(range==="year")return new Date(now.getTime()-365*86400000).toISOString();return new Date(0).toISOString();},[range]);
   var rangeLabel={day:"Today",week:"7 Days",month:"30 Days",year:"12 Mo",all:"All"};
+
+  // Available locations for selected client
+  var availLocations = useMemo(function(){
+    if(!filterClient)return[];
+    var cl=clients.find(function(c){return c.id===filterClient;});
+    return cl?cl.locations:[];
+  },[clients,filterClient]);
+
   var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
-  var active=tickets.filter(function(t){return !t.deleted&&new Date(t.createdAt)>=new Date(rangeStart);});
-  var allActive=tickets.filter(function(t){return !t.deleted;});
+
+  // Base filtering with client/location
+  function applyClientFilter(arr) {
+    if(filterClient)arr=arr.filter(function(t){return t.clientId===filterClient;});
+    if(filterLocation)arr=arr.filter(function(t){return t.locationId===filterLocation;});
+    return arr;
+  }
+
+  var active=useMemo(function(){
+    var base=tickets.filter(function(t){return !t.deleted&&new Date(t.createdAt)>=new Date(rangeStart);});
+    return applyClientFilter(base);
+  },[tickets,rangeStart,filterClient,filterLocation]);
+
+  var allActive=useMemo(function(){
+    var base=tickets.filter(function(t){return !t.deleted;});
+    return applyClientFilter(base);
+  },[tickets,filterClient,filterLocation]);
+
+  // IT hours spent per ticket (open-to-close or open to now)
+  function computeActualHours(ticket) {
+    if (ticket.status === "Closed" && ticket.closedAt) {
+      return (new Date(ticket.closedAt).getTime() - new Date(ticket.createdAt).getTime()) / 3600000;
+    }
+    return (Date.now() - new Date(ticket.createdAt).getTime()) / 3600000;
+  }
+  var totalItHours = active.reduce(function(a,t){return a+computeActualHours(t);},0);
+
   var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
-  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res)};});
+  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);var hrs=mine.reduce(function(a,tk){return a+computeActualHours(tk);},0);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),itHours:parseFloat(hrs.toFixed(1))};});
   var totalBreached=active.filter(function(t){return t.slaBreached;}).length;
   var totalSlaRate=calcSlaRate(active);var avgCloseAll=calcAvgClose(calcClosed(active));
   var statusPieData=ALL_STATUSES.map(function(s){return{name:s,value:active.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
   var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
   var weeklyTrend=useMemo(function(){return Array.from({length:8},function(_,i){var wEnd=new Date(Date.now()-(7-i)*7*86400000);var wStart=new Date(wEnd.getTime()-7*86400000);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<wEnd;});return{label:"W"+(i+1),total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
 
-  async function generateInsight(){setAiLoading(true);setAiInsight("");var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topTypes:top3.map(function(t){return t.name+" ("+t.total+")";}).join(", "),openCount:allActive.filter(function(t){return t.status==="Open";}).length};try{var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:"IT helpdesk analyst. Analyze and give: top issues, SLA performance, 3 recommendations. Be concise, use bullets.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});var data=await res.json();setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate.");}catch(e){setAiInsight("Error: "+e.message);}setAiLoading(false);}
+  // By-client breakdown
+  var byClient=useMemo(function(){
+    return clients.map(function(cl){
+      var cTickets=active.filter(function(t){return t.clientId===cl.id;});
+      var byLoc=cl.locations.map(function(loc){
+        var lTickets=cTickets.filter(function(t){return t.locationId===loc.id;});
+        var hrs=lTickets.reduce(function(a,t){return a+computeActualHours(t);},0);
+        return{id:loc.id,name:loc.name,total:lTickets.length,open:lTickets.filter(function(t){return t.status!=="Closed";}).length,slaRate:calcSlaRate(lTickets),itHours:parseFloat(hrs.toFixed(1)),byType:ticketTypes.map(function(tt){return{name:tt.name,count:lTickets.filter(function(t){return t.typeId===tt.id;}).length};}).filter(function(x){return x.count>0;})};
+      }).filter(function(l){return l.total>0;});
+      var hrs2=cTickets.reduce(function(a,t){return a+computeActualHours(t);},0);
+      return{id:cl.id,name:cl.name,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,slaRate:calcSlaRate(cTickets),itHours:parseFloat(hrs2.toFixed(1)),locations:byLoc};
+    }).filter(function(c){return c.total>0;});
+  },[active,clients,ticketTypes]);
 
-  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
+  async function generateInsight(){setAiLoading(true);setAiInsight("");var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topTypes:top3.map(function(t){return t.name+" ("+t.total+")";}).join(", "),openCount:allActive.filter(function(t){return t.status==="Open";}).length,totalItHours:parseFloat(totalItHours.toFixed(1))};try{var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:"IT helpdesk analyst. Analyze and give: top issues, SLA performance, IT hours efficiency, 3 recommendations. Be concise, use bullets.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});var data=await res.json();setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate.");}catch(e){setAiInsight("Error: "+e.message);}setAiLoading(false);}
+
+  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"},{id:"by_client",label:"🤝 By Client"}];
+
   return<div>
     <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>
       {VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}
     </div>
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
+
+    {/* Global filters */}
+    <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
       {["day","week","month","year","all"].map(function(r){return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;})}
     </div>
-    <div style={{background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:8,padding:"7px 12px",marginBottom:14,fontSize:12,color:"#4338ca",fontWeight:600}}>{active.length} tickets</div>
+    <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+      <select value={filterClient} onChange={function(e){setFilterClient(e.target.value);setFilterLocation("");}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flex:1,minWidth:140}}>
+        <option value="">All Clients</option>
+        {clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}
+      </select>
+      <select value={filterLocation} onChange={function(e){setFilterLocation(e.target.value);}} disabled={!filterClient||availLocations.length===0} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flex:1,minWidth:140}}>
+        <option value="">All Locations</option>
+        {availLocations.map(function(l){return<option key={l.id} value={l.id}>{l.name}</option>;})}
+      </select>
+    </div>
+
+    <div style={{background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:8,padding:"7px 12px",marginBottom:14,fontSize:12,color:"#4338ca",fontWeight:600,display:"flex",gap:16,flexWrap:"wrap"}}>
+      <span>{active.length} tickets</span>
+      <span>🛠 IT Hours: <strong>{fmtHrs(totalItHours)}</strong></span>
+      {filterClient&&<span>🤝 Client: <strong>{clients.find(function(c){return c.id===filterClient;})?.name}</strong></span>}
+      {filterLocation&&<span>📍 Location: <strong>{availLocations.find(function(l){return l.id===filterLocation;})?.name}</strong></span>}
+    </div>
 
     {view==="summary"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
         <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"}/>
         <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9"/>
         <Stat label="Total" value={active.length} icon="🎫" color="#6366f1"/>
-        <Stat label="Closed" value={calcClosed(active).length} icon="✅" color="#10b981"/>
+        <Stat label="IT Hours Spent" value={fmtHrs(totalItHours)} icon="🛠" color="#10b981"/>
       </div>
       <Card><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
     </div>}
@@ -779,7 +1192,41 @@ function PageReports(p){
 
     {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byUser.map(function(t){return<Card key={t.id}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span></div></Card>;})}
+      {byUser.map(function(t){return<Card key={t.id}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span><span style={{fontSize:11,color:"#10b981",fontWeight:700}}>🛠 {fmtHrs(t.itHours)}</span></div></Card>;})}
+    </div>}
+
+    {view==="by_client"&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {byClient.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No client data for this period.</div></Card>}
+      {byClient.map(function(cl){return<Card key={cl.id} style={{borderTop:"3px solid #0ea5e9"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>🤝 {cl.name}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <Badge label={cl.total+" tickets"} color="#6366f1"/>
+            <Badge label={"🛠 "+fmtHrs(cl.itHours)} color="#10b981"/>
+            <Badge label={"SLA "+cl.slaRate+"%"} color={slaColor(cl.slaRate)}/>
+          </div>
+        </div>
+        {cl.locations.length>0&&<div>
+          <div style={{fontWeight:700,fontSize:11,color:"#64748b",textTransform:"uppercase",marginBottom:8}}>Locations</div>
+          {cl.locations.map(function(loc){return<div key={loc.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:10,marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontWeight:600,fontSize:12,color:"#334155"}}>📍 {loc.name}</div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                <Badge label={loc.total+" tickets"} color="#6366f1"/>
+                <Badge label={"🛠 "+fmtHrs(loc.itHours)} color="#10b981"/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:loc.byType.length>0?6:0}}>
+              <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{loc.open}</strong></span>
+              <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(loc.slaRate)}}>{loc.slaRate}%</strong></span>
+            </div>
+            {loc.byType.length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              {loc.byType.map(function(bt){return<span key={bt.name} style={{background:"#eef2ff",color:"#4338ca",fontSize:10,padding:"2px 7px",borderRadius:4,fontWeight:600}}>{bt.name}: {bt.count}</span>;})}
+            </div>}
+          </div>;})}
+        </div>}
+        {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8"}}>No location breakdown available.</div>}
+      </Card>;})}
     </div>}
   </div>;
 }
@@ -787,7 +1234,7 @@ function PageReports(p){
 // ── Users ─────────────────────────────────────────────────────────────────────
 function PageUsers(p){
   var users=p.users;var companies=p.companies;var setUsers=p.setUsers;var curUser=p.curUser;var addLog=p.addLog;var showToast=p.showToast;var schedules=p.schedules||{};var setSchedules=p.setSchedules;var isMobile=p.isMobile;
-  var dbSaveUser=p.dbSaveUser;var dbDeleteUser=p.dbDeleteUser;var dbSetPassword=p.dbSetPassword;var dbSaveSchedule=p.dbSaveSchedule;
+  var dbSaveUser2=p.dbSaveUser;var dbDeleteUser2=p.dbDeleteUser;var dbSetPassword2=p.dbSetPassword;var dbSaveSchedule2=p.dbSaveSchedule;
   var[modal,setModal]=useState(null);var[form,setForm]=useState({});var[emailStatus,setEmailStatus]=useState(null);
   var[pwModal,setPwModal]=useState(null);var[newPw,setNewPw]=useState("");var[pwErr,setPwErr]=useState("");
   var[roles,setRolesState]=useState(function(){return loadRoles();});
@@ -798,16 +1245,16 @@ function PageUsers(p){
   function addRole(){if(!roleForm.key.trim()||!roleForm.label.trim()){showToast("Key and label required","error");return;}var key=roleForm.key.trim().toLowerCase().replace(/\s+/g,"_");if(roles[key]){showToast("Role key already exists","error");return;}var next=Object.assign({},roles);next[key]={label:roleForm.label.trim(),color:roleForm.color,system:false};syncRoles(next);showToast("Role added!");setRoleForm({key:"",label:"",color:"#6366f1"});}
   function saveRoleEdit(){if(!roleForm.label.trim()){showToast("Label required","error");return;}var next=Object.assign({},roles);next[roleEdit]=Object.assign({},next[roleEdit],{label:roleForm.label.trim(),color:roleForm.color});syncRoles(next);showToast("Role updated!");setRoleEdit(null);setRoleForm({key:"",label:"",color:"#6366f1"});}
   function deleteRole(key){if(roles[key]?.system){showToast("Cannot delete system roles","error");return;}if(users.some(function(u){return u.role===key;})){showToast("Cannot delete — in use","error");return;}var next=Object.assign({},roles);delete next[key];syncRoles(next);showToast("Role deleted!");}
-  async function resetPassword(){if(!newPw||newPw.length<6){setPwErr("Minimum 6 characters");return;}await dbSetPassword(pwModal.id,newPw);addLog("PASSWORD_RESET",pwModal.id,"Password reset for "+pwModal.name);showToast("✅ Password reset!");setPwModal(null);setNewPw("");setPwErr("");}
-  async function approveUser(u){var updated=Object.assign({},u,{active:true});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});addLog("USER_APPROVED",u.id,u.name+" approved");showToast("✅ Account approved!");}
-  function handleScheduleChange(userId,sch){setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});dbSaveSchedule(userId,sch);}
+  async function resetPassword(){if(!newPw||newPw.length<6){setPwErr("Minimum 6 characters");return;}await dbSetPassword2(pwModal.id,newPw);addLog("PASSWORD_RESET",pwModal.id,"Password reset for "+pwModal.name);showToast("✅ Password reset!");setPwModal(null);setNewPw("");setPwErr("");}
+  async function approveUser(u){var updated=Object.assign({},u,{active:true});await dbSaveUser2(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});addLog("USER_APPROVED",u.id,u.name+" approved");showToast("✅ Account approved!");}
+  function handleScheduleChange(userId,sch){setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});dbSaveSchedule2(userId,sch);}
   var allRoleOpts=Object.keys(roles).map(function(k){return mkOpt(k,roles[k].label);});
   var pendingUsers=users.filter(function(u){return !u.active;});
   var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
   async function save(){
     if(!form.name||!form.email){showToast("Name and email required","error");return;}
-    if(modal==="new"){var nu=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString(),lastLogin:null});await dbSaveUser(nu);await dbSetPassword(nu.id,"password123");setUsers(function(prev){return prev.concat([nu]);});addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");showToast("User created");setEmailStatus("sending");var emailBody=["Hi "+nu.name+",","","An account has been created for you on the Hoptix IT Helpdesk portal.","","📧 Email: "+nu.email,"🔑 Temporary Password: password123","","⚠️ Please sign in and change your password immediately.","","— The Hoptix IT Team"].join("\n");var result=await callSendEmail({to:nu.email,subject:"🎉 Your Hoptix IT Helpdesk account is ready",body:emailBody});setEmailStatus(result.success?"sent":"failed");}
-    else{var old=users.find(function(u){return u.id===form.id;});await dbSaveUser(form);setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});if(old&&old.role!==form.role)addLog("USER_ROLE_CHANGE",form.id,"Role changed");showToast("User updated");}
+    if(modal==="new"){var nu=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString(),lastLogin:null});await dbSaveUser2(nu);await dbSetPassword2(nu.id,"password123");setUsers(function(prev){return prev.concat([nu]);});addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");showToast("User created");setEmailStatus("sending");var emailBody=["Hi "+nu.name+",","","An account has been created for you on the Hoptix IT Helpdesk portal.","","📧 Email: "+nu.email,"🔑 Temporary Password: password123","","⚠️ Please sign in and change your password immediately.","","— The Hoptix IT Team"].join("\n");var result=await callSendEmail({to:nu.email,subject:"🎉 Your Hoptix IT Helpdesk account is ready",body:emailBody});setEmailStatus(result.success?"sent":"failed");}
+    else{var old=users.find(function(u){return u.id===form.id;});await dbSaveUser2(form);setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});if(old&&old.role!==form.role)addLog("USER_ROLE_CHANGE",form.id,"Role changed");showToast("User updated");}
     setModal(null);
   }
   return<div>
@@ -815,7 +1262,7 @@ function PageUsers(p){
       <div style={{fontWeight:700,color:"#92400e",marginBottom:10,fontSize:13}}>⏳ {pendingUsers.length} Account{pendingUsers.length>1?"s":""} Awaiting Approval</div>
       {pendingUsers.map(function(u){return<div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fde68a",marginBottom:6,gap:8}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flex:1,overflow:"hidden"}}><Avatar name={u.name} id={u.id} size={30}/><div style={{overflow:"hidden"}}><div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div></div></div>
-        <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Rejected");}}>✕</Btn></div>
+        <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser2(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Rejected");}}>✕</Btn></div>
       </div>;})}
     </div>}
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,gap:8,flexWrap:"wrap",alignItems:"center"}}>
@@ -824,6 +1271,7 @@ function PageUsers(p){
     </div>
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {users.map(function(u){var co=companies.find(function(c){return c.id===u.companyId;});var rm=roles[u.role]||{label:u.role,color:"#6366f1"};
+        var sch=schedules[u.id];var schV2=sch?migrateScheduleV1toV2(sch):null;var onShift=sch?isCurrentlyOnShift(sch):true;
         return<Card key={u.id} style={{padding:14}}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
             <Avatar name={u.name} id={u.id} size={36}/>
@@ -833,15 +1281,17 @@ function PageUsers(p){
             </div>
             <Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/>
           </div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
             <Badge label={rm.label} color={rm.color}/>
             {co&&<span style={{fontSize:11,color:"#64748b"}}>🏢 {co.name}</span>}
+            {IT_ROLES.includes(u.role)&&schV2&&<Badge label={onShift?"🟢 On Shift":"🔴 Off Shift"} color={onShift?"#10b981":"#94a3b8"}/>}
+            {IT_ROLES.includes(u.role)&&!schV2&&<Badge label="24/7" color="#6366f1"/>}
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️ Edit</Btn>
             <Btn size="sm" variant="ghost" onClick={function(){setPwModal(u);setNewPw("");setPwErr("");}}>🔑 Password</Btn>
-            <Btn size="sm" variant={u.active?"warning":"success"} onClick={async function(){var updated=Object.assign({},u,{active:!u.active});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>
-            {u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}
+            <Btn size="sm" variant={u.active?"warning":"success"} onClick={async function(){var updated=Object.assign({},u,{active:!u.active});await dbSaveUser2(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>
+            {u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser2(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}
           </div>
         </Card>;
       })}
@@ -918,7 +1368,7 @@ function PageClients(p){
     </Card>;})}
     </div>
     {(modal==="newCl"||modal==="editCl")&&<Modal title={modal==="newCl"?"Add Client":"Edit Client"} onClose={function(){setModal(null);}}><FInput label="Client Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Email" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompaniesNone(companies)}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveCl}>{modal==="newCl"?"Add Client":"Save"}</Btn></div></Modal>}
-    {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={function(){setModal(null);}}><FInput label="Location Name *" value={lForm.name||""} onChange={function(e){lfld("name",e.target.value);}} placeholder="e.g. HQ — New York"/><FInput label="Address *" value={lForm.address||""} onChange={function(e){lfld("address",e.target.value);}}/><FInput label="Floor / Area" value={lForm.floor||""} onChange={function(e){lfld("floor",e.target.value);}}/><FInput label="On-site Contact" value={lForm.contact||""} onChange={function(e){lfld("contact",e.target.value);}}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save"}</Btn></div></Modal>}
+    {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={function(){setModal(null);}}><FInput label="Location Name *" value={lForm.name||""} onChange={function(e){lfld("name",e.target.value);}} placeholder="e.g. HQ — Manila"/><FInput label="Address *" value={lForm.address||""} onChange={function(e){lfld("address",e.target.value);}}/><FInput label="Floor / Area" value={lForm.floor||""} onChange={function(e){lfld("floor",e.target.value);}}/><FInput label="On-site Contact" value={lForm.contact||""} onChange={function(e){lfld("contact",e.target.value);}}/><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save"}</Btn></div></Modal>}
   </div>;
 }
 
@@ -956,13 +1406,14 @@ function PageTicketTypes(p){
 // ── Activity Log ──────────────────────────────────────────────────────────────
 const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},ROLE_CREATED:{icon:"🏷️",color:"#10b981",label:"Role Created"},ROLE_UPDATED:{icon:"🏷️",color:"#0ea5e9",label:"Role Updated"},ROLE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Role Deleted"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},LOCATION_ADDED:{icon:"📍",color:"#10b981",label:"Location Added"},LOCATION_REMOVED:{icon:"📍",color:"#ef4444",label:"Location Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
 function PageActivityLog(p){
-  var logs=p.logs;var users=p.users;var[filter,setFilter]=useState("");
+  var logs=p.logs;var users=p.users;var[filter,setFilter]=useState("");var[filterUser,setFilterUser]=useState("");
   function fu(id){return users.find(function(x){return x.id===id;});}
-  var filtered=filter?logs.filter(function(l){return l.action===filter;}):logs;
+  var filtered=(filter?logs.filter(function(l){return l.action===filter;}):logs).filter(function(l){return !filterUser||l.userId===filterUser;});
   return<div>
     <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
       <div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div>
       <select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return<option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select>
+      <select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Users</option>{users.map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>
     </div>
     <Card style={{padding:0}}>
       {filtered.length===0&&<div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No activity found</div>}
