@@ -1830,7 +1830,7 @@ function PageIntegrations(p){
           {name:"Supabase (Database)",tier:"Free",detail:"Free tier — 500MB database, 1GB file storage, 50,000 monthly active users. More than enough for a helpdesk.",color:"#10b981",paid:false},
           {name:"GitHub (Code Storage)",tier:"Free",detail:"Free for public and private repos. No cost for storing and deploying your code.",color:"#10b981",paid:false},
           {name:"Gmail / Nodemailer (Email)",tier:"Free",detail:"Uses your existing Gmail account with an App Password. No cost — Google provides this for free.",color:"#10b981",paid:false},
-          {name:"AI Analysis (Anthropic Claude)",tier:"Pay per use",detail:"Only charged when you click 'Analyze Now' in Reports. Cost: ~$0.003 per analysis (about ₱0.17). You need an Anthropic API key from console.anthropic.com.",color:"#f59e0b",paid:true},
+          {name:"AI Analysis (Google Gemini)",tier:"Free",detail:"Free tier via Google AI Studio — 1,500 requests/day, no credit card needed. Uses Gemini 2.0 Flash. Get a free API key at aistudio.google.com.",color:"#10b981",paid:false},
           {name:"Recharts (Charts)",tier:"Free",detail:"Open-source charting library. Zero cost, runs entirely in the browser.",color:"#10b981",paid:false},
         ].map(function(item){return<div key={item.name} style={{display:"flex",gap:10,padding:"10px 12px",background:item.paid?"#fffbeb":"#f0fdf4",border:"1px solid "+(item.paid?"#fde68a":"#bbf7d0"),borderRadius:10,alignItems:"flex-start"}}>
           <div style={{width:8,height:8,borderRadius:"50%",background:item.color,flexShrink:0,marginTop:4}}/>
