@@ -31,14 +31,9 @@ const fmtElapsed = function(secs){ var h=Math.floor(secs/3600); var m=Math.floor
 
 function useIsMobile(){ var[mob,setMob]=useState(window.innerWidth<768); useEffect(function(){function h(){setMob(window.innerWidth<768);}window.addEventListener("resize",h);return function(){window.removeEventListener("resize",h);};},[]);return mob; }
 function slotToHours(slot){ return slot*0.5; }
+function getPHTDayKey(dateMs){ var PHT_OFFSET_MS=8*3600000; var phtMs=dateMs+PHT_OFFSET_MS; var dow=new Date(phtMs).getUTCDay(); return DAY_KEYS[dow]; }
+function getPHTMidnightUTC(dateMs){ var PHT_OFFSET_MS=8*3600000; var phtMs=dateMs+PHT_OFFSET_MS; var d=new Date(phtMs); var phtMidnight=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()); return phtMidnight-PHT_OFFSET_MS; }
 
-function getPHTDayKey(dateMs){
-  var PHT_OFFSET_MS=8*3600000; var phtMs=dateMs+PHT_OFFSET_MS; var dow=new Date(phtMs).getUTCDay(); return DAY_KEYS[dow];
-}
-function getPHTMidnightUTC(dateMs){
-  var PHT_OFFSET_MS=8*3600000; var phtMs=dateMs+PHT_OFFSET_MS; var d=new Date(phtMs);
-  var phtMidnight=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()); return phtMidnight-PHT_OFFSET_MS;
-}
 function calcBusinessHoursElapsed(startMs,endMs,schedule){
   if(!schedule)return(endMs-startMs)/3600000;
   if(schedule.perDay&&schedule.daySchedule){
@@ -67,8 +62,7 @@ function isCurrentlyOnShift(schedule){
   if(schedule.perDay&&schedule.daySchedule){
     var nowMs=Date.now(); var dayKey=getPHTDayKey(nowMs); var ds=schedule.daySchedule[dayKey];
     if(!ds||!ds.active)return false;
-    var dayMidnightUTC=getPHTMidnightUTC(nowMs);
-    var dayStartUTC=dayMidnightUTC+slotToHours(ds.start)*3600000; var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;
+    var dayMidnightUTC=getPHTMidnightUTC(nowMs); var dayStartUTC=dayMidnightUTC+slotToHours(ds.start)*3600000; var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;
     return nowMs>=dayStartUTC&&nowMs<dayEndUTC;
   }
   if(!schedule.days||!schedule.days.length)return true;
@@ -106,14 +100,8 @@ async function callSendEmail(opts){
   }catch(e){return{success:false,error:e.message,provider:"Gmail"};}
 }
 
-// ── ADMIN NOTIFICATION HELPER ─────────────────────────────────────────────────
-// Called automatically for: new signup, new ticket, status change, closed without timer
 async function notifyAdmin(subject,body){
-  try{
-    await callSendEmail({to:"randy@omnisecurityinc.com",subject:subject,body:body});
-  }catch(e){
-    console.error("notifyAdmin failed:",e);
-  }
+  try{ await callSendEmail({to:"randy@omnisecurityinc.com",subject:subject,body:body}); }catch(e){ console.error("notifyAdmin failed:",e); }
 }
 
 async function dbGetChats(ticketId){
@@ -185,45 +173,97 @@ function Btn(p){var v=p.variant||"primary";var sm=p.size==="sm";var base={border
 function FocusInput(p){var[focused,setFocused]=useState(false);var extraPad=p.extraPad;var rest=Object.assign({},p);delete rest.extraPad;return<input {...rest} onFocus={function(){setFocused(true);}} onBlur={function(){setFocused(false);}} style={{width:"100%",padding:extraPad?"12px 44px 12px 14px":"12px 14px",border:"1.5px solid "+(focused?"#0ea5e9":"#e2e8f0"),borderRadius:10,fontSize:15,outline:"none",boxSizing:"border-box",background:"#f8fafc",transition:"border-color .2s"}}/>;}
 
 // ── Time Session Timer Component ──────────────────────────────────────────────
+// autoStart: if true, immediately starts the timer on mount (for IT users opening a ticket)
+// onAutoStarted: callback so parent can show the banner notification
 function TicketTimer(p){
-  var ticketId=p.ticketId; var curUser=p.curUser; var users=p.users;
-  var[sessions,setSessions]=useState([]); var[activeSession,setActiveSession]=useState(null);
-  var[elapsed,setElapsed]=useState(0); var[note,setNote]=useState(""); var[loading,setLoading]=useState(true);
+  var ticketId=p.ticketId;
+  var curUser=p.curUser;
+  var users=p.users;
+  var autoStart=p.autoStart||false;
+  var onAutoStarted=p.onAutoStarted||function(){};
+  var forceStopRef=p.forceStopRef; // ref that parent can use to trigger a stop
+
+  var[sessions,setSessions]=useState([]);
+  var[activeSession,setActiveSession]=useState(null);
+  var[elapsed,setElapsed]=useState(0);
+  var[note,setNote]=useState("");
+  var[loading,setLoading]=useState(true);
   var intervalRef=useRef(null);
+  var autoStartedRef=useRef(false);
+
   useEffect(function(){
     dbGetTimeSessions(ticketId).then(function(data){
       setSessions(data);
       var open=data.find(function(s){return s.user_id===curUser.id&&!s.ended_at;});
-      if(open){setActiveSession({id:open.id,started_at:open.started_at});setElapsed(Math.floor((Date.now()-new Date(open.started_at))/1000));}
-      setLoading(false);
+      if(open){
+        setActiveSession({id:open.id,started_at:open.started_at});
+        setElapsed(Math.floor((Date.now()-new Date(open.started_at))/1000));
+        setLoading(false);
+      } else {
+        setLoading(false);
+        // Auto-start if requested and no active session and ticket is not closed
+        if(autoStart&&!autoStartedRef.current){
+          autoStartedRef.current=true;
+          var now=new Date().toISOString();
+          var session={id:uid(),ticket_id:ticketId,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:null,created_at:now};
+          dbSaveTimeSession(session).then(function(){
+            setSessions(function(prev){return prev.concat([session]);});
+            setActiveSession({id:session.id,started_at:now});
+            setElapsed(0);
+            onAutoStarted();
+          });
+        }
+      }
     });
   },[ticketId]);
+
+  // Allow parent to force-stop via ref
+  useEffect(function(){
+    if(!forceStopRef)return;
+    forceStopRef.current=async function(){
+      if(!activeSession)return 0;
+      var now=new Date().toISOString();
+      var mins=parseFloat(((Date.now()-new Date(activeSession.started_at))/60000).toFixed(4));
+      var updated=sessions.find(function(s){return s.id===activeSession.id;});
+      if(!updated)return 0;
+      var finished=Object.assign({},updated,{ended_at:now,duration_minutes:mins});
+      await dbSaveTimeSession(finished);
+      setSessions(function(prev){return prev.map(function(s){return s.id===finished.id?finished:s;});});
+      setActiveSession(null);setElapsed(0);
+      return mins;
+    };
+  },[activeSession,sessions]);
+
   useEffect(function(){
     if(activeSession){intervalRef.current=setInterval(function(){setElapsed(function(e){return e+1;});},1000);}
     else{clearInterval(intervalRef.current);}
     return function(){clearInterval(intervalRef.current);};
   },[activeSession]);
+
   async function startTimer(){
     var now=new Date().toISOString();
     var session={id:uid(),ticket_id:ticketId,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:note.trim()||null,created_at:now};
     await dbSaveTimeSession(session);
     setSessions(function(prev){return prev.concat([session]);});
-    setActiveSession({id:session.id,started_at:now}); setElapsed(0);
+    setActiveSession({id:session.id,started_at:now});setElapsed(0);
   }
   async function stopTimer(){
     if(!activeSession)return;
     var now=new Date().toISOString();
     var mins=parseFloat(((Date.now()-new Date(activeSession.started_at))/60000).toFixed(4));
-    var updated=sessions.find(function(s){return s.id===activeSession.id;}); if(!updated)return;
+    var updated=sessions.find(function(s){return s.id===activeSession.id;});
+    if(!updated)return;
     var finished=Object.assign({},updated,{ended_at:now,duration_minutes:mins,note:note.trim()||updated.note||null});
     await dbSaveTimeSession(finished);
     setSessions(function(prev){return prev.map(function(s){return s.id===finished.id?finished:s;});});
-    setActiveSession(null); setElapsed(0); setNote("");
+    setActiveSession(null);setElapsed(0);setNote("");
   }
+
   function fu(id){return users.find(function(u){return u.id===id;});}
   var completedSessions=sessions.filter(function(s){return s.ended_at;});
   var totalMins=completedSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
   if(loading)return<div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>Loading timer…</div>;
+
   return<div>
     <div style={{background:activeSession?"linear-gradient(135deg,#064e3b,#065f46)":"linear-gradient(135deg,#1e1b4b,#312e81)",borderRadius:16,padding:24,textAlign:"center",marginBottom:16}}>
       <div style={{fontSize:11,fontWeight:700,color:activeSession?"#6ee7b7":"#a5b4fc",textTransform:"uppercase",letterSpacing:2,marginBottom:8}}>{activeSession?"⏱ Timer Running":"⏸ Timer Stopped"}</div>
@@ -262,9 +302,8 @@ function migrateSchedule(sch){if(!sch)return null;if(sch.perDay)return sch;var p
 
 function ScheduleEditor(p){
   var userId=p.userId;var schedules=p.schedules;var onChange=p.onChange;
-  var existing=schedules[userId]||null; var migrated=migrateSchedule(existing);
-  var[enabled,setEnabled]=useState(!!existing);
-  var[daySchedule,setDaySchedule]=useState(migrated?migrated.daySchedule:defaultDaySchedule());
+  var existing=schedules[userId]||null;var migrated=migrateSchedule(existing);
+  var[enabled,setEnabled]=useState(!!existing);var[daySchedule,setDaySchedule]=useState(migrated?migrated.daySchedule:defaultDaySchedule());
   function emit(en,ds){onChange(userId,en?{perDay:true,daySchedule:ds}:null);}
   function handleEnable(v){setEnabled(v);emit(v,daySchedule);}
   function toggleDay(key){var nd=Object.assign({},daySchedule);nd[key]=Object.assign({},nd[key],{active:!nd[key].active});setDaySchedule(nd);emit(enabled,nd);}
@@ -274,31 +313,22 @@ function ScheduleEditor(p){
   return<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:14,marginBottom:14}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
       <div><div style={{fontWeight:700,color:"#0369a1",fontSize:13}}>🗓 Work Schedule</div><div style={{fontSize:10,color:"#0369a1",marginTop:1}}>🇵🇭 All times in Philippine Time (PHT · UTC+8)</div></div>
-      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:600,color:enabled?"#0369a1":"#64748b"}}>
-        <input type="checkbox" checked={enabled} onChange={function(e){handleEnable(e.target.checked);}} style={{width:16,height:16,accentColor:"#0369a1"}}/>
-        {enabled?"Enabled":"Off (24/7)"}
-      </label>
+      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:600,color:enabled?"#0369a1":"#64748b"}}><input type="checkbox" checked={enabled} onChange={function(e){handleEnable(e.target.checked);}} style={{width:16,height:16,accentColor:"#0369a1"}}/>{enabled?"Enabled":"Off (24/7)"}</label>
     </div>
     {enabled&&<div style={{marginTop:12}}>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {DAY_KEYS.map(function(key,i){
-          var ds=daySchedule[key]||{active:false,start:18,end:36};
-          return<div key={key} style={{background:ds.active?"#fff":"#f8fafc",border:"1px solid "+(ds.active?"#bae6fd":"#e2e8f0"),borderRadius:8,padding:"8px 12px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",minWidth:100,flexShrink:0}}>
-                <input type="checkbox" checked={ds.active} onChange={function(){toggleDay(key);}} style={{width:14,height:14,accentColor:"#0369a1"}}/>
-                <span style={{fontSize:12,fontWeight:ds.active?700:500,color:ds.active?"#0369a1":"#94a3b8"}}>{DAY_LABELS_FULL[i]}</span>
-              </label>
-              {ds.active&&<div style={{display:"flex",alignItems:"center",gap:6,flex:1,flexWrap:"wrap"}}>
-                <div style={{flex:1,minWidth:110}}><div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>Start (PHT)</div><select value={ds.start} onChange={function(e){setDayStart(key,parseInt(e.target.value));}} style={selSt}>{ALL_SLOTS.slice(0,48).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
-                <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,paddingTop:14}}>→</div>
-                <div style={{flex:1,minWidth:110}}><div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>End (PHT)</div><select value={ds.end} onChange={function(e){setDayEnd(key,parseInt(e.target.value));}} style={selSt}>{ALL_SLOTS.filter(function(o){return o.value>ds.start;}).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
-                <div style={{fontSize:10,color:"#64748b",paddingTop:14,flexShrink:0}}>{(function(){var mins=(ds.end-ds.start)*30;var h=Math.floor(mins/60);var m=mins%60;return h+"h"+(m>0?" "+m+"m":"");})()}</div>
-              </div>}
-              {!ds.active&&<span style={{fontSize:11,color:"#94a3b8",fontStyle:"italic"}}>Day off</span>}
-            </div>
-          </div>;
-        })}
+        {DAY_KEYS.map(function(key,i){var ds=daySchedule[key]||{active:false,start:18,end:36};return<div key={key} style={{background:ds.active?"#fff":"#f8fafc",border:"1px solid "+(ds.active?"#bae6fd":"#e2e8f0"),borderRadius:8,padding:"8px 12px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",minWidth:100,flexShrink:0}}><input type="checkbox" checked={ds.active} onChange={function(){toggleDay(key);}} style={{width:14,height:14,accentColor:"#0369a1"}}/><span style={{fontSize:12,fontWeight:ds.active?700:500,color:ds.active?"#0369a1":"#94a3b8"}}>{DAY_LABELS_FULL[i]}</span></label>
+            {ds.active&&<div style={{display:"flex",alignItems:"center",gap:6,flex:1,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:110}}><div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>Start (PHT)</div><select value={ds.start} onChange={function(e){setDayStart(key,parseInt(e.target.value));}} style={selSt}>{ALL_SLOTS.slice(0,48).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
+              <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,paddingTop:14}}>→</div>
+              <div style={{flex:1,minWidth:110}}><div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>End (PHT)</div><select value={ds.end} onChange={function(e){setDayEnd(key,parseInt(e.target.value));}} style={selSt}>{ALL_SLOTS.filter(function(o){return o.value>ds.start;}).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
+              <div style={{fontSize:10,color:"#64748b",paddingTop:14,flexShrink:0}}>{(function(){var mins=(ds.end-ds.start)*30;var h=Math.floor(mins/60);var m=mins%60;return h+"h"+(m>0?" "+m+"m":"");})()}</div>
+            </div>}
+            {!ds.active&&<span style={{fontSize:11,color:"#94a3b8",fontStyle:"italic"}}>Day off</span>}
+          </div>
+        </div>;})}
       </div>
       <div style={{marginTop:10,background:"#e0f2fe",borderRadius:6,padding:"6px 10px",fontSize:10,color:"#0369a1"}}>💡 SLA timers will only count down during your scheduled hours in Philippine Time.</div>
     </div>}
@@ -356,7 +386,13 @@ function TicketHistory(p){
     {events.map(function(ev,i){
       if(ev.type==="status"){var h=ev.data;return<div key={i} style={{display:"flex",gap:10,marginBottom:12}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}><div style={{width:30,height:30,borderRadius:8,background:(STATUS_META[h.status]?.color||"#6366f1")+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>🔄</div>{i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:12}}/>}</div>
-        <div style={{flex:1,background:"#f8fafc",borderRadius:8,padding:10,marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><Badge label={h.status} color={STATUS_META[h.status]?.color||"#6366f1"}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(h.timestamp)}</span></div><div style={{fontSize:11,color:"#64748b"}}>Assigned: <strong>{fu(h.assignedTo)?.name||"Unassigned"}</strong></div><div style={{fontSize:11,color:"#475569"}}>By: {fu(h.changedBy)?.name||"System"}</div>{h.note&&<div style={{fontSize:11,color:"#334155",marginTop:4,fontStyle:"italic"}}>{h.note}</div>}</div>
+        <div style={{flex:1,background:"#f8fafc",borderRadius:8,padding:10,marginBottom:4}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><Badge label={h.status} color={STATUS_META[h.status]?.color||"#6366f1"}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(h.timestamp)}</span></div>
+          <div style={{fontSize:11,color:"#64748b"}}>Assigned: <strong>{fu(h.assignedTo)?.name||"Unassigned"}</strong></div>
+          <div style={{fontSize:11,color:"#475569"}}>By: {fu(h.changedBy)?.name||"System"}</div>
+          {h.durationMins!=null&&<div style={{fontSize:11,color:"#8b5cf6",marginTop:3}}>⏱ Time in status: <strong>{fmtDuration(h.durationMins)}</strong></div>}
+          {h.note&&<div style={{fontSize:11,color:"#334155",marginTop:4,fontStyle:"italic"}}>{h.note}</div>}
+        </div>
       </div>;}
       if(ev.type==="email"){var m=ev.data;var isReply=m.isExternal||m.status==="received";var sender=isReply?(m.fromName||m.fromEmail):(fu(m.from)?.name||curUser.name);return<div key={i} style={{display:"flex",gap:10,marginBottom:12}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}><div style={{width:30,height:30,borderRadius:8,background:"#e0f2fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{isReply?"📬":"📧"}</div>{i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:12}}/>}</div>
@@ -387,8 +423,6 @@ function LoginPage(p){
   var strLabel=["","Too short","Weak","Good","Strong ✅"];var strColor=["","#ef4444","#f59e0b","#3b82f6","#10b981"];var str=pwStr(sigPass);
   async function doLogin(e){if(e&&e.preventDefault)e.preventDefault();setLoginErr("");if(!loginEmail.trim()||!loginPass.trim()){setLoginErr("Please enter your email and password.");return;}setLoading(true);var user=users.find(function(u){return u.email.toLowerCase()===loginEmail.toLowerCase().trim();});if(!user){setLoginErr("No account found with that email.");setLoading(false);return;}if(!user.active){setLoginErr("Your account is pending admin approval.");setLoading(false);return;}var pw=await dbGetPassword(user.id);if(loginPass!==pw){setLoginErr("Incorrect password.");setLoading(false);return;}try{if(rememberMe){localStorage.setItem("hd_savedCreds",JSON.stringify({email:loginEmail.trim(),pass:loginPass}));localStorage.setItem("hd_rememberMe","true");}else{localStorage.removeItem("hd_savedCreds");localStorage.setItem("hd_rememberMe","false");}}catch(ex){}setLoading(false);onLogin(user);}
   async function doForgot(e){e.preventDefault();if(!resetEmail.trim()){return;}setLoading(true);await new Promise(function(r){setTimeout(r,900);});setLoading(false);setView("sent");}
-
-  // ── PATCH 1: Notify admin on new user self-signup ──────────────────────────
   async function doSignup(e){
     e.preventDefault();setSigErr("");
     if(!sigName.trim()){setSigErr("Full name is required.");return;}
@@ -399,22 +433,11 @@ function LoginPage(p){
     if(sigPass!==sigConf){setSigErr("Passwords do not match.");return;}
     setLoading(true);
     var nu={id:uid(),name:sigName.trim(),email:sigEmail.trim().toLowerCase(),role:"end_user",companyId:companies&&companies[0]?companies[0].id:"",phone:sigPhone.trim(),dept:sigDept.trim(),active:false,createdAt:new Date().toISOString(),lastLogin:null};
-    await dbSaveUser(nu);
-    await dbSetPassword(nu.id,sigPass);
+    await dbSaveUser(nu);await dbSetPassword(nu.id,sigPass);
     setUsers(function(prev){return prev.concat([nu]);});
-    notifyAdmin(
-      "🆕 New User Signup — Pending Approval",
-      "A new user has registered on Hoptix and is awaiting your approval.\n\n" +
-      "Name: " + sigName.trim() + "\n" +
-      "Email: " + sigEmail.trim() + "\n" +
-      "Phone: " + (sigPhone.trim() || "—") + "\n" +
-      "Department: " + (sigDept.trim() || "—") + "\n" +
-      "Registered At: " + new Date().toLocaleString("en-US",{timeZone:"Asia/Manila"}) + " PHT\n\n" +
-      "Log in to the Hoptix admin panel → Users page to approve or reject this account."
-    );
+    notifyAdmin("🆕 New User Signup — Pending Approval","A new user has registered on Hoptix and is awaiting your approval.\n\nName: "+sigName.trim()+"\nEmail: "+sigEmail.trim()+"\nPhone: "+(sigPhone.trim()||"—")+"\nDepartment: "+(sigDept.trim()||"—")+"\nRegistered At: "+new Date().toLocaleString("en-US",{timeZone:"Asia/Manila"})+" PHT\n\nLog in to the Hoptix admin panel → Users page to approve or reject this account.");
     setLoading(false);setView("pending");
   }
-
   function PBtn(bp){return<button type={bp.type||"button"} onClick={bp.onClick} disabled={bp.disabled} style={{width:"100%",padding:"14px",background:bp.disabled?"#7dd3fc":"linear-gradient(135deg,#0369a1,#0ea5e9)",color:"#fff",border:"none",borderRadius:10,fontSize:16,fontWeight:700,cursor:bp.disabled?"not-allowed":"pointer",marginTop:4}}>{bp.children}</button>;}
   function BackBtn(bp){return<button type="button" onClick={bp.onClick} style={{background:"none",border:"none",color:"#0369a1",fontSize:14,fontWeight:600,cursor:"pointer",padding:"0 0 16px 0",display:"flex",alignItems:"center",gap:4}}>← Back to Sign In</button>;}
   function ErrBox(ep){return ep.msg?<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#dc2626",fontSize:13}}>⚠️ {ep.msg}</div>:null;}
@@ -602,7 +625,7 @@ export default function App(){
             <button onClick={function(){setShowProfile(true);}} style={{display:"flex",alignItems:"center",gap:6,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"5px 10px 5px 5px",cursor:"pointer"}}><Avatar name={curUser.name} id={curUser.id} size={26}/>{!isMobile&&<div style={{textAlign:"left"}}><div style={{fontWeight:700,fontSize:11}}>{curUser.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div>}<span style={{fontSize:10,color:"#94a3b8"}}>▼</span></button>
           </div>
         </div>
-        {toast&&<div style={{position:"fixed",top:isMobile?70:20,right:12,left:isMobile?12:"auto",zIndex:10000,background:toast.type==="error"?"#ef4444":"#10b981",color:"#fff",padding:"10px 16px",borderRadius:10,fontWeight:600,fontSize:13,boxShadow:"0 4px 20px rgba(0,0,0,.2)",textAlign:"center"}}>{toast.msg}</div>}
+        {toast&&<div style={{position:"fixed",top:isMobile?70:20,right:12,left:isMobile?12:"auto",zIndex:10000,background:toast.type==="error"?"#ef4444":toast.type==="warn"?"#f59e0b":"#10b981",color:"#fff",padding:"10px 16px",borderRadius:10,fontWeight:600,fontSize:13,boxShadow:"0 4px 20px rgba(0,0,0,.2)",textAlign:"center"}}>{toast.msg}</div>}
         <div style={{flex:1,overflowY:"auto",padding:isMobile?"12px":"24px",paddingBottom:isMobile?"80px":"24px",WebkitOverflowScrolling:"touch"}}>
           {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
           {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile}/>}
@@ -638,11 +661,11 @@ function PageDashboard(p){
   return<div>
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:16}}>
       <Stat label="Total" value={tickets.length} icon="🎫" color="#6366f1" help="All active (non-deleted) tickets in the system."/>
-      <Stat label="Open" value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b" help="Submitted but not yet assigned or started. Needs immediate attention."/>
+      <Stat label="Open" value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b" help="Submitted but not yet assigned or started."/>
       <Stat label="In Progress" value={tickets.filter(function(t){return t.status==="In Progress";}).length} icon="⚙️" color="#6366f1" help="Currently being worked on by an assigned technician."/>
-      <Stat label="Escalated" value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed" help="Raised to senior staff — either past SLA or requires specialist attention."/>
-      <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981" help="Fully resolved and closed tickets. Includes all historical records."/>
-      <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Real work time logged by IT staff using the Start/Stop timer inside each ticket. Not wall-clock time."/>
+      <Stat label="Escalated" value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed" help="Raised to senior staff."/>
+      <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981" help="Fully resolved and closed tickets."/>
+      <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Real work time logged by IT staff using the Start/Stop timer."/>
     </div>
     <div style={{background:breaches.length>0?"#fef2f2":"#f0fdf4",border:"2px solid "+(breaches.length>0?"#ef4444":"#bbf7d0"),borderRadius:12,padding:14,marginBottom:16}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:breaches.length>0?12:0}}>
@@ -740,27 +763,15 @@ function PageNewTicket(p){
     var tt=ticketTypes.find(function(t){return t.id===form.typeId;});
     var now=new Date().toISOString();var sla=new Date(Date.now()+(tt?tt.slaHours:24)*3600000).toISOString();
     var mins=Math.max(0.017,(Date.now()-start)/60000);
-    var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:new Date(start).toISOString(),slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],conversations:[],closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
+    var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:new Date(start).toISOString(),slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],statusTimeLog:[{status:"Open",enteredAt:now,exitedAt:null,durationMins:null}],conversations:[],closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
     setPreview({draft:draft,assign:assign});
   }
-  // ── PATCH 2: Notify admin on new ticket submitted ──────────────────────────
   function handleSubmit(){
     setTickets(function(prev){return prev.concat([preview.draft]);});
     addLog("TICKET_CREATED",preview.draft.id,"Ticket \""+preview.draft.title+"\" created.");
     var assignedUser=users.find(function(u){return u.id===preview.draft.assignedTo;});
     var tt2=ticketTypes.find(function(t){return t.id===preview.draft.typeId;});
-    notifyAdmin(
-      "🎫 New Ticket Created — "+preview.draft.title,
-      "A new support ticket has been submitted.\n\n"+
-      "Ticket ID: #"+preview.draft.id.slice(-8)+"\n"+
-      "Title: "+preview.draft.title+"\n"+
-      "Type: "+(tt2?tt2.name:"—")+"\n"+
-      "Priority: "+(PRI_META[preview.draft.priority]?PRI_META[preview.draft.priority].label:preview.draft.priority)+"\n"+
-      "Submitted By: "+(users.find(function(u){return u.id===preview.draft.submittedBy;})?.name||"Unknown")+"\n"+
-      "Assigned To: "+(assignedUser?assignedUser.name:"Unassigned")+"\n"+
-      "AI Reason: "+(preview.draft.aiReason||"—")+"\n\n"+
-      "Description:\n"+preview.draft.description.slice(0,300)+(preview.draft.description.length>300?"…":"")
-    );
+    notifyAdmin("🎫 New Ticket Created — "+preview.draft.title,"A new support ticket has been submitted.\n\nTicket ID: #"+preview.draft.id.slice(-8)+"\nTitle: "+preview.draft.title+"\nType: "+(tt2?tt2.name:"—")+"\nPriority: "+(PRI_META[preview.draft.priority]?PRI_META[preview.draft.priority].label:preview.draft.priority)+"\nSubmitted By: "+(users.find(function(u){return u.id===preview.draft.submittedBy;})?.name||"Unknown")+"\nAssigned To: "+(assignedUser?assignedUser.name:"Unassigned")+"\n\nDescription:\n"+preview.draft.description.slice(0,300)+(preview.draft.description.length>300?"…":""));
     showToast("✅ Ticket submitted!");setPage("tickets");
   }
   return<div style={{maxWidth:640,margin:"0 auto"}}>
@@ -802,7 +813,23 @@ function TicketDetail(p){
   var addLog=p.addLog;var showToast=p.showToast;var onClose=p.onClose;var statusSla=p.statusSla;var schedules=p.schedules||{};
   var refreshTimeSessions=p.refreshTimeSessions||function(){};
   var allTimeSessions=p.allTimeSessions||[];
-  var[tab,setTab]=useState("details");var[status,setStatus]=useState(ticket.status);var[asgn,setAsgn]=useState(ticket.assignedTo||"");var[note,setNote]=useState("");var[typeId,setTypeId]=useState(ticket.typeId||"");
+
+  var[tab,setTab]=useState("details");
+  var[status,setStatus]=useState(ticket.status);
+  var[asgn,setAsgn]=useState(ticket.assignedTo||"");
+  var[note,setNote]=useState("");
+  var[typeId,setTypeId]=useState(ticket.typeId||"");
+  var[showTimerBanner,setShowTimerBanner]=useState(false);
+  var forceStopRef=useRef(null);
+
+  // ── Auto-start timer when IT user opens a non-closed ticket ─────────────────
+  var shouldAutoStart=isTech&&ticket.status!=="Closed";
+
+  function handleAutoStarted(){
+    setShowTimerBanner(true);
+    setTimeout(function(){setShowTimerBanner(false);},8000);
+  }
+
   var[msgTo,setMsgTo]=useState("");var[msgCC,setMsgCC]=useState("");
   var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);
   var[msgBody,setMsgBody]=useState("");
@@ -818,47 +845,70 @@ function TicketDetail(p){
   }
   var[emailSending,setEmailSending]=useState(false);
   function fu(id){return users.find(function(x){return x.id===id;});}
-  var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;});var co=companies.find(function(c){return c.id===ticket.companyId;});var client=clients.find(function(c){return c.id===ticket.clientId;});var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
+  var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;});
+  var co=companies.find(function(c){return c.id===ticket.companyId;});
+  var client=clients.find(function(c){return c.id===ticket.clientId;});
+  var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
   if(!ticket)return null;
   var sSla=getStatusSla(ticket,statusSla,schedules);
 
-  // ── PATCHES 3 & 4: Status change notification + closed without timer ────────
-  function saveStatus(){
+  // Check if ticket has any logged time
+  var ticketSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
+  var hasLoggedTime=ticketSessions.length>0;
+  var totalLoggedMins=ticketSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
+
+  // ── PATCHES 3 & 4: Status save with auto-stop timer + status time tracking ──
+  async function saveStatus(){
     var statusChanged=status!==ticket.status;
-    var hist={status,assignedTo:asgn||null,timestamp:new Date().toISOString(),changedBy:curUser.id,note:note||(statusChanged?"Status changed to "+status:"Details updated")};
+    var now=new Date().toISOString();
+
+    // If closing and timer is running, auto-stop it first
+    if(status==="Closed"&&forceStopRef.current){
+      await forceStopRef.current();
+      refreshTimeSessions();
+    }
+
+    // Build status time log: close out the current status entry, open new one
+    var prevLog=ticket.statusTimeLog||[];
+    var newLog=prevLog.map(function(entry){
+      if(entry.exitedAt===null&&statusChanged){
+        var durMins=parseFloat(((new Date(now)-new Date(entry.enteredAt))/60000).toFixed(2));
+        return Object.assign({},entry,{exitedAt:now,durationMins:durMins});
+      }
+      return entry;
+    });
+    if(statusChanged){
+      newLog=newLog.concat([{status:status,enteredAt:now,exitedAt:null,durationMins:null}]);
+    }
+
+    var hist={status,assignedTo:asgn||null,timestamp:now,changedBy:curUser.id,note:note||(statusChanged?"Status changed to "+status:"Details updated")};
     if(!statusChanged)hist._noSlaReset=true;
+
+    // Attach duration-in-previous-status to history entry for display in timeline
+    if(statusChanged&&prevLog.length>0){
+      var lastEntry=prevLog[prevLog.length-1];
+      if(lastEntry&&lastEntry.exitedAt===null){
+        hist.durationMins=parseFloat(((new Date(now)-new Date(lastEntry.enteredAt))/60000).toFixed(2));
+      }
+    }
+
     var newTT=ticketTypes.find(function(t){return t.id===typeId;});var typeChanged=typeId&&typeId!==ticket.typeId;
     var newSlaDeadline=typeChanged&&newTT?new Date(new Date(ticket.createdAt).getTime()+newTT.slaHours*3600000).toISOString():ticket.slaDeadline;
     var newPriority=typeChanged&&newTT?newTT.priority:ticket.priority;
     if(typeChanged)hist.note=(note||"")+(note?" | ":"")+"Type changed to: "+newTT.name;
-    setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;var newHist=statusChanged?(t.statusHistory||[]).concat([hist]):(t.statusHistory||[]).concat([Object.assign({},hist,{_noSlaReset:true})]);return Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:new Date().toISOString(),slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",closedAt:status==="Closed"&&!t.closedAt?new Date().toISOString():t.closedAt,statusHistory:newHist});});});
+
+    setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;var newHist=statusChanged?(t.statusHistory||[]).concat([hist]):(t.statusHistory||[]).concat([Object.assign({},hist,{_noSlaReset:true})]);return Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:now,slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",closedAt:status==="Closed"&&!t.closedAt?now:t.closedAt,statusHistory:newHist,statusTimeLog:newLog});});});
+
     addLog("TICKET_STATUS",ticket.id,(statusChanged?"Status → "+status:"Details updated")+". Assigned: "+(fu(asgn)?.name||"nobody"));
+
     if(statusChanged){
       var assigneeName=fu(asgn)?.name||"Unassigned";
-      notifyAdmin(
-        "🔄 Ticket Status Updated — "+ticket.title,
-        "A ticket status has been changed.\n\n"+
-        "Ticket ID: #"+ticket.id.slice(-8)+"\n"+
-        "Title: "+ticket.title+"\n"+
-        "New Status: "+status+"\n"+
-        "Assigned To: "+assigneeName+"\n"+
-        "Changed By: "+curUser.name+"\n"+
-        (note?"Note: "+note+"\n":"")+"\n"+
-        "Log in to Hoptix to view this ticket."
-      );
+      notifyAdmin("🔄 Ticket Status Updated — "+ticket.title,"A ticket status has been changed.\n\nTicket ID: #"+ticket.id.slice(-8)+"\nTitle: "+ticket.title+"\nNew Status: "+status+"\nAssigned To: "+assigneeName+"\nChanged By: "+curUser.name+"\n"+(note?"Note: "+note+"\n":"")+"\nLog in to Hoptix to view this ticket.");
       if(status==="Closed"){
-        var hasTimerUsed=allTimeSessions.some(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
-        if(!hasTimerUsed){
-          notifyAdmin(
-            "⚠️ Ticket Closed Without Timer — "+ticket.title,
-            "A ticket was closed without any IT work time being logged.\n\n"+
-            "Ticket ID: #"+ticket.id.slice(-8)+"\n"+
-            "Title: "+ticket.title+"\n"+
-            "Closed By: "+curUser.name+"\n"+
-            "Assigned To: "+assigneeName+"\n\n"+
-            "Please ensure the technician logs their time before closing tickets.\n"+
-            "Log in to Hoptix to review and add time if needed."
-          );
+        // Check for no time logged (re-check after potential auto-stop)
+        var latestSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
+        if(latestSessions.length===0){
+          notifyAdmin("⚠️ Ticket Closed Without Timer — "+ticket.title,"A ticket was closed without any IT work time being logged.\n\nTicket ID: #"+ticket.id.slice(-8)+"\nTitle: "+ticket.title+"\nClosed By: "+curUser.name+"\nAssigned To: "+assigneeName+"\n\nPlease ensure the technician logs their time before closing tickets.");
         }
       }
     }
@@ -890,18 +940,46 @@ function TicketDetail(p){
   var tabFullLabels={details:"Details",status:"Status",timer:"Timer",email:"Email",chat:"Chat",history:"History"};
 
   return<Modal title={ticket.title} onClose={onClose} wide>
+    {/* Auto-timer started banner */}
+    {showTimerBanner&&<div style={{background:"linear-gradient(135deg,#064e3b,#065f46)",borderRadius:10,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:18}}>⏱</span>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Timer automatically started</div>
+        <div style={{fontSize:11,color:"#a7f3d0",marginTop:2}}>Remember to stop the timer when you are done working on this ticket. Go to the ⏱️ Timer tab to stop it.</div>
+      </div>
+      <button onClick={function(){setShowTimerBanner(false);setTab("timer");}} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>View Timer</button>
+    </div>}
+
+    {/* Warning: closed with no time logged */}
+    {ticket.status==="Closed"&&!hasLoggedTime&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:16}}>⚠️</span>
+      <div style={{flex:1}}><div style={{fontWeight:700,color:"#92400e",fontSize:13}}>No time was logged for this ticket</div><div style={{fontSize:11,color:"#b45309",marginTop:2}}>This ticket was closed without any IT work time being recorded. Please add time if any work was performed.</div></div>
+      <button onClick={function(){setTab("timer");}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>Add Time</button>
+    </div>}
+
     {liveTicket.hasUnreadReply&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:16}}>📬</span><div style={{flex:1}}><div style={{fontWeight:700,color:"#166534",fontSize:13}}>New reply received</div></div>
       <button onClick={function(){setTab("email");setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});}} style={{padding:"6px 12px",background:"#10b981",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0}}>View</button>
     </div>}
+
     <div style={{display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
       {TABS.map(function(t){return<button key={t} onClick={function(){if(t==="email"&&ticket.hasUnreadReply)setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});setTab(t);}} style={{background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0,position:"relative"}}>
         {tabLabels[t]} {tabFullLabels[t]}{t==="email"&&ticket.hasUnreadReply&&<span style={{position:"absolute",top:-3,right:-3,background:"#10b981",color:"#fff",borderRadius:"50%",width:14,height:14,fontSize:8,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>!</span>}
       </button>;})}
     </div>
+
     {tab==="details"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[["Type",tt?.name||"—"],["Priority",<Badge key="p" label={PRI_META[ticket.priority]?.label||ticket.priority} color={PRI_META[ticket.priority]?.color||"#6366f1"}/>],["Status",<Badge key="s" label={ticket.status} color={STATUS_META[ticket.status]?.color||"#6366f1"}/>],["Company",co?.name||"—"],["Submitted By",fu(ticket.submittedBy)?.name||"—"],["Assigned To",fu(ticket.assignedTo)?.name||"Unassigned"],["Created",fdt(ticket.createdAt)],["SLA Deadline",fdt(ticket.slaDeadline)]].map(function(pair){return<div key={pair[0]} style={{background:"#f8fafc",padding:10,borderRadius:8}}><div style={{color:"#64748b",fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>{pair[0]}</div><div style={{fontWeight:600,color:"#1e293b",fontSize:12}}>{pair[1]}</div></div>;})}
+      </div>
+      {/* IT Hours logged summary */}
+      <div style={{background:hasLoggedTime?"#f0fdf4":"#fffbeb",border:"1px solid "+(hasLoggedTime?"#bbf7d0":"#fde68a"),borderRadius:10,padding:10,marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:18}}>{hasLoggedTime?"🕐":"⚠️"}</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:12,color:hasLoggedTime?"#166534":"#92400e"}}>IT Time Logged</div>
+          <div style={{fontSize:11,color:hasLoggedTime?"#16a34a":"#b45309",marginTop:1}}>{hasLoggedTime?fmtDuration(totalLoggedMins)+" logged across "+ticketSessions.length+" session"+(ticketSessions.length!==1?"s":""):"No time logged yet"}</div>
+        </div>
+        {isTech&&<button onClick={function(){setTab("timer");}} style={{padding:"5px 10px",background:hasLoggedTime?"#10b981":"#f59e0b",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>{hasLoggedTime?"View":"Add Time"}</button>}
       </div>
       {client&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12,marginBottom:12}}><div style={{fontWeight:700,color:"#0369a1",fontSize:12,marginBottom:8}}>🤝 {client.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {client.email} · 📞 {client.phone}</div>{loc&&<div style={{fontSize:11,color:"#64748b",marginTop:4}}>📍 {loc.name} — {loc.address}</div>}</div>}
       <div style={{background:"#f8fafc",padding:12,borderRadius:8,fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap",color:"#334155",marginBottom:12}}>{ticket.description}</div>
@@ -910,23 +988,39 @@ function TicketDetail(p){
         <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:8}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,fontSize:11}}><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Allowed</div><div style={{fontWeight:700}}>{sSla.hoursAllowed}h</div></div><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Spent</div><div style={{fontWeight:700}}>{sSla.hoursSpent}h</div></div><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Left</div><div style={{fontWeight:700,color:sSla.breached?"#ef4444":"#10b981"}}>{sSla.breached?"0h":sSla.remaining+"h"}</div></div></div>
       </div>}
+      {/* Status time breakdown */}
+      {ticket.statusTimeLog&&ticket.statusTimeLog.length>0&&<div style={{marginTop:12}}>
+        <div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>⏳ Time Per Status</div>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {ticket.statusTimeLog.map(function(entry,i){var sm=STATUS_META[entry.status]||STATUS_META.Open;var dur=entry.durationMins!=null?fmtDuration(entry.durationMins):(entry.exitedAt===null?"Ongoing…":"—");return<div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
+            <span style={{fontSize:12,fontWeight:600,color:sm.color,minWidth:90}}>{entry.status}</span>
+            <span style={{fontSize:11,color:entry.exitedAt===null?"#6366f1":"#64748b",fontWeight:entry.exitedAt===null?700:400,flex:1}}>{dur}</span>
+            {entry.exitedAt===null&&<Badge label="Current" color="#6366f1"/>}
+          </div>;})}
+        </div>
+      </div>}
       {ticket.attachments&&ticket.attachments.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>📎 Attachments ({ticket.attachments.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>{ticket.attachments.map(function(a){var isImg=a.type.startsWith("image/");return<div key={a.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){var w=window.open();w.document.write(isImg?'<img src="'+a.dataUrl+'" style="max-width:100%;"/>':'<video src="'+a.dataUrl+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:80,objectFit:"cover",display:"block"}}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:28}}>▶️</span></div>}</div>;})}</div></div>}
     </div>}
+
     {tab==="status"&&isTech&&<div>
       <FSelect label="Update Status" value={status} onChange={function(e){setStatus(e.target.value);}} options={OPT_STATUSES}/>
+      {status==="Closed"&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⚠️ Closing this ticket will automatically stop the timer if it is running.</div>}
       <FSelect label="Assign To" value={asgn} onChange={function(e){setAsgn(e.target.value);}} options={optTechs(users)}/>
       <FSelect label="Ticket Type" value={typeId} onChange={function(e){setTypeId(e.target.value);}} options={ticketTypes.map(function(t){return mkOpt(t.id,t.name+" — "+t.slaHours+"h SLA");})}/>
       {typeId!==ticket.typeId&&<div style={{fontSize:11,color:"#f59e0b",marginBottom:14}}>⚠️ Changing type will update priority and SLA deadline.</div>}
       <FTextarea label="Note" value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What was done or why?" rows={3}/>
       <Btn onClick={saveStatus} style={{width:"100%"}}>💾 Save Changes</Btn>
     </div>}
-    {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions}/>}
+
+    {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions} autoStart={shouldAutoStart} onAutoStarted={handleAutoStarted} forceStopRef={forceStopRef}/>}
+
     {tab==="email"&&<div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{fontWeight:700,color:"#1e293b"}}>📧 Send Email</div>
         {emailTemplates.length>0&&<select onChange={function(e){if(e.target.value)applyTemplate(e.target.value);e.target.value="";}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc"}}><option value="">Use template…</option>{emailTemplates.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>}
       </div>
-      <FInput label="To" value={msgTo} onChange={function(e){setMsgTo(e.target.value);}} placeholder="email@example.com, another@example.com"/>
+      <FInput label="To" value={msgTo} onChange={function(e){setMsgTo(e.target.value);}} placeholder="email@example.com"/>
       <FInput label="CC (optional)" value={msgCC} onChange={function(e){setMsgCC(e.target.value);}} placeholder="cc@example.com"/>
       <FInput label="Subject" value={msgSubj} onChange={function(e){setMsgSubj(e.target.value);}}/>
       <FTextarea label="Message" value={msgBody} onChange={function(e){setMsgBody(e.target.value);}} rows={4} placeholder="Type your message…"/>
@@ -940,6 +1034,7 @@ function TicketDetail(p){
         <div style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>
       </div>;})}
     </div>}
+
     {tab==="chat"&&<TicketChat ticketId={ticket.id} curUser={curUser} users={users}/>}
     {tab==="history"&&<TicketHistory ticket={ticket} users={users} curUser={curUser}/>}
   </Modal>;
@@ -1012,20 +1107,45 @@ function PageTimeTracking(p){
 // ── Reports ───────────────────────────────────────────────────────────────────
 function PageReports(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};var allTimeSessions=p.allTimeSessions||[];
+
   var MONTH_OPTS=useMemo(function(){var opts=[];var now=new Date();for(var i=0;i<13;i++){var d=new Date(now.getFullYear(),now.getMonth()-i,1);var val=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");var lbl=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});opts.push({value:val,label:lbl});}return opts;},[]);
   var nowStr=(function(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
-  var[view,setView]=useState("summary");var[range,setRange]=useState("month-"+nowStr);
+  var[view,setView]=useState("summary");
+  var[range,setRange]=useState("month-"+nowStr);
   var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
-  var selClientObj=clients.find(function(c){return c.id===fClient;});var availLocations=selClientObj?selClientObj.locations:[];
+  var selClientObj=clients.find(function(c){return c.id===fClient;});
+  var availLocations=selClientObj?selClientObj.locations:[];
   function handleClientChange(v){setFClient(v);setFLocation("");}
+
   var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return mon.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1])-1,1).toISOString();}if(range==="year")return new Date(now.getFullYear(),0,1).toISOString();return new Date(0).toISOString();},[range]);
   var rangeEnd=useMemo(function(){var now=new Date();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var sun=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon+6,23,59,59,999);return sun.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1]),0,23,59,59,999).toISOString();}return null;},[range]);
   var rangeLabel={day:"Today",week:"This Week",year:"This Year",all:"All Time"};
   var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
+
   var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;var d=new Date(t.createdAt);if(d<new Date(rangeStart))return false;if(rangeEnd&&d>new Date(rangeEnd))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,rangeEnd,fClient,fLocation]);
   var allActive=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,fClient,fLocation]);
+
   function loggedMins(ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
   function userLoggedMins(userId,ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return s.user_id===userId&&ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
+
+  // ── Status time aggregation across all active tickets ──────────────────────
+  var statusTimeSummary=useMemo(function(){
+    var totals={};
+    ALL_STATUSES.forEach(function(s){totals[s]=0;});
+    active.forEach(function(t){
+      (t.statusTimeLog||[]).forEach(function(entry){
+        if(entry.durationMins!=null){
+          if(totals[entry.status]!==undefined)totals[entry.status]+=entry.durationMins;
+        } else if(entry.exitedAt===null){
+          // Still in this status — calculate live duration
+          var liveMins=parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2));
+          if(totals[entry.status]!==undefined)totals[entry.status]+=liveMins;
+        }
+      });
+    });
+    return totals;
+  },[active]);
+
   var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:loggedMins(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
   var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:userLoggedMins(t.id,active)};});
   var totalBreached=active.filter(function(t){return t.slaBreached;}).length;
@@ -1034,20 +1154,25 @@ function PageReports(p){
   var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
   var weeklyTrend=useMemo(function(){var now=new Date();var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return Array.from({length:8},function(_,i){var wStart=new Date(thisMon.getTime()-(7-i)*7*86400000);var wEnd=new Date(wStart.getTime()+7*86400000-1);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<=wEnd;});var lbl=wStart.toLocaleDateString("en-US",{month:"short",day:"numeric"});return{label:lbl,total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
   var byClient=useMemo(function(){return clients.map(function(cl){var cTickets=allActive.filter(function(t){return t.clientId===cl.id;});if(cTickets.length===0)return null;var byLoc=(cl.locations||[]).map(function(loc){var lT=cTickets.filter(function(t){return t.locationId===loc.id;});var typeBreakdown=ticketTypes.map(function(tt){var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;}).filter(Boolean);return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(lT),slaRate:calcSlaRate(lT),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};}).filter(function(l){return l.total>0;});var noLoc=cTickets.filter(function(t){return !t.locationId;});return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(cTickets),slaRate:calcSlaRate(cTickets),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};}).filter(Boolean).sort(function(a,b){return b.total-a.total;});},[clients,allActive,ticketTypes,allTimeSessions]);
+
   async function generateInsight(){
     setAiLoading(true);setAiInsight("");
-    var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate,topLocations:c.byLoc.slice(0,3).map(function(l){return l.name+" ("+l.total+" tickets, "+(l.loggedMins/60).toFixed(1)+"h logged)";})};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
+    var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),statusTimeBreakdown:Object.keys(statusTimeSummary).filter(function(s){return statusTimeSummary[s]>0;}).map(function(s){return s+": "+fmtDuration(statusTimeSummary[s]);}),techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate,topLocations:c.byLoc.slice(0,3).map(function(l){return l.name+" ("+l.total+" tickets, "+(l.loggedMins/60).toFixed(1)+"h logged)";})};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
     try{
-      var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. 📍 Locations/clients needing most attention\n3. ⏱ IT hours analysis — are logged hours proportionate to ticket volume? Any tech working significantly more/less?\n4. 💡 3 actionable recommendations\n\nBe concise. Use bullet points. Note: IT hours are actual logged time from a start/stop timer, not wall-clock time.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
+      var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. 📍 Locations/clients needing most attention\n3. ⏱ IT hours analysis — are logged hours proportionate to ticket volume? Any tech working significantly more/less?\n4. ⏳ Status time analysis — which status has tickets spending the most time? Any bottlenecks?\n5. 💡 3 actionable recommendations\n\nBe concise. Use bullet points. Note: IT hours are actual logged time from a start/stop timer, not wall-clock time.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
       var data=await res.json();
       setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");
     }catch(e){setAiInsight("Error: "+e.message);}
     setAiLoading(false);
   }
-  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"by_client",label:"🤝 By Client"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
+
+  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"status_time",label:"⏳ Status Time"},{id:"by_client",label:"🤝 By Client"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
   var filterLabel="";if(fClient){filterLabel=selClientObj?.name||"Client";if(fLocation){var lObj=availLocations.find(function(l){return l.id===fLocation;});filterLabel+=" → "+(lObj?.name||"Location");}}
+
   return<div>
     <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>{VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}</div>
+
+    {/* Filters */}
     <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
       <span style={{fontSize:11,fontWeight:700,color:"#64748b",flexShrink:0}}>🔍 Filter:</span>
       <select value={fClient} onChange={function(e){handleClientChange(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Clients</option>{clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}</select>
@@ -1055,15 +1180,19 @@ function PageReports(p){
       {filterLabel&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 10px"}}><span style={{fontSize:11,fontWeight:700,color:"#4338ca"}}>📍 {filterLabel}</span><button onClick={function(){setFClient("");setFLocation("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:13,padding:0,lineHeight:1}}>✕</button></div>}
       <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{active.length} tickets · {fmtDuration(totalLoggedMins)} logged</div>
     </div>
+
+    {/* Date range buttons */}
     <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
       {["day","week","month","year","all"].map(function(r){
         if(r==="month"){return<select key="month" value={range.startsWith("month-")?range:"month-"+nowStr} onChange={function(e){setRange(e.target.value);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range.startsWith("month-")?"#6366f1":"#e2e8f0"),background:range.startsWith("month-")?"#6366f1":"#fff",color:range.startsWith("month-")?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0,outline:"none"}}>{MONTH_OPTS.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select>;}
         return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;
       })}
     </div>
+
+    {/* ── SUMMARY VIEW ── */}
     {view==="summary"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"} help={"SLA Rate = tickets resolved within their time target ÷ total tickets × 100."}/>
+        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"} help="SLA Rate = tickets resolved within their time target ÷ total tickets × 100. Green ≥90%, Yellow ≥75%, Red <75%."/>
         <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9" help="Average hours from ticket creation to closure."/>
         <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1" help="Number of tickets created within the selected time period."/>
         <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Total real work time logged by IT staff using the Start/Stop timer."/>
@@ -1074,11 +1203,95 @@ function PageReports(p){
           <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{filterLabel?"Filtered: "+filterLabel:"All clients & locations"} · Hours are actual logged time</div></div>
           <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer",flexShrink:0}}>{aiLoading?"⏳ Analyzing…":"✨ Analyze Now"}</button>
         </div>
-        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>🔍</div>Click "Analyze Now" for AI insights on your biggest issues, where they're occurring, and how IT time is being spent.</div>}
+        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>🔍</div>Click "Analyze Now" for AI insights including status bottleneck analysis.</div>}
         {aiLoading&&<div style={{textAlign:"center",padding:20,color:"#6366f1",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>⏳</div>Analyzing {active.length} tickets…</div>}
         {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
       </Card>
     </div>}
+
+    {/* ── STATUS TIME VIEW ── */}
+    {view==="status_time"&&<div>
+      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#0369a1"}}>
+        ⏳ This report shows the <strong>total time tickets collectively spent in each status</strong> — helping identify where workflow bottlenecks exist. The longest status reveals where tickets get stuck.
+      </div>
+
+      {/* Status time bar chart */}
+      <Card style={{marginBottom:16}}>
+        <div style={{fontWeight:700,color:"#1e293b",marginBottom:14,fontSize:13}}>⏳ Aggregate Time Per Status ({active.length} tickets)</div>
+        {ALL_STATUSES.filter(function(s){return s!=="Closed";}).map(function(s){
+          var mins=statusTimeSummary[s]||0;
+          var sm=STATUS_META[s];
+          var maxMins=Math.max.apply(null,ALL_STATUSES.map(function(sx){return statusTimeSummary[sx]||0;}));
+          var pct=maxMins>0?Math.round(mins/maxMins*100):0;
+          var ticketsInStatus=active.filter(function(t){return t.status===s;}).length;
+          var avgMinsPerTicket=active.filter(function(t){return (t.statusTimeLog||[]).some(function(e){return e.status===s&&(e.durationMins!=null||e.exitedAt===null);});}).length;
+          return<div key={s} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
+                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{s}</span>
+                <Badge label={ticketsInStatus+" currently"} color={sm.color}/>
+              </div>
+              <span style={{fontSize:13,fontWeight:800,color:sm.color}}>{mins>0?fmtDuration(mins):"No data"}</span>
+            </div>
+            <div style={{height:8,background:"#f1f5f9",borderRadius:4,overflow:"hidden"}}>
+              <div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:4,transition:"width .4s"}}/>
+            </div>
+          </div>;
+        })}
+        {/* Closed status total */}
+        {(statusTimeSummary["Closed"]||0)>0&&<div style={{marginBottom:12,opacity:0.7}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:10,height:10,borderRadius:"50%",background:"#94a3b8",flexShrink:0}}/><span style={{fontSize:13,fontWeight:700,color:"#94a3b8"}}>Closed</span><span style={{fontSize:10,color:"#94a3b8"}}>(time after closure)</span></div>
+            <span style={{fontSize:13,fontWeight:800,color:"#94a3b8"}}>{fmtDuration(statusTimeSummary["Closed"])}</span>
+          </div>
+        </div>}
+      </Card>
+
+      {/* Per-ticket status time breakdown */}
+      <div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:10}}>📋 Per-Ticket Status Breakdown</div>
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#92400e"}}>Only tickets with status time tracking data are shown below. Tickets created before this feature was enabled will have no data.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {active.filter(function(t){return t.statusTimeLog&&t.statusTimeLog.length>0;}).length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}><div style={{fontSize:28,marginBottom:8}}>⏳</div>No status time data yet. Data is collected as tickets are opened and status changes are made.</div></Card>}
+        {active.filter(function(t){return t.statusTimeLog&&t.statusTimeLog.length>0;}).map(function(t){
+          var sm=STATUS_META[t.status]||STATUS_META.Open;
+          var asgn=users.find(function(u){return u.id===t.assignedTo;});
+          var totalStatusMins=t.statusTimeLog.reduce(function(sum,e){
+            if(e.durationMins!=null)return sum+e.durationMins;
+            if(e.exitedAt===null)return sum+parseFloat(((Date.now()-new Date(e.enteredAt))/60000).toFixed(2));
+            return sum;
+          },0);
+          return<Card key={t.id} style={{padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
+              <div style={{flex:1,overflow:"hidden"}}>
+                <div style={{fontWeight:700,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+                <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
+                  <Badge label={t.status} color={sm.color} bg={sm.bg}/>
+                  {asgn&&<span style={{fontSize:11,color:"#64748b"}}>👤 {asgn.name}</span>}
+                  <span style={{fontSize:11,color:"#8b5cf6",fontWeight:600}}>Total: {fmtDuration(totalStatusMins)}</span>
+                </div>
+              </div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {t.statusTimeLog.map(function(entry,i){
+                var esm=STATUS_META[entry.status]||STATUS_META.Open;
+                var dur=entry.durationMins!=null?fmtDuration(entry.durationMins):(entry.exitedAt===null?fmtDuration(parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)))+" (live)":"—");
+                var pctOfTotal=totalStatusMins>0&&(entry.durationMins!=null||entry.exitedAt===null)?Math.round(((entry.durationMins!=null?entry.durationMins:parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)))/totalStatusMins)*100):0;
+                return<div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:6,padding:"6px 10px"}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:esm.color,flexShrink:0}}/>
+                  <span style={{fontSize:11,fontWeight:600,color:esm.color,minWidth:85}}>{entry.status}</span>
+                  <div style={{flex:1,height:4,background:"#e2e8f0",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pctOfTotal+"%",background:esm.color,borderRadius:2}}/></div>
+                  <span style={{fontSize:11,color:entry.exitedAt===null?"#6366f1":"#64748b",fontWeight:entry.exitedAt===null?700:400,minWidth:70,textAlign:"right"}}>{dur}</span>
+                  {entry.exitedAt===null&&<Badge label="Now" color="#6366f1"/>}
+                </div>;
+              })}
+            </div>
+          </Card>;
+        })}
+      </div>
+    </div>}
+
+    {/* ── BY CLIENT VIEW ── */}
     {view==="by_client"&&<div>
       {byClient.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>🤝</div>No client data yet.</div></Card>}
       {byClient.map(function(cl){return<Card key={cl.id} style={{marginBottom:16}}>
@@ -1106,6 +1319,8 @@ function PageReports(p){
         </div>}
       </Card>;})}
     </div>}
+
+    {/* ── TREND VIEW ── */}
     {view==="trend"&&<div>
       <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Weekly Volume</div><ResponsiveContainer width="100%" height={200}><AreaChart data={weeklyTrend}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="label" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Area type="monotone" dataKey="total" stroke="#6366f1" fill="#eef2ff" name="Total" strokeWidth={2}/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed" strokeWidth={2}/></AreaChart></ResponsiveContainer></Card>
       <Card style={{borderLeft:"4px solid #6366f1"}}>
@@ -1117,13 +1332,71 @@ function PageReports(p){
         {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
       </Card>
     </div>}
+
+    {/* ── BY TYPE VIEW ── */}
     {view==="by_type"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byType.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byType.map(function(t){return<Card key={t.id}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span><span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span><span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span></div></Card>;})}
+      {byType.map(function(t){
+        // Status time for this ticket type
+        var typeTickets=active.filter(function(tk){return tk.typeId===t.id;});
+        var typeStatusTime={};
+        ALL_STATUSES.forEach(function(s){typeStatusTime[s]=0;});
+        typeTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){if(entry.durationMins!=null){if(typeStatusTime[entry.status]!==undefined)typeStatusTime[entry.status]+=entry.durationMins;}else if(entry.exitedAt===null){var live=parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2));if(typeStatusTime[entry.status]!==undefined)typeStatusTime[entry.status]+=live;}});});
+        var hasStatusData=Object.values(typeStatusTime).some(function(v){return v>0;});
+        return<Card key={t.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span></div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}>
+            <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
+            <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
+          </div>
+          {hasStatusData&&<div>
+            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Time Per Status</div>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {ALL_STATUSES.filter(function(s){return typeStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(typeStatusTime));var pct=maxV>0?Math.round(typeStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span>
+                <div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div>
+                <span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(typeStatusTime[s])}</span>
+              </div>;})}
+            </div>
+          </div>}
+        </Card>;
+      })}
     </div>}
+
+    {/* ── PER USER VIEW ── */}
     {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byUser.map(function(t){return<Card key={t.id}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span><span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span><span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span></div></Card>;})}
+      {byUser.map(function(t){
+        // Status time for tickets assigned to this user
+        var userTickets=active.filter(function(tk){return tk.assignedTo===t.id;});
+        var userStatusTime={};
+        ALL_STATUSES.forEach(function(s){userStatusTime[s]=0;});
+        userTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){if(entry.durationMins!=null){if(userStatusTime[entry.status]!==undefined)userStatusTime[entry.status]+=entry.durationMins;}else if(entry.exitedAt===null){var live=parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2));if(userStatusTime[entry.status]!==undefined)userStatusTime[entry.status]+=live;}});});
+        var hasStatusData=Object.values(userStatusTime).some(function(v){return v>0;});
+        return<Card key={t.id}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}>
+            <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
+            <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
+          </div>
+          {hasStatusData&&<div>
+            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Avg Time Per Status</div>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {ALL_STATUSES.filter(function(s){return userStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(userStatusTime));var pct=maxV>0?Math.round(userStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span>
+                <div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div>
+                <span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(userStatusTime[s])}</span>
+              </div>;})}
+            </div>
+          </div>}
+        </Card>;
+      })}
     </div>}
   </div>;
 }
