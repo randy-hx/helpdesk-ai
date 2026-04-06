@@ -26,62 +26,28 @@ const slaColor= function(r){ return r>=90?"#10b981":r>=75?"#f59e0b":"#ef4444"; }
 const fmtMs   = function(mins){ if(!mins&&mins!==0)return"—"; var s=mins*60; if(s<60)return s.toFixed(2)+"s"; if(s<3600){var m=Math.floor(mins);var sc=parseFloat(((mins-m)*60).toFixed(2));return m+"m "+sc+"s";} var h=Math.floor(mins/60);var rm=mins-h*60;var m2=Math.floor(rm);var s2=parseFloat(((rm-m2)*60).toFixed(2));return h+"h "+m2+"m "+s2+"s"; };
 const pieLabel= function(p){ return p.value>0?p.name+": "+p.value:""; };
 const fmtHour = function(h){ if(h===0)return"12:00 AM"; if(h<12)return h+":00 AM"; if(h===12)return"12:00 PM"; return (h-12)+":00 PM"; };
-
-const fmtDuration = function(mins){
-  if(!mins||mins<=0)return"0m";
-  var h=Math.floor(mins/60);
-  var m=Math.round(mins%60);
-  if(h===0)return m+"m";
-  if(m===0)return h+"h";
-  return h+"h "+m+"m";
-};
-
-const fmtElapsed = function(secs){
-  var h=Math.floor(secs/3600);
-  var m=Math.floor((secs%3600)/60);
-  var s=secs%60;
-  return (h>0?String(h).padStart(2,"0")+":":"")+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
-};
+const fmtDuration = function(mins){ if(!mins||mins<=0)return"0m"; var h=Math.floor(mins/60); var m=Math.round(mins%60); if(h===0)return m+"m"; if(m===0)return h+"h"; return h+"h "+m+"m"; };
+const fmtElapsed = function(secs){ var h=Math.floor(secs/3600); var m=Math.floor((secs%3600)/60); var s=secs%60; return (h>0?String(h).padStart(2,"0")+":":"")+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0"); };
 
 function useIsMobile(){ var[mob,setMob]=useState(window.innerWidth<768); useEffect(function(){function h(){setMob(window.innerWidth<768);}window.addEventListener("resize",h);return function(){window.removeEventListener("resize",h);};},[]);return mob; }
-
 function slotToHours(slot){ return slot*0.5; }
 
 function getPHTDayKey(dateMs){
-  var PHT_OFFSET_MS=8*3600000;
-  var phtMs=dateMs+PHT_OFFSET_MS;
-  var dow=new Date(phtMs).getUTCDay();
-  return DAY_KEYS[dow];
+  var PHT_OFFSET_MS=8*3600000; var phtMs=dateMs+PHT_OFFSET_MS; var dow=new Date(phtMs).getUTCDay(); return DAY_KEYS[dow];
 }
-
 function getPHTMidnightUTC(dateMs){
-  var PHT_OFFSET_MS=8*3600000;
-  var phtMs=dateMs+PHT_OFFSET_MS;
-  var d=new Date(phtMs);
-  var phtMidnight=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate());
-  return phtMidnight-PHT_OFFSET_MS;
+  var PHT_OFFSET_MS=8*3600000; var phtMs=dateMs+PHT_OFFSET_MS; var d=new Date(phtMs);
+  var phtMidnight=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()); return phtMidnight-PHT_OFFSET_MS;
 }
-
 function calcBusinessHoursElapsed(startMs,endMs,schedule){
   if(!schedule)return(endMs-startMs)/3600000;
   if(schedule.perDay&&schedule.daySchedule){
-    var total=0;
-    var cur=startMs;
-    var safety=0;
+    var total=0; var cur=startMs; var safety=0;
     while(cur<endMs&&safety<400){
       safety++;
-      var dayKey=getPHTDayKey(cur);
-      var ds=schedule.daySchedule[dayKey];
-      var dayMidnightUTC=getPHTMidnightUTC(cur);
-      if(ds&&ds.active){
-        var dayStartUTC=dayMidnightUTC+slotToHours(ds.start)*3600000;
-        var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;
-        var os=Math.max(cur,dayStartUTC);
-        var oe=Math.min(endMs,dayEndUTC);
-        if(oe>os)total+=(oe-os)/3600000;
-      }
-      var nextMidnightUTC=dayMidnightUTC+86400000;
-      cur=nextMidnightUTC;
+      var dayKey=getPHTDayKey(cur); var ds=schedule.daySchedule[dayKey]; var dayMidnightUTC=getPHTMidnightUTC(cur);
+      if(ds&&ds.active){var dayStartUTC=dayMidnightUTC+slotToHours(ds.start)*3600000;var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;var os=Math.max(cur,dayStartUTC);var oe=Math.min(endMs,dayEndUTC);if(oe>os)total+=(oe-os)/3600000;}
+      cur=dayMidnightUTC+86400000;
     }
     return total;
   }
@@ -96,17 +62,13 @@ function calcBusinessHoursElapsed(startMs,endMs,schedule){
   }
   return total2;
 }
-
 function isCurrentlyOnShift(schedule){
   if(!schedule)return true;
   if(schedule.perDay&&schedule.daySchedule){
-    var nowMs=Date.now();
-    var dayKey=getPHTDayKey(nowMs);
-    var ds=schedule.daySchedule[dayKey];
+    var nowMs=Date.now(); var dayKey=getPHTDayKey(nowMs); var ds=schedule.daySchedule[dayKey];
     if(!ds||!ds.active)return false;
     var dayMidnightUTC=getPHTMidnightUTC(nowMs);
-    var dayStartUTC=dayMidnightUTC+slotToHours(ds.start)*3600000;
-    var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;
+    var dayStartUTC=dayMidnightUTC+slotToHours(ds.start)*3600000; var dayEndUTC=dayMidnightUTC+slotToHours(ds.end)*3600000;
     return nowMs>=dayStartUTC&&nowMs<dayEndUTC;
   }
   if(!schedule.days||!schedule.days.length)return true;
@@ -129,24 +91,29 @@ function getStatusSla(ticket,slaConfig,schedules){
   var pct=Math.min(100,Math.round(spent/allowed*100));var breached=spent>allowed;var remaining=Math.max(0,allowed-spent);var onShift=isCurrentlyOnShift(schedule);
   return{hoursAllowed:allowed,hoursSpent:parseFloat(spent.toFixed(2)),pct,breached,remaining:parseFloat(remaining.toFixed(2)),enteredAt:entry,onShift,hasSchedule:!!schedule,schedule};
 }
-
-function sumLoggedMinutes(sessions, ticketIds){
-  return sessions
-    .filter(function(s){ return ticketIds?ticketIds.includes(s.ticket_id):true; })
-    .reduce(function(sum,s){ return sum+(s.duration_minutes||0); },0);
+function sumLoggedMinutes(sessions,ticketIds){
+  return sessions.filter(function(s){return ticketIds?ticketIds.includes(s.ticket_id):true;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
 }
 
-// ── Updated callSendEmail — now supports CC ───────────────────────────────────
 async function callSendEmail(opts){
   try{
     var body={to:opts.to,subject:opts.subject||"(no subject)",text:opts.body||opts.message||""};
-    // Include CC if provided and non-empty
     if(opts.cc&&opts.cc.trim()){body.cc=opts.cc;}
     var res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     var data=await res.json();
     if(res.ok&&data.id)return{success:true,provider:"Gmail",id:data.id};
     throw new Error(data.error||("Status "+res.status));
   }catch(e){return{success:false,error:e.message,provider:"Gmail"};}
+}
+
+// ── ADMIN NOTIFICATION HELPER ─────────────────────────────────────────────────
+// Called automatically for: new signup, new ticket, status change, closed without timer
+async function notifyAdmin(subject,body){
+  try{
+    await callSendEmail({to:"randy@omnisecurityinc.com",subject:subject,body:body});
+  }catch(e){
+    console.error("notifyAdmin failed:",e);
+  }
 }
 
 async function dbGetChats(ticketId){
@@ -205,14 +172,12 @@ function Stat(p){
     </div>}
   </Card>;
 }
-
 function Modal(p){
   var isMob=useIsMobile();
   var mobileStyle=isMob?{borderRadius:"16px 16px 0 0",width:"100%",maxWidth:"100%",maxHeight:"92vh",position:"fixed",bottom:0,left:0,right:0}:{borderRadius:16,width:"100%",maxWidth:p.wide?820:560,maxHeight:"90vh"};
   var containerStyle=isMob?{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:9999,display:"flex",alignItems:"flex-end",justifyContent:"center"}:{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16};
   return<div style={containerStyle}><div style={{background:"#fff",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.25)",...mobileStyle}}><div style={{padding:"16px 20px",borderBottom:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}><div style={{fontSize:14,fontWeight:700,color:"#1e293b",flex:1,paddingRight:8}}>{p.title}</div><button onClick={p.onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8",lineHeight:1,padding:4,flexShrink:0}}>✕</button></div><div style={{padding:"16px 20px",overflowY:"auto",flex:1,WebkitOverflowScrolling:"touch"}}>{p.children}</div></div></div>;
 }
-
 function FInput(p){var label=p.label;var rest=Object.assign({},p);delete rest.label;return<div style={{marginBottom:14}}>{label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>{label}</label>}<input style={{width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}} {...rest}/></div>;}
 function FSelect(p){var label=p.label;var options=p.options||[];var rest=Object.assign({},p);delete rest.label;delete rest.options;return<div style={{marginBottom:14}}>{label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>{label}</label>}<select style={{width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}} {...rest}>{options.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>;}
 function FTextarea(p){var label=p.label;var rest=Object.assign({},p);delete rest.label;return<div style={{marginBottom:14}}>{label&&<label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>{label}</label>}<textarea rows={4} style={{width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",resize:"vertical",boxSizing:"border-box"}} {...rest}/></div>;}
@@ -221,202 +186,94 @@ function FocusInput(p){var[focused,setFocused]=useState(false);var extraPad=p.ex
 
 // ── Time Session Timer Component ──────────────────────────────────────────────
 function TicketTimer(p){
-  var ticketId=p.ticketId;
-  var curUser=p.curUser;
-  var users=p.users;
-
-  var[sessions,setSessions]=useState([]);
-  var[activeSession,setActiveSession]=useState(null);
-  var[elapsed,setElapsed]=useState(0);
-  var[note,setNote]=useState("");
-  var[loading,setLoading]=useState(true);
+  var ticketId=p.ticketId; var curUser=p.curUser; var users=p.users;
+  var[sessions,setSessions]=useState([]); var[activeSession,setActiveSession]=useState(null);
+  var[elapsed,setElapsed]=useState(0); var[note,setNote]=useState(""); var[loading,setLoading]=useState(true);
   var intervalRef=useRef(null);
-
   useEffect(function(){
     dbGetTimeSessions(ticketId).then(function(data){
       setSessions(data);
       var open=data.find(function(s){return s.user_id===curUser.id&&!s.ended_at;});
-      if(open){
-        setActiveSession({id:open.id,started_at:open.started_at});
-        setElapsed(Math.floor((Date.now()-new Date(open.started_at))/1000));
-      }
+      if(open){setActiveSession({id:open.id,started_at:open.started_at});setElapsed(Math.floor((Date.now()-new Date(open.started_at))/1000));}
       setLoading(false);
     });
   },[ticketId]);
-
   useEffect(function(){
-    if(activeSession){
-      intervalRef.current=setInterval(function(){
-        setElapsed(function(e){return e+1;});
-      },1000);
-    } else {
-      clearInterval(intervalRef.current);
-    }
+    if(activeSession){intervalRef.current=setInterval(function(){setElapsed(function(e){return e+1;});},1000);}
+    else{clearInterval(intervalRef.current);}
     return function(){clearInterval(intervalRef.current);};
   },[activeSession]);
-
   async function startTimer(){
     var now=new Date().toISOString();
     var session={id:uid(),ticket_id:ticketId,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:note.trim()||null,created_at:now};
     await dbSaveTimeSession(session);
     setSessions(function(prev){return prev.concat([session]);});
-    setActiveSession({id:session.id,started_at:now});
-    setElapsed(0);
+    setActiveSession({id:session.id,started_at:now}); setElapsed(0);
   }
-
   async function stopTimer(){
     if(!activeSession)return;
     var now=new Date().toISOString();
     var mins=parseFloat(((Date.now()-new Date(activeSession.started_at))/60000).toFixed(4));
-    var updated=sessions.find(function(s){return s.id===activeSession.id;});
-    if(!updated)return;
+    var updated=sessions.find(function(s){return s.id===activeSession.id;}); if(!updated)return;
     var finished=Object.assign({},updated,{ended_at:now,duration_minutes:mins,note:note.trim()||updated.note||null});
     await dbSaveTimeSession(finished);
     setSessions(function(prev){return prev.map(function(s){return s.id===finished.id?finished:s;});});
-    setActiveSession(null);
-    setElapsed(0);
-    setNote("");
+    setActiveSession(null); setElapsed(0); setNote("");
   }
-
   function fu(id){return users.find(function(u){return u.id===id;});}
-
   var completedSessions=sessions.filter(function(s){return s.ended_at;});
   var totalMins=completedSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
-
   if(loading)return<div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>Loading timer…</div>;
-
   return<div>
     <div style={{background:activeSession?"linear-gradient(135deg,#064e3b,#065f46)":"linear-gradient(135deg,#1e1b4b,#312e81)",borderRadius:16,padding:24,textAlign:"center",marginBottom:16}}>
-      <div style={{fontSize:11,fontWeight:700,color:activeSession?"#6ee7b7":"#a5b4fc",textTransform:"uppercase",letterSpacing:2,marginBottom:8}}>
-        {activeSession?"⏱ Timer Running":"⏸ Timer Stopped"}
-      </div>
-      <div style={{fontSize:48,fontWeight:800,color:"#fff",fontVariantNumeric:"tabular-nums",letterSpacing:2,marginBottom:16,fontFamily:"'Courier New',monospace"}}>
-        {fmtElapsed(elapsed)}
-      </div>
-      {!activeSession&&(
-        <div style={{marginBottom:12}}>
-          <input value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What are you working on? (optional)" style={{width:"100%",padding:"10px 14px",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,fontSize:13,outline:"none",background:"rgba(255,255,255,.1)",color:"#fff",boxSizing:"border-box"}}/>
-        </div>
-      )}
-      {activeSession?(
-        <button onClick={stopTimer} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>
-          ⏹ Stop &amp; Save
-        </button>
-      ):(
-        <button onClick={startTimer} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>
-          ▶ Start Timer
-        </button>
-      )}
+      <div style={{fontSize:11,fontWeight:700,color:activeSession?"#6ee7b7":"#a5b4fc",textTransform:"uppercase",letterSpacing:2,marginBottom:8}}>{activeSession?"⏱ Timer Running":"⏸ Timer Stopped"}</div>
+      <div style={{fontSize:48,fontWeight:800,color:"#fff",fontVariantNumeric:"tabular-nums",letterSpacing:2,marginBottom:16,fontFamily:"'Courier New',monospace"}}>{fmtElapsed(elapsed)}</div>
+      {!activeSession&&<div style={{marginBottom:12}}><input value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What are you working on? (optional)" style={{width:"100%",padding:"10px 14px",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,fontSize:13,outline:"none",background:"rgba(255,255,255,.1)",color:"#fff",boxSizing:"border-box"}}/></div>}
+      {activeSession?<button onClick={stopTimer} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>⏹ Stop &amp; Save</button>:<button onClick={startTimer} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>▶ Start Timer</button>}
     </div>
-
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-      <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:12,textAlign:"center"}}>
-        <div style={{fontSize:22,fontWeight:800,color:"#059669"}}>{fmtDuration(totalMins)}</div>
-        <div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginTop:2}}>Total IT Hours</div>
-      </div>
-      <div style={{background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:10,padding:12,textAlign:"center"}}>
-        <div style={{fontSize:22,fontWeight:800,color:"#6366f1"}}>{completedSessions.length}</div>
-        <div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginTop:2}}>Sessions Logged</div>
-      </div>
+      <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:22,fontWeight:800,color:"#059669"}}>{fmtDuration(totalMins)}</div><div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginTop:2}}>Total IT Hours</div></div>
+      <div style={{background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:22,fontWeight:800,color:"#6366f1"}}>{completedSessions.length}</div><div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginTop:2}}>Sessions Logged</div></div>
     </div>
-
     {completedSessions.length>0&&<div>
       <div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:10,textTransform:"uppercase",letterSpacing:0.5}}>📋 Session Log</div>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {completedSessions.slice().reverse().map(function(s){
-          var worker=fu(s.user_id);
-          return<div key={s.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                {worker&&<Avatar name={worker.name} id={worker.id} size={18}/>}
-                <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{worker?worker.name:"Unknown"}</span>
-                <Badge label={fmtDuration(s.duration_minutes)} color="#6366f1"/>
-              </div>
-              <div style={{fontSize:10,color:"#94a3b8"}}>{fdt(s.started_at)} → {fdt(s.ended_at)}</div>
-              {s.note&&<div style={{fontSize:11,color:"#475569",marginTop:4,fontStyle:"italic"}}>"{s.note}"</div>}
-            </div>
-          </div>;
-        })}
+        {completedSessions.slice().reverse().map(function(s){var worker=fu(s.user_id);return<div key={s.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>{worker&&<Avatar name={worker.name} id={worker.id} size={18}/>}<span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{worker?worker.name:"Unknown"}</span><Badge label={fmtDuration(s.duration_minutes)} color="#6366f1"/></div>
+            <div style={{fontSize:10,color:"#94a3b8"}}>{fdt(s.started_at)} → {fdt(s.ended_at)}</div>
+            {s.note&&<div style={{fontSize:11,color:"#475569",marginTop:4,fontStyle:"italic"}}>"{s.note}"</div>}
+          </div>
+        </div>;})}
       </div>
     </div>}
-
-    {completedSessions.length===0&&!activeSession&&(
-      <div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>
-        <div style={{fontSize:28,marginBottom:6}}>⏱</div>
-        No time logged yet. Start the timer when you begin working.
-      </div>
-    )}
+    {completedSessions.length===0&&!activeSession&&<div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}><div style={{fontSize:28,marginBottom:6}}>⏱</div>No time logged yet. Start the timer when you begin working.</div>}
   </div>;
 }
 
 // ── Schedule Editor ───────────────────────────────────────────────────────────
-var SLOT_COUNT = 49;
-function fmtSlot(slot){
-  if(slot===48)return"12:00 AM (Midnight)";
-  var totalMins=slot*30;
-  var h=Math.floor(totalMins/60);
-  var m=totalMins%60;
-  var ampm=h<12?"AM":"PM";
-  var h12=h===0?12:h>12?h-12:h;
-  return h12+":"+(m===0?"00":"30")+" "+ampm;
-}
+var SLOT_COUNT=49;
+function fmtSlot(slot){if(slot===48)return"12:00 AM (Midnight)";var totalMins=slot*30;var h=Math.floor(totalMins/60);var m=totalMins%60;var ampm=h<12?"AM":"PM";var h12=h===0?12:h>12?h-12:h;return h12+":"+(m===0?"00":"30")+" "+ampm;}
 var ALL_SLOTS=Array.from({length:SLOT_COUNT},function(_,i){return{value:i,label:fmtSlot(i)};});
-
-function defaultDaySchedule(){
-  return{mon:{active:true,start:18,end:36},tue:{active:true,start:18,end:36},wed:{active:true,start:18,end:36},thu:{active:true,start:18,end:36},fri:{active:true,start:18,end:36},sat:{active:false,start:18,end:36},sun:{active:false,start:18,end:36}};
-}
+function defaultDaySchedule(){return{mon:{active:true,start:18,end:36},tue:{active:true,start:18,end:36},wed:{active:true,start:18,end:36},thu:{active:true,start:18,end:36},fri:{active:true,start:18,end:36},sat:{active:false,start:18,end:36},sun:{active:false,start:18,end:36}};}
 var DAY_KEYS=["sun","mon","tue","wed","thu","fri","sat"];
 var DAY_LABELS_FULL=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-
-function migrateSchedule(sch){
-  if(!sch)return null;
-  if(sch.perDay)return sch;
-  var pd=defaultDaySchedule();
-  var startSlot=Math.round((sch.startHour||9)*2);
-  var endSlot=Math.round((sch.endHour||17)*2);
-  (sch.days||[]).forEach(function(dow){
-    var key=DAY_KEYS[dow];
-    if(key){pd[key]={active:true,start:startSlot,end:endSlot};}
-  });
-  return{perDay:true,daySchedule:pd};
-}
+function migrateSchedule(sch){if(!sch)return null;if(sch.perDay)return sch;var pd=defaultDaySchedule();var startSlot=Math.round((sch.startHour||9)*2);var endSlot=Math.round((sch.endHour||17)*2);(sch.days||[]).forEach(function(dow){var key=DAY_KEYS[dow];if(key){pd[key]={active:true,start:startSlot,end:endSlot};}});return{perDay:true,daySchedule:pd};}
 
 function ScheduleEditor(p){
   var userId=p.userId;var schedules=p.schedules;var onChange=p.onChange;
-  var existing=schedules[userId]||null;
-  var migrated=migrateSchedule(existing);
-
+  var existing=schedules[userId]||null; var migrated=migrateSchedule(existing);
   var[enabled,setEnabled]=useState(!!existing);
   var[daySchedule,setDaySchedule]=useState(migrated?migrated.daySchedule:defaultDaySchedule());
-
-  function emit(en,ds){
-    onChange(userId,en?{perDay:true,daySchedule:ds}:null);
-  }
+  function emit(en,ds){onChange(userId,en?{perDay:true,daySchedule:ds}:null);}
   function handleEnable(v){setEnabled(v);emit(v,daySchedule);}
-  function toggleDay(key){
-    var nd=Object.assign({},daySchedule);
-    nd[key]=Object.assign({},nd[key],{active:!nd[key].active});
-    setDaySchedule(nd);emit(enabled,nd);
-  }
-  function setDayStart(key,val){
-    var nd=Object.assign({},daySchedule);
-    nd[key]=Object.assign({},nd[key],{start:val,end:Math.max(nd[key].end,val+1)});
-    setDaySchedule(nd);emit(enabled,nd);
-  }
-  function setDayEnd(key,val){
-    var nd=Object.assign({},daySchedule);
-    nd[key]=Object.assign({},nd[key],{end:val});
-    setDaySchedule(nd);emit(enabled,nd);
-  }
-
+  function toggleDay(key){var nd=Object.assign({},daySchedule);nd[key]=Object.assign({},nd[key],{active:!nd[key].active});setDaySchedule(nd);emit(enabled,nd);}
+  function setDayStart(key,val){var nd=Object.assign({},daySchedule);nd[key]=Object.assign({},nd[key],{start:val,end:Math.max(nd[key].end,val+1)});setDaySchedule(nd);emit(enabled,nd);}
+  function setDayEnd(key,val){var nd=Object.assign({},daySchedule);nd[key]=Object.assign({},nd[key],{end:val});setDaySchedule(nd);emit(enabled,nd);}
   var selSt={padding:"6px 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11,outline:"none",background:"#fff",width:"100%",boxSizing:"border-box"};
-
   return<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:14,marginBottom:14}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-      <div>
-        <div style={{fontWeight:700,color:"#0369a1",fontSize:13}}>🗓 Work Schedule</div>
-        <div style={{fontSize:10,color:"#0369a1",marginTop:1}}>🇵🇭 All times in Philippine Time (PHT · UTC+8)</div>
-      </div>
+      <div><div style={{fontWeight:700,color:"#0369a1",fontSize:13}}>🗓 Work Schedule</div><div style={{fontSize:10,color:"#0369a1",marginTop:1}}>🇵🇭 All times in Philippine Time (PHT · UTC+8)</div></div>
       <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:600,color:enabled?"#0369a1":"#64748b"}}>
         <input type="checkbox" checked={enabled} onChange={function(e){handleEnable(e.target.checked);}} style={{width:16,height:16,accentColor:"#0369a1"}}/>
         {enabled?"Enabled":"Off (24/7)"}
@@ -433,31 +290,17 @@ function ScheduleEditor(p){
                 <span style={{fontSize:12,fontWeight:ds.active?700:500,color:ds.active?"#0369a1":"#94a3b8"}}>{DAY_LABELS_FULL[i]}</span>
               </label>
               {ds.active&&<div style={{display:"flex",alignItems:"center",gap:6,flex:1,flexWrap:"wrap"}}>
-                <div style={{flex:1,minWidth:110}}>
-                  <div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>Start (PHT)</div>
-                  <select value={ds.start} onChange={function(e){setDayStart(key,parseInt(e.target.value));}} style={selSt}>
-                    {ALL_SLOTS.slice(0,48).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}
-                  </select>
-                </div>
+                <div style={{flex:1,minWidth:110}}><div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>Start (PHT)</div><select value={ds.start} onChange={function(e){setDayStart(key,parseInt(e.target.value));}} style={selSt}>{ALL_SLOTS.slice(0,48).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
                 <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,paddingTop:14}}>→</div>
-                <div style={{flex:1,minWidth:110}}>
-                  <div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>End (PHT)</div>
-                  <select value={ds.end} onChange={function(e){setDayEnd(key,parseInt(e.target.value));}} style={selSt}>
-                    {ALL_SLOTS.filter(function(o){return o.value>ds.start;}).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}
-                  </select>
-                </div>
-                <div style={{fontSize:10,color:"#64748b",paddingTop:14,flexShrink:0}}>
-                  {(function(){var mins=(ds.end-ds.start)*30;var h=Math.floor(mins/60);var m=mins%60;return h+"h"+(m>0?" "+m+"m":"");})()}
-                </div>
+                <div style={{flex:1,minWidth:110}}><div style={{fontSize:9,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:2}}>End (PHT)</div><select value={ds.end} onChange={function(e){setDayEnd(key,parseInt(e.target.value));}} style={selSt}>{ALL_SLOTS.filter(function(o){return o.value>ds.start;}).map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select></div>
+                <div style={{fontSize:10,color:"#64748b",paddingTop:14,flexShrink:0}}>{(function(){var mins=(ds.end-ds.start)*30;var h=Math.floor(mins/60);var m=mins%60;return h+"h"+(m>0?" "+m+"m":"");})()}</div>
               </div>}
               {!ds.active&&<span style={{fontSize:11,color:"#94a3b8",fontStyle:"italic"}}>Day off</span>}
             </div>
           </div>;
         })}
       </div>
-      <div style={{marginTop:10,background:"#e0f2fe",borderRadius:6,padding:"6px 10px",fontSize:10,color:"#0369a1"}}>
-        💡 SLA timers will only count down during your scheduled hours in Philippine Time.
-      </div>
+      <div style={{marginTop:10,background:"#e0f2fe",borderRadius:6,padding:"6px 10px",fontSize:10,color:"#0369a1"}}>💡 SLA timers will only count down during your scheduled hours in Philippine Time.</div>
     </div>}
   </div>;
 }
@@ -544,7 +387,34 @@ function LoginPage(p){
   var strLabel=["","Too short","Weak","Good","Strong ✅"];var strColor=["","#ef4444","#f59e0b","#3b82f6","#10b981"];var str=pwStr(sigPass);
   async function doLogin(e){if(e&&e.preventDefault)e.preventDefault();setLoginErr("");if(!loginEmail.trim()||!loginPass.trim()){setLoginErr("Please enter your email and password.");return;}setLoading(true);var user=users.find(function(u){return u.email.toLowerCase()===loginEmail.toLowerCase().trim();});if(!user){setLoginErr("No account found with that email.");setLoading(false);return;}if(!user.active){setLoginErr("Your account is pending admin approval.");setLoading(false);return;}var pw=await dbGetPassword(user.id);if(loginPass!==pw){setLoginErr("Incorrect password.");setLoading(false);return;}try{if(rememberMe){localStorage.setItem("hd_savedCreds",JSON.stringify({email:loginEmail.trim(),pass:loginPass}));localStorage.setItem("hd_rememberMe","true");}else{localStorage.removeItem("hd_savedCreds");localStorage.setItem("hd_rememberMe","false");}}catch(ex){}setLoading(false);onLogin(user);}
   async function doForgot(e){e.preventDefault();if(!resetEmail.trim()){return;}setLoading(true);await new Promise(function(r){setTimeout(r,900);});setLoading(false);setView("sent");}
-  async function doSignup(e){e.preventDefault();setSigErr("");if(!sigName.trim()){setSigErr("Full name is required.");return;}if(!sigEmail.trim()){setSigErr("Email is required.");return;}if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sigEmail.trim())){setSigErr("Enter a valid email.");return;}if(users.find(function(u){return u.email.toLowerCase()===sigEmail.toLowerCase().trim();})){setSigErr("An account with this email already exists.");return;}if(sigPass.length<8){setSigErr("Password must be at least 8 characters.");return;}if(sigPass!==sigConf){setSigErr("Passwords do not match.");return;}setLoading(true);var nu={id:uid(),name:sigName.trim(),email:sigEmail.trim().toLowerCase(),role:"end_user",companyId:companies&&companies[0]?companies[0].id:"",phone:sigPhone.trim(),dept:sigDept.trim(),active:false,createdAt:new Date().toISOString(),lastLogin:null};await dbSaveUser(nu);await dbSetPassword(nu.id,sigPass);setUsers(function(prev){return prev.concat([nu]);});setLoading(false);setView("pending");}
+
+  // ── PATCH 1: Notify admin on new user self-signup ──────────────────────────
+  async function doSignup(e){
+    e.preventDefault();setSigErr("");
+    if(!sigName.trim()){setSigErr("Full name is required.");return;}
+    if(!sigEmail.trim()){setSigErr("Email is required.");return;}
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sigEmail.trim())){setSigErr("Enter a valid email.");return;}
+    if(users.find(function(u){return u.email.toLowerCase()===sigEmail.toLowerCase().trim();})){setSigErr("An account with this email already exists.");return;}
+    if(sigPass.length<8){setSigErr("Password must be at least 8 characters.");return;}
+    if(sigPass!==sigConf){setSigErr("Passwords do not match.");return;}
+    setLoading(true);
+    var nu={id:uid(),name:sigName.trim(),email:sigEmail.trim().toLowerCase(),role:"end_user",companyId:companies&&companies[0]?companies[0].id:"",phone:sigPhone.trim(),dept:sigDept.trim(),active:false,createdAt:new Date().toISOString(),lastLogin:null};
+    await dbSaveUser(nu);
+    await dbSetPassword(nu.id,sigPass);
+    setUsers(function(prev){return prev.concat([nu]);});
+    notifyAdmin(
+      "🆕 New User Signup — Pending Approval",
+      "A new user has registered on Hoptix and is awaiting your approval.\n\n" +
+      "Name: " + sigName.trim() + "\n" +
+      "Email: " + sigEmail.trim() + "\n" +
+      "Phone: " + (sigPhone.trim() || "—") + "\n" +
+      "Department: " + (sigDept.trim() || "—") + "\n" +
+      "Registered At: " + new Date().toLocaleString("en-US",{timeZone:"Asia/Manila"}) + " PHT\n\n" +
+      "Log in to the Hoptix admin panel → Users page to approve or reject this account."
+    );
+    setLoading(false);setView("pending");
+  }
+
   function PBtn(bp){return<button type={bp.type||"button"} onClick={bp.onClick} disabled={bp.disabled} style={{width:"100%",padding:"14px",background:bp.disabled?"#7dd3fc":"linear-gradient(135deg,#0369a1,#0ea5e9)",color:"#fff",border:"none",borderRadius:10,fontSize:16,fontWeight:700,cursor:bp.disabled?"not-allowed":"pointer",marginTop:4}}>{bp.children}</button>;}
   function BackBtn(bp){return<button type="button" onClick={bp.onClick} style={{background:"none",border:"none",color:"#0369a1",fontSize:14,fontWeight:600,cursor:"pointer",padding:"0 0 16px 0",display:"flex",alignItems:"center",gap:4}}>← Back to Sign In</button>;}
   function ErrBox(ep){return ep.msg?<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#dc2626",fontSize:13}}>⚠️ {ep.msg}</div>:null;}
@@ -601,29 +471,17 @@ function ProfileModal(p){
   var[showC,setShowC]=useState(false);var[showN,setShowN]=useState(false);var[showK,setShowK]=useState(false);
   var[pwErr,setPwErr]=useState("");var[pwOk,setPwOk]=useState("");var[saving,setSaving]=useState(false);
   var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
-
-  function handleScheduleChange(userId,sch){
-    setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});
-    dbSaveSchedule(userId,sch);
-    showToast("✅ Schedule saved!");
-  }
-
+  function handleScheduleChange(userId,sch){setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});dbSaveSchedule(userId,sch);showToast("✅ Schedule saved!");}
   async function saveProfile(){if(!name.trim()){showToast("Name cannot be empty","error");return;}setSaving(true);var updated=Object.assign({},curUser,{name:name.trim(),phone:phone.trim(),dept:dept.trim()});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?updated:u;});});setCurUser(updated);addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile");showToast("✅ Profile updated!");setSaving(false);onClose();}
   async function changePw(){setPwErr("");setPwOk("");if(!curPw){setPwErr("Enter your current password.");return;}var existingPw=await dbGetPassword(curUser.id);if(curPw!==existingPw){setPwErr("Current password is incorrect.");return;}if(newPw.length<8){setPwErr("Min 8 characters.");return;}if(newPw!==confPw){setPwErr("Passwords do not match.");return;}if(newPw===curPw){setPwErr("Must differ from current.");return;}setSaving(true);await dbSetPassword(curUser.id,newPw);addLog("PASSWORD_CHANGED",curUser.id,curUser.name+" changed password");setSaving(false);setCurPw("");setNewPw("");setConfPw("");setPwOk("✅ Password changed!");showToast("Password updated!");onClose();}
-
-  var tabs=["profile","password"];
-  if(isTechUser)tabs.push("schedule");
+  var tabs=["profile","password"];if(isTechUser)tabs.push("schedule");
   var tabIcons={profile:"👤 Profile",password:"🔑 Password",schedule:"🗓 Schedule"};
-
   return<Modal title="My Profile" onClose={onClose} wide={isTechUser&&tab==="schedule"}>
     <div style={{display:"flex",alignItems:"center",gap:14,padding:"0 0 16px",borderBottom:"1px solid #e2e8f0",marginBottom:16}}>
       <div style={{width:56,height:56,borderRadius:"50%",background:avCol(curUser.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:20,fontWeight:800}}>{inits(curUser.name)}</div>
       <div><div style={{fontWeight:700,fontSize:15}}>{curUser.name}</div><div style={{fontSize:12,color:"#64748b"}}>{curUser.email}</div><div style={{marginTop:4}}><Badge label={ROLE_META[curUser.role]?.label||curUser.role} color={ROLE_META[curUser.role]?.color||"#6366f1"}/></div></div>
     </div>
-    <div style={{display:"flex",gap:6,marginBottom:16}}>
-      {tabs.map(function(t){return<button key={t} onClick={function(){setTab(t);}} style={{flex:1,background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>{tabIcons[t]}</button>;})}
-    </div>
-
+    <div style={{display:"flex",gap:6,marginBottom:16}}>{tabs.map(function(t){return<button key={t} onClick={function(){setTab(t);}} style={{flex:1,background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>{tabIcons[t]}</button>;})}</div>
     {tab==="profile"&&<div>
       <FInput label="Full Name" value={name} onChange={function(e){setName(e.target.value);}}/>
       <div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Email</label><input value={curUser.email} disabled style={Object.assign({},inp,{background:"#f1f5f9",color:"#94a3b8"})}/></div>
@@ -631,7 +489,6 @@ function ProfileModal(p){
       <FInput label="Department" value={dept} onChange={function(e){setDept(e.target.value);}}/>
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={saveProfile} disabled={saving}>{saving?"⏳ Saving…":"💾 Save"}</Btn></div>
     </div>}
-
     {tab==="password"&&<div>
       <div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Current Password</label><input type={showC?"text":"password"} value={curPw} onChange={function(e){setCurPw(e.target.value);}} placeholder="••••••••" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowC(!showC);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showC?"🙈":"👁️"}</button></div>
       <div style={{position:"relative",marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password</label><input type={showN?"text":"password"} value={newPw} onChange={function(e){setNewPw(e.target.value);}} placeholder="Min 8 characters" style={Object.assign({},inp,{paddingRight:44})}/><button type="button" onClick={function(){setShowN(!showN);}} style={{position:"absolute",right:12,top:34,background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#94a3b8"}}>{showN?"🙈":"👁️"}</button></div>
@@ -640,17 +497,12 @@ function ProfileModal(p){
       {pwOk&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#166534",fontSize:13}}>{pwOk}</div>}
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={changePw} disabled={saving}>{saving?"⏳ Saving…":"🔑 Change"}</Btn></div>
     </div>}
-
     {tab==="schedule"&&isTechUser&&<div>
-      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>
-        ⚠️ Your work schedule determines when SLA timers count against your tickets. Set it accurately so your SLA clock only ticks during your actual working hours.
-      </div>
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⚠️ Your work schedule determines when SLA timers count against your tickets.</div>
       <ScheduleEditor userId={curUser.id} schedules={schedules} onChange={handleScheduleChange}/>
     </div>}
   </Modal>;
-}
-
-// ── Root App ──────────────────────────────────────────────────────────────────
+}// ── Root App ──────────────────────────────────────────────────────────────────
 export default function App(){
   var[users,setUsers]=useState([]);var[companies,setCompanies]=useState([]);var[clients,setClients]=useState([]);
   var[tickets,setTicketsR]=useState([]);var[ticketTypes,setTTR]=useState([]);
@@ -676,8 +528,7 @@ export default function App(){
   },[]);
 
   var refreshTimeSessions=useCallback(async function(){
-    var ts=await dbGetAllTimeSessions();
-    setAllTimeSessions(ts);
+    var ts=await dbGetAllTimeSessions();setAllTimeSessions(ts);
   },[]);
 
   useEffect(function(){
@@ -755,7 +606,7 @@ export default function App(){
         <div style={{flex:1,overflowY:"auto",padding:isMobile?"12px":"24px",paddingBottom:isMobile?"80px":"24px",WebkitOverflowScrolling:"touch"}}>
           {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
           {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile}/>}
-          {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage}/>}
+          {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage} allTimeSessions={allTimeSessions}/>}
           {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
           {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules} allTimeSessions={allTimeSessions}/>}
           {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
@@ -770,7 +621,7 @@ export default function App(){
           <button onClick={function(){setSidebarOpen(true);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:20}}>☰</span><span style={{fontSize:9,fontWeight:500,color:"#94a3b8"}}>More</span></button>
         </div>}
       </div>
-      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}} refreshTimeSessions={refreshTimeSessions}/>}
+      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}} refreshTimeSessions={refreshTimeSessions} allTimeSessions={allTimeSessions}/>}
       {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} schedules={schedules} setSchedules={setSchedulesR} dbSaveSchedule={dbSaveSchedule} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
@@ -784,9 +635,7 @@ function PageDashboard(p){
   var techs=users.filter(function(u){return["it_technician","it_manager"].includes(u.role);});
   var byType=ticketTypes.map(function(tt,i){return{name:tt.name,value:tickets.filter(function(t){return t.typeId===tt.id;}).length,fill:PAL[i%PAL.length]};}).filter(function(x){return x.value>0;});
   var totalLoggedMins=allTimeSessions.filter(function(s){return s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
-
   return<div>
-    {/* Stat cards */}
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:16}}>
       <Stat label="Total" value={tickets.length} icon="🎫" color="#6366f1" help="All active (non-deleted) tickets in the system."/>
       <Stat label="Open" value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b" help="Submitted but not yet assigned or started. Needs immediate attention."/>
@@ -795,44 +644,20 @@ function PageDashboard(p){
       <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981" help="Fully resolved and closed tickets. Includes all historical records."/>
       <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Real work time logged by IT staff using the Start/Stop timer inside each ticket. Not wall-clock time."/>
     </div>
-
-    {/* SLA Breach — always visible regardless of count */}
     <div style={{background:breaches.length>0?"#fef2f2":"#f0fdf4",border:"2px solid "+(breaches.length>0?"#ef4444":"#bbf7d0"),borderRadius:12,padding:14,marginBottom:16}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:breaches.length>0?12:0}}>
         <span style={{fontSize:22}}>{breaches.length>0?"🚨":"✅"}</span>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",fontSize:14}}>SLA Breach Alerts</div>
-          <div style={{fontSize:11,color:breaches.length>0?"#ef4444":"#16a34a",marginTop:2}}>
-            {breaches.length===0
-              ?"All active tickets are within their SLA targets — great work!"
-              :breaches.length+" ticket"+(breaches.length!==1?"s are":" is")+" past the SLA threshold"}
-          </div>
-        </div>
-        <div style={{textAlign:"center",background:breaches.length>0?"#fecaca":"#bbf7d0",borderRadius:10,padding:"6px 14px",flexShrink:0}}>
-          <div style={{fontSize:26,fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",lineHeight:1}}>{breaches.length}</div>
-          <div style={{fontSize:9,color:breaches.length>0?"#dc2626":"#166534",textTransform:"uppercase",fontWeight:700}}>Breached</div>
-        </div>
+        <div style={{flex:1}}><div style={{fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",fontSize:14}}>SLA Breach Alerts</div><div style={{fontSize:11,color:breaches.length>0?"#ef4444":"#16a34a",marginTop:2}}>{breaches.length===0?"All active tickets are within their SLA targets — great work!":breaches.length+" ticket"+(breaches.length!==1?"s are":" is")+" past the SLA threshold"}</div></div>
+        <div style={{textAlign:"center",background:breaches.length>0?"#fecaca":"#bbf7d0",borderRadius:10,padding:"6px 14px",flexShrink:0}}><div style={{fontSize:26,fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",lineHeight:1}}>{breaches.length}</div><div style={{fontSize:9,color:breaches.length>0?"#dc2626":"#166634",textTransform:"uppercase",fontWeight:700}}>Breached</div></div>
       </div>
       {breaches.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {breaches.slice(0,5).map(function(t){
-          var pri=PRI_META[t.priority]||PRI_META.medium;
-          var asgn=users.find(function(u){return u.id===t.assignedTo;});
-          return<div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fecaca",gap:8}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:600,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-              <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}>
-                <Badge label={pri.label} color={pri.color} bg={pri.bg}/>
-                <Badge label={t.status} color={STATUS_META[t.status]?.color||"#6366f1"}/>
-                {asgn&&<span style={{fontSize:10,color:"#64748b"}}>👤 {asgn.name}</span>}
-              </div>
-            </div>
-            <Btn size="sm" variant="danger" onClick={function(){setSelTicket(t.id);}}>View →</Btn>
-          </div>;
-        })}
+        {breaches.slice(0,5).map(function(t){var pri=PRI_META[t.priority]||PRI_META.medium;var asgn=users.find(function(u){return u.id===t.assignedTo;});return<div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fecaca",gap:8}}>
+          <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/><Badge label={t.status} color={STATUS_META[t.status]?.color||"#6366f1"}/>{asgn&&<span style={{fontSize:10,color:"#64748b"}}>👤 {asgn.name}</span>}</div></div>
+          <Btn size="sm" variant="danger" onClick={function(){setSelTicket(t.id);}}>View →</Btn>
+        </div>;})}
         {breaches.length>5&&<div style={{fontSize:11,color:"#ef4444",textAlign:"center",fontWeight:600,padding:"4px 0"}}>+{breaches.length-5} more — check the Tickets page</div>}
       </div>}
     </div>
-    {/* Charts row */}
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(280px,1fr))",gap:14,marginBottom:14}}>
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{byStatus.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>7-Day Trend</div><ResponsiveContainer width="100%" height={180}><AreaChart data={daily}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="lbl" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:9}}/><Area type="monotone" dataKey="created" stroke="#6366f1" fill="#eef2ff" name="Created"/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed"/></AreaChart></ResponsiveContainer></Card>
@@ -918,7 +743,26 @@ function PageNewTicket(p){
     var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:new Date(start).toISOString(),slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],conversations:[],closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
     setPreview({draft:draft,assign:assign});
   }
-  function handleSubmit(){setTickets(function(prev){return prev.concat([preview.draft]);});addLog("TICKET_CREATED",preview.draft.id,"Ticket \""+preview.draft.title+"\" created.");showToast("✅ Ticket submitted!");setPage("tickets");}
+  // ── PATCH 2: Notify admin on new ticket submitted ──────────────────────────
+  function handleSubmit(){
+    setTickets(function(prev){return prev.concat([preview.draft]);});
+    addLog("TICKET_CREATED",preview.draft.id,"Ticket \""+preview.draft.title+"\" created.");
+    var assignedUser=users.find(function(u){return u.id===preview.draft.assignedTo;});
+    var tt2=ticketTypes.find(function(t){return t.id===preview.draft.typeId;});
+    notifyAdmin(
+      "🎫 New Ticket Created — "+preview.draft.title,
+      "A new support ticket has been submitted.\n\n"+
+      "Ticket ID: #"+preview.draft.id.slice(-8)+"\n"+
+      "Title: "+preview.draft.title+"\n"+
+      "Type: "+(tt2?tt2.name:"—")+"\n"+
+      "Priority: "+(PRI_META[preview.draft.priority]?PRI_META[preview.draft.priority].label:preview.draft.priority)+"\n"+
+      "Submitted By: "+(users.find(function(u){return u.id===preview.draft.submittedBy;})?.name||"Unknown")+"\n"+
+      "Assigned To: "+(assignedUser?assignedUser.name:"Unassigned")+"\n"+
+      "AI Reason: "+(preview.draft.aiReason||"—")+"\n\n"+
+      "Description:\n"+preview.draft.description.slice(0,300)+(preview.draft.description.length>300?"…":"")
+    );
+    showToast("✅ Ticket submitted!");setPage("tickets");
+  }
   return<div style={{maxWidth:640,margin:"0 auto"}}>
     <Card>
       <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:16}}>📋 Submit New Ticket</div>
@@ -957,35 +801,28 @@ function TicketDetail(p){
   var companies=p.companies;var clients=p.clients;var curUser=p.curUser;var isAdmin=p.isAdmin;var isTech=p.isTech;
   var addLog=p.addLog;var showToast=p.showToast;var onClose=p.onClose;var statusSla=p.statusSla;var schedules=p.schedules||{};
   var refreshTimeSessions=p.refreshTimeSessions||function(){};
+  var allTimeSessions=p.allTimeSessions||[];
   var[tab,setTab]=useState("details");var[status,setStatus]=useState(ticket.status);var[asgn,setAsgn]=useState(ticket.assignedTo||"");var[note,setNote]=useState("");var[typeId,setTypeId]=useState(ticket.typeId||"");
-  // ── Email state — now includes CC ──────────────────────────────────────────
-  var[msgTo,setMsgTo]=useState("");
-  var[msgCC,setMsgCC]=useState("");
+  var[msgTo,setMsgTo]=useState("");var[msgCC,setMsgCC]=useState("");
   var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);
   var[msgBody,setMsgBody]=useState("");
   var emailTemplates=p.emailTemplates||[];
-  var clients2=p.clients||[];
   var assignedUser=users.find(function(u){return u.id===ticket.assignedTo;});
-
-  // Apply template — fills To, CC, Subject, and Body
   function applyTemplate(tid){
-    var tmpl=emailTemplates.find(function(t){return t.id===tid;});
-    if(!tmpl)return;
-    var cl2=clients2.find(function(c){return c.id===ticket.clientId;});
+    var tmpl=emailTemplates.find(function(t){return t.id===tid;});if(!tmpl)return;
+    var cl2=clients.find(function(c){return c.id===ticket.clientId;});
     var body=tmpl.body.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");
     var subj=tmpl.subject.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");
-    setMsgSubj(subj);
-    setMsgBody(body);
-    // Auto-fill CC if template has a defaultCC field
+    setMsgSubj(subj);setMsgBody(body);
     if(tmpl.defaultCC&&tmpl.defaultCC.trim())setMsgCC(tmpl.defaultCC.trim());
   }
-
   var[emailSending,setEmailSending]=useState(false);
   function fu(id){return users.find(function(x){return x.id===id;});}
   var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;});var co=companies.find(function(c){return c.id===ticket.companyId;});var client=clients.find(function(c){return c.id===ticket.clientId;});var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
   if(!ticket)return null;
   var sSla=getStatusSla(ticket,statusSla,schedules);
 
+  // ── PATCHES 3 & 4: Status change notification + closed without timer ────────
   function saveStatus(){
     var statusChanged=status!==ticket.status;
     var hist={status,assignedTo:asgn||null,timestamp:new Date().toISOString(),changedBy:curUser.id,note:note||(statusChanged?"Status changed to "+status:"Details updated")};
@@ -996,6 +833,35 @@ function TicketDetail(p){
     if(typeChanged)hist.note=(note||"")+(note?" | ":"")+"Type changed to: "+newTT.name;
     setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;var newHist=statusChanged?(t.statusHistory||[]).concat([hist]):(t.statusHistory||[]).concat([Object.assign({},hist,{_noSlaReset:true})]);return Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:new Date().toISOString(),slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",closedAt:status==="Closed"&&!t.closedAt?new Date().toISOString():t.closedAt,statusHistory:newHist});});});
     addLog("TICKET_STATUS",ticket.id,(statusChanged?"Status → "+status:"Details updated")+". Assigned: "+(fu(asgn)?.name||"nobody"));
+    if(statusChanged){
+      var assigneeName=fu(asgn)?.name||"Unassigned";
+      notifyAdmin(
+        "🔄 Ticket Status Updated — "+ticket.title,
+        "A ticket status has been changed.\n\n"+
+        "Ticket ID: #"+ticket.id.slice(-8)+"\n"+
+        "Title: "+ticket.title+"\n"+
+        "New Status: "+status+"\n"+
+        "Assigned To: "+assigneeName+"\n"+
+        "Changed By: "+curUser.name+"\n"+
+        (note?"Note: "+note+"\n":"")+"\n"+
+        "Log in to Hoptix to view this ticket."
+      );
+      if(status==="Closed"){
+        var hasTimerUsed=allTimeSessions.some(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
+        if(!hasTimerUsed){
+          notifyAdmin(
+            "⚠️ Ticket Closed Without Timer — "+ticket.title,
+            "A ticket was closed without any IT work time being logged.\n\n"+
+            "Ticket ID: #"+ticket.id.slice(-8)+"\n"+
+            "Title: "+ticket.title+"\n"+
+            "Closed By: "+curUser.name+"\n"+
+            "Assigned To: "+assigneeName+"\n\n"+
+            "Please ensure the technician logs their time before closing tickets.\n"+
+            "Log in to Hoptix to review and add time if needed."
+          );
+        }
+      }
+    }
     showToast("Ticket updated");setNote("");onClose();
   }
 
@@ -1003,7 +869,7 @@ function TicketDetail(p){
     if(!msgTo.trim()||!msgBody.trim()){showToast("Recipient and body required","error");return;}
     setEmailSending(true);
     var toList=msgTo.split(",").map(function(e){return e.trim();}).filter(Boolean);
-    var ccStr=msgCC.trim(); // raw CC string stored for display
+    var ccStr=msgCC.trim();
     var msgId=uid();
     var msg={id:msgId,from:curUser.id,fromEmail:curUser.email,to:[],toEmails:toList,cc:ccStr,subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false,status:"sending"};
     setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{conversations:(t.conversations||[]).concat([msg])}):t;});});
@@ -1019,10 +885,7 @@ function TicketDetail(p){
     if(allOk){setMsgTo("");setMsgCC("");setMsgBody("");}
   }
 
-  var TABS=["details","status","timer","email","chat","history"].filter(function(t){
-    if(t==="status"||t==="timer")return isTech;
-    return true;
-  });
+  var TABS=["details","status","timer","email","chat","history"].filter(function(t){if(t==="status"||t==="timer")return isTech;return true;});
   var tabLabels={details:"📋",status:"🔄",timer:"⏱️",email:"📧",chat:"💬",history:"📜"};
   var tabFullLabels={details:"Details",status:"Status",timer:"Timer",email:"Email",chat:"Chat",history:"History"};
 
@@ -1031,13 +894,11 @@ function TicketDetail(p){
       <span style={{fontSize:16}}>📬</span><div style={{flex:1}}><div style={{fontWeight:700,color:"#166534",fontSize:13}}>New reply received</div></div>
       <button onClick={function(){setTab("email");setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});}} style={{padding:"6px 12px",background:"#10b981",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0}}>View</button>
     </div>}
-
     <div style={{display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
       {TABS.map(function(t){return<button key={t} onClick={function(){if(t==="email"&&ticket.hasUnreadReply)setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});setTab(t);}} style={{background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0,position:"relative"}}>
         {tabLabels[t]} {tabFullLabels[t]}{t==="email"&&ticket.hasUnreadReply&&<span style={{position:"absolute",top:-3,right:-3,background:"#10b981",color:"#fff",borderRadius:"50%",width:14,height:14,fontSize:8,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>!</span>}
       </button>;})}
     </div>
-
     {tab==="details"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[["Type",tt?.name||"—"],["Priority",<Badge key="p" label={PRI_META[ticket.priority]?.label||ticket.priority} color={PRI_META[ticket.priority]?.color||"#6366f1"}/>],["Status",<Badge key="s" label={ticket.status} color={STATUS_META[ticket.status]?.color||"#6366f1"}/>],["Company",co?.name||"—"],["Submitted By",fu(ticket.submittedBy)?.name||"—"],["Assigned To",fu(ticket.assignedTo)?.name||"Unassigned"],["Created",fdt(ticket.createdAt)],["SLA Deadline",fdt(ticket.slaDeadline)]].map(function(pair){return<div key={pair[0]} style={{background:"#f8fafc",padding:10,borderRadius:8}}><div style={{color:"#64748b",fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>{pair[0]}</div><div style={{fontWeight:600,color:"#1e293b",fontSize:12}}>{pair[1]}</div></div>;})}
@@ -1051,7 +912,6 @@ function TicketDetail(p){
       </div>}
       {ticket.attachments&&ticket.attachments.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>📎 Attachments ({ticket.attachments.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>{ticket.attachments.map(function(a){var isImg=a.type.startsWith("image/");return<div key={a.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){var w=window.open();w.document.write(isImg?'<img src="'+a.dataUrl+'" style="max-width:100%;"/>':'<video src="'+a.dataUrl+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:80,objectFit:"cover",display:"block"}}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:28}}>▶️</span></div>}</div>;})}</div></div>}
     </div>}
-
     {tab==="status"&&isTech&&<div>
       <FSelect label="Update Status" value={status} onChange={function(e){setStatus(e.target.value);}} options={OPT_STATUSES}/>
       <FSelect label="Assign To" value={asgn} onChange={function(e){setAsgn(e.target.value);}} options={optTechs(users)}/>
@@ -1060,18 +920,14 @@ function TicketDetail(p){
       <FTextarea label="Note" value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What was done or why?" rows={3}/>
       <Btn onClick={saveStatus} style={{width:"100%"}}>💾 Save Changes</Btn>
     </div>}
-
     {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions}/>}
-
-    {/* ── EMAIL TAB — now with CC field ──────────────────────────────────── */}
     {tab==="email"&&<div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{fontWeight:700,color:"#1e293b"}}>📧 Send Email</div>
         {emailTemplates.length>0&&<select onChange={function(e){if(e.target.value)applyTemplate(e.target.value);e.target.value="";}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc"}}><option value="">Use template…</option>{emailTemplates.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>}
       </div>
       <FInput label="To" value={msgTo} onChange={function(e){setMsgTo(e.target.value);}} placeholder="email@example.com, another@example.com"/>
-      {/* ── CC FIELD ── */}
-      <FInput label="CC (optional)" value={msgCC} onChange={function(e){setMsgCC(e.target.value);}} placeholder="cc@example.com, another@example.com"/>
+      <FInput label="CC (optional)" value={msgCC} onChange={function(e){setMsgCC(e.target.value);}} placeholder="cc@example.com"/>
       <FInput label="Subject" value={msgSubj} onChange={function(e){setMsgSubj(e.target.value);}}/>
       <FTextarea label="Message" value={msgBody} onChange={function(e){setMsgBody(e.target.value);}} rows={4} placeholder="Type your message…"/>
       <button onClick={sendEmail} disabled={emailSending} style={{background:emailSending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,padding:"10px 18px",fontWeight:600,fontSize:14,cursor:emailSending?"not-allowed":"pointer",width:"100%",marginBottom:16}}>{emailSending?"⏳ Sending…":"📤 Send Email"}</button>
@@ -1084,164 +940,70 @@ function TicketDetail(p){
         <div style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>
       </div>;})}
     </div>}
-
     {tab==="chat"&&<TicketChat ticketId={ticket.id} curUser={curUser} users={users}/>}
     {tab==="history"&&<TicketHistory ticket={ticket} users={users} curUser={curUser}/>}
   </Modal>;
-}
-
-// ── Time Tracking ─────────────────────────────────────────────────────────────
+}// ── Time Tracking ─────────────────────────────────────────────────────────────
 function PageTimeTracking(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
-
-  var[search,setSearch]=useState("");
-  var[filterUser,setFilterUser]=useState("");
-  var[dateFrom,setDateFrom]=useState("");
-  var[dateTo,setDateTo]=useState("");
-  var[activeTab,setActiveTab]=useState("it_time");
-
-  var scope=useMemo(function(){
-    var base=tickets.filter(function(t){return !t.deleted;});
-    if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id||t.assignedTo===curUser.id;});
-    if(filterUser)return base.filter(function(t){return t.assignedTo===filterUser||t.submittedBy===filterUser;});
-    return base;
-  },[tickets,curUser,isAdmin,filterUser]);
-
-  var filtered=useMemo(function(){
-    var q=search.toLowerCase();
-    return scope.filter(function(t){
-      if(q&&!t.title.toLowerCase().includes(q)&&!t.id.includes(q))return false;
-      if(dateFrom){var from=new Date(dateFrom);from.setHours(0,0,0,0);if(new Date(t.createdAt)<from)return false;}
-      if(dateTo){var to=new Date(dateTo);to.setHours(23,59,59,999);if(new Date(t.createdAt)>to)return false;}
-      return true;
-    });
-  },[scope,search,dateFrom,dateTo]);
-
+  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[dateFrom,setDateFrom]=useState("");var[dateTo,setDateTo]=useState("");var[activeTab,setActiveTab]=useState("it_time");
+  var scope=useMemo(function(){var base=tickets.filter(function(t){return !t.deleted;});if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id||t.assignedTo===curUser.id;});if(filterUser)return base.filter(function(t){return t.assignedTo===filterUser||t.submittedBy===filterUser;});return base;},[tickets,curUser,isAdmin,filterUser]);
+  var filtered=useMemo(function(){var q=search.toLowerCase();return scope.filter(function(t){if(q&&!t.title.toLowerCase().includes(q)&&!t.id.includes(q))return false;if(dateFrom){var from=new Date(dateFrom);from.setHours(0,0,0,0);if(new Date(t.createdAt)<from)return false;}if(dateTo){var to=new Date(dateTo);to.setHours(23,59,59,999);if(new Date(t.createdAt)>to)return false;}return true;});},[scope,search,dateFrom,dateTo]);
   function fu(id){return users.find(function(x){return x.id===id;});}
-
-  function ticketMins(ticketId){
-    return allTimeSessions.filter(function(s){return s.ticket_id===ticketId&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
-  }
-
+  function ticketMins(ticketId){return allTimeSessions.filter(function(s){return s.ticket_id===ticketId&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
   var totalITMins=filtered.reduce(function(a,t){return a+ticketMins(t.id);},0);
   var totalCreateMins=filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);
   var ticketsWithITTime=filtered.filter(function(t){return ticketMins(t.id)>0;}).length;
   var avgCreateMins=filtered.length?totalCreateMins/filtered.length:0;
-
   var selStyle={padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",boxSizing:"border-box"};
-
   return<div>
     <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking</div>
-    <div style={{display:"flex",gap:6,marginBottom:14}}>
-      {[{id:"it_time",label:"🕐 IT Work Time"},{id:"create_time",label:"📝 Ticket Creation Time"}].map(function(tab){
-        return<button key={tab.id} onClick={function(){setActiveTab(tab.id);}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:activeTab===tab.id?"#6366f1":"#f1f5f9",color:activeTab===tab.id?"#fff":"#475569",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-          {tab.label}
-        </button>;
-      })}
-    </div>
+    <div style={{display:"flex",gap:6,marginBottom:14}}>{[{id:"it_time",label:"🕐 IT Work Time"},{id:"create_time",label:"📝 Ticket Creation Time"}].map(function(tab){return<button key={tab.id} onClick={function(){setActiveTab(tab.id);}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:activeTab===tab.id?"#6366f1":"#f1f5f9",color:activeTab===tab.id?"#fff":"#475569",fontSize:12,fontWeight:700,cursor:"pointer"}}>{tab.label}</button>;})}</div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-      {activeTab==="it_time"?<>
-        <Stat label="Total IT Hours" value={fmtDuration(totalITMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/>
-        <Stat label="Tickets Timed" value={ticketsWithITTime+"/"+filtered.length} icon="⏱" color="#0ea5e9"/>
-      </>:<>
-        <Stat label="Total Create Time" value={fmtMs(totalCreateMins)} icon="📝" color="#f59e0b" sub={filtered.length+" tickets"}/>
-        <Stat label="Avg Create Time" value={fmtMs(avgCreateMins)} icon="⏱" color="#0ea5e9"/>
-      </>}
+      {activeTab==="it_time"?<><Stat label="Total IT Hours" value={fmtDuration(totalITMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/><Stat label="Tickets Timed" value={ticketsWithITTime+"/"+filtered.length} icon="⏱" color="#0ea5e9"/></>:<><Stat label="Total Create Time" value={fmtMs(totalCreateMins)} icon="📝" color="#f59e0b" sub={filtered.length+" tickets"}/><Stat label="Avg Create Time" value={fmtMs(avgCreateMins)} icon="⏱" color="#0ea5e9"/></>}
     </div>
     <Card style={{marginBottom:14,padding:"12px 14px"}}>
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
         <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets…" style={Object.assign({},selStyle,{width:"100%"})}/>
         {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}>
           <option value="">All Users</option>
-          <optgroup label="── IT Staff ──">
-            {users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name} ({ROLE_META[u.role]?.label||u.role})</option>;})}
-          </optgroup>
-          <optgroup label="── End Users ──">
-            {users.filter(function(u){return !IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}
-          </optgroup>
+          <optgroup label="── IT Staff ──">{users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name} ({ROLE_META[u.role]?.label||u.role})</option>;})}</optgroup>
+          <optgroup label="── End Users ──">{users.filter(function(u){return !IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</optgroup>
         </select>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,alignItems:"center"}}>
-        <div>
-          <label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>From</label>
-          <input type="date" value={dateFrom} onChange={function(e){setDateFrom(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/>
-        </div>
-        <div>
-          <label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>To</label>
-          <input type="date" value={dateTo} onChange={function(e){setDateTo(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/>
-        </div>
+        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>From</label><input type="date" value={dateFrom} onChange={function(e){setDateFrom(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/></div>
+        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>To</label><input type="date" value={dateTo} onChange={function(e){setDateTo(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/></div>
       </div>
       {(dateFrom||dateTo)&&<button onClick={function(){setDateFrom("");setDateTo("");}} style={{marginTop:8,padding:"5px 12px",border:"1px solid #c7d2fe",borderRadius:6,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer"}}>✕ Clear dates</button>}
     </Card>
-    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>
-      Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}
-      {(dateFrom||dateTo)&&<span style={{color:"#6366f1",fontWeight:600}}> · Date filtered</span>}
-    </div>
+    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}{(dateFrom||dateTo)&&<span style={{color:"#6366f1",fontWeight:600}}> · Date filtered</span>}</div>
     {activeTab==="it_time"&&<div>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#0369a1"}}>
-        ⏱ Hours shown are <strong>actual logged time</strong> from the Start/Stop timer inside each ticket.
-      </div>
+      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#0369a1"}}>⏱ Hours shown are <strong>actual logged time</strong> from the Start/Stop timer inside each ticket.</div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
-        {filtered.map(function(t){
-          var asgn=fu(t.assignedTo);var sm=STATUS_META[t.status]||STATUS_META.Open;
-          var mins=ticketMins(t.id);
-          var sessions=allTimeSessions.filter(function(s){return s.ticket_id===t.id&&s.ended_at;});
-          var cc=mins===0?"#94a3b8":mins<=60?"#10b981":mins<=240?"#f59e0b":"#ef4444";
+        {filtered.map(function(t){var asgn=fu(t.assignedTo);var sm=STATUS_META[t.status]||STATUS_META.Open;var mins=ticketMins(t.id);var sessions=allTimeSessions.filter(function(s){return s.ticket_id===t.id&&s.ended_at;});var cc=mins===0?"#94a3b8":mins<=60?"#10b981":mins<=240?"#f59e0b":"#ef4444";
           return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-              <div style={{flex:1,overflow:"hidden"}}>
-                <div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-                <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Created: {fdt(t.createdAt)}</div>
-              </div>
-              <Badge label={t.status} color={sm.color} bg={sm.bg}/>
-            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Created: {fdt(t.createdAt)}</div></div><Badge label={t.status} color={sm.color} bg={sm.bg}/></div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                {asgn&&<Avatar name={asgn.name} id={asgn.id} size={18}/>}
-                <span style={{fontSize:11,color:"#64748b"}}>{asgn?asgn.name:"Unassigned"}</span>
-                {sessions.length>0&&<span style={{fontSize:10,color:"#94a3b8"}}>· {sessions.length} session{sessions.length!==1?"s":""}</span>}
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                {mins>0&&<div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,mins/240*100)+"%",background:cc,borderRadius:3}}/></div>}
-                <span style={{fontSize:13,fontWeight:700,color:cc}}>{mins>0?fmtDuration(mins):"No time logged"}</span>
-              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>{asgn&&<Avatar name={asgn.name} id={asgn.id} size={18}/>}<span style={{fontSize:11,color:"#64748b"}}>{asgn?asgn.name:"Unassigned"}</span>{sessions.length>0&&<span style={{fontSize:10,color:"#94a3b8"}}>· {sessions.length} session{sessions.length!==1?"s":""}</span>}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>{mins>0&&<div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,mins/240*100)+"%",background:cc,borderRadius:3}}/></div>}<span style={{fontSize:13,fontWeight:700,color:cc}}>{mins>0?fmtDuration(mins):"No time logged"}</span></div>
             </div>
-          </div>;
-        })}
+          </div>;})}
       </div>
     </div>}
     {activeTab==="create_time"&&<div>
-      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#92400e"}}>
-        📝 This tracks how long each user took to <strong>fill in and submit</strong> the ticket form — from when they opened it to when they clicked Submit.
-      </div>
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#92400e"}}>📝 This tracks how long each user took to <strong>fill in and submit</strong> the ticket form — from when they opened it to when they clicked Submit.</div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
-        {filtered.map(function(t){
-          var sub=fu(t.submittedBy);var sm=STATUS_META[t.status]||STATUS_META.Open;
-          var cm=t.timeToCreateMins||0;
-          var cc=cm<=2?"#10b981":cm<=10?"#f59e0b":"#ef4444";
-          var pct=Math.min(100,cm/15*100);
+        {filtered.map(function(t){var sub=fu(t.submittedBy);var sm=STATUS_META[t.status]||STATUS_META.Open;var cm=t.timeToCreateMins||0;var cc=cm<=2?"#10b981":cm<=10?"#f59e0b":"#ef4444";var pct=Math.min(100,cm/15*100);
           return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-              <div style={{flex:1,overflow:"hidden"}}>
-                <div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-                <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Submitted: {fdt(t.submittedAt||t.createdAt)}</div>
-              </div>
-              <Badge label={t.status} color={sm.color} bg={sm.bg}/>
-            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Submitted: {fdt(t.submittedAt||t.createdAt)}</div></div><Badge label={t.status} color={sm.color} bg={sm.bg}/></div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                {sub&&<Avatar name={sub.name} id={sub.id} size={18}/>}
-                <span style={{fontSize:11,color:"#64748b"}}>{sub?sub.name:"Unknown"}</span>
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:cc,borderRadius:3}}/></div>
-                <span style={{fontSize:13,fontWeight:700,color:cc}}>{cm>0?fmtMs(cm):"—"}</span>
-              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>{sub&&<Avatar name={sub.name} id={sub.id} size={18}/>}<span style={{fontSize:11,color:"#64748b"}}>{sub?sub.name:"Unknown"}</span></div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:cc,borderRadius:3}}/></div><span style={{fontSize:13,fontWeight:700,color:cc}}>{cm>0?fmtMs(cm):"—"}</span></div>
             </div>
-          </div>;
-        })}
+          </div>;})}
       </div>
     </div>}
   </div>;
@@ -1250,132 +1012,40 @@ function PageTimeTracking(p){
 // ── Reports ───────────────────────────────────────────────────────────────────
 function PageReports(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};var allTimeSessions=p.allTimeSessions||[];
-
-  // Build month options: current month going back 12 months
-  var MONTH_OPTS=useMemo(function(){
-    var opts=[];
-    var now=new Date();
-    for(var i=0;i<13;i++){
-      var d=new Date(now.getFullYear(),now.getMonth()-i,1);
-      var val=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
-      var lbl=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});
-      opts.push({value:val,label:lbl});
-    }
-    return opts;
-  },[]);
-
+  var MONTH_OPTS=useMemo(function(){var opts=[];var now=new Date();for(var i=0;i<13;i++){var d=new Date(now.getFullYear(),now.getMonth()-i,1);var val=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");var lbl=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});opts.push({value:val,label:lbl});}return opts;},[]);
   var nowStr=(function(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
-
-  var[view,setView]=useState("summary");
-  // range can be: "day","week","month-YYYY-MM","year","all"
-  var[range,setRange]=useState("month-"+nowStr);
+  var[view,setView]=useState("summary");var[range,setRange]=useState("month-"+nowStr);
   var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
-  var selClientObj=clients.find(function(c){return c.id===fClient;});
-  var availLocations=selClientObj?selClientObj.locations:[];
+  var selClientObj=clients.find(function(c){return c.id===fClient;});var availLocations=selClientObj?selClientObj.locations:[];
   function handleClientChange(v){setFClient(v);setFLocation("");}
-
-  var rangeStart=useMemo(function(){
-    var now=new Date();
-    if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();
-    if(range==="week"){
-      // Start of current week (Monday)
-      var dow=now.getDay();// 0=Sun
-      var diffToMon=dow===0?6:dow-1;
-      var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);
-      return mon.toISOString();
-    }
-    if(range.startsWith("month-")){
-      var parts=range.slice(6).split("-");
-      return new Date(parseInt(parts[0]),parseInt(parts[1])-1,1).toISOString();
-    }
-    if(range==="year")return new Date(now.getFullYear(),0,1).toISOString();
-    return new Date(0).toISOString();
-  },[range]);
-
-  var rangeEnd=useMemo(function(){
-    var now=new Date();
-    if(range==="week"){
-      var dow=now.getDay();
-      var diffToMon=dow===0?6:dow-1;
-      var sun=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon+6,23,59,59,999);
-      return sun.toISOString();
-    }
-    if(range.startsWith("month-")){
-      var parts=range.slice(6).split("-");
-      // Last day of the selected month
-      return new Date(parseInt(parts[0]),parseInt(parts[1]),0,23,59,59,999).toISOString();
-    }
-    return null; // no upper bound for others
-  },[range]);
-
+  var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return mon.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1])-1,1).toISOString();}if(range==="year")return new Date(now.getFullYear(),0,1).toISOString();return new Date(0).toISOString();},[range]);
+  var rangeEnd=useMemo(function(){var now=new Date();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var sun=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon+6,23,59,59,999);return sun.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1]),0,23,59,59,999).toISOString();}return null;},[range]);
   var rangeLabel={day:"Today",week:"This Week",year:"This Year",all:"All Time"};
   var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
-
   var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;var d=new Date(t.createdAt);if(d<new Date(rangeStart))return false;if(rangeEnd&&d>new Date(rangeEnd))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,rangeEnd,fClient,fLocation]);
   var allActive=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,fClient,fLocation]);
-
-  function loggedMins(ticketArr){
-    var ids=ticketArr.map(function(t){return t.id;});
-    return allTimeSessions.filter(function(s){return ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
-  }
-  function userLoggedMins(userId,ticketArr){
-    var ids=ticketArr.map(function(t){return t.id;});
-    return allTimeSessions.filter(function(s){return s.user_id===userId&&ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
-  }
-
+  function loggedMins(ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
+  function userLoggedMins(userId,ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return s.user_id===userId&&ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
   var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:loggedMins(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
   var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:userLoggedMins(t.id,active)};});
   var totalBreached=active.filter(function(t){return t.slaBreached;}).length;
-  var totalSlaRate=calcSlaRate(active);var avgCloseAll=calcAvgClose(calcClosed(active));
-  var totalLoggedMins=loggedMins(active);
+  var totalSlaRate=calcSlaRate(active);var avgCloseAll=calcAvgClose(calcClosed(active));var totalLoggedMins=loggedMins(active);
   var statusPieData=ALL_STATUSES.map(function(s){return{name:s,value:active.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
   var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
-  // Weekly trend — weeks start on Monday
-  var weeklyTrend=useMemo(function(){
-    // Find the most recent Monday (or today if Monday)
-    var now=new Date();
-    var dow=now.getDay(); // 0=Sun
-    var diffToMon=dow===0?6:dow-1;
-    var thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);
-    return Array.from({length:8},function(_,i){
-      // i=0 is 7 weeks ago, i=7 is current week
-      var wStart=new Date(thisMon.getTime()-(7-i)*7*86400000);
-      var wEnd=new Date(wStart.getTime()+7*86400000-1);
-      var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<=wEnd;});
-      var lbl=wStart.toLocaleDateString("en-US",{month:"short",day:"numeric"});
-      return{label:lbl,total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};
-    });
-  },[allActive]);
-
-  var byClient=useMemo(function(){
-    return clients.map(function(cl){
-      var cTickets=allActive.filter(function(t){return t.clientId===cl.id;});
-      if(cTickets.length===0)return null;
-      var byLoc=(cl.locations||[]).map(function(loc){
-        var lT=cTickets.filter(function(t){return t.locationId===loc.id;});
-        var typeBreakdown=ticketTypes.map(function(tt){var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;}).filter(Boolean);
-        return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(lT),slaRate:calcSlaRate(lT),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};
-      }).filter(function(l){return l.total>0;});
-      var noLoc=cTickets.filter(function(t){return !t.locationId;});
-      return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(cTickets),slaRate:calcSlaRate(cTickets),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};
-    }).filter(Boolean).sort(function(a,b){return b.total-a.total;});
-  },[clients,allActive,ticketTypes,allTimeSessions]);
-
-  // AI insight — routed through /api/ai-insight to avoid CORS
+  var weeklyTrend=useMemo(function(){var now=new Date();var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return Array.from({length:8},function(_,i){var wStart=new Date(thisMon.getTime()-(7-i)*7*86400000);var wEnd=new Date(wStart.getTime()+7*86400000-1);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<=wEnd;});var lbl=wStart.toLocaleDateString("en-US",{month:"short",day:"numeric"});return{label:lbl,total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
+  var byClient=useMemo(function(){return clients.map(function(cl){var cTickets=allActive.filter(function(t){return t.clientId===cl.id;});if(cTickets.length===0)return null;var byLoc=(cl.locations||[]).map(function(loc){var lT=cTickets.filter(function(t){return t.locationId===loc.id;});var typeBreakdown=ticketTypes.map(function(tt){var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;}).filter(Boolean);return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(lT),slaRate:calcSlaRate(lT),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};}).filter(function(l){return l.total>0;});var noLoc=cTickets.filter(function(t){return !t.locationId;});return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(cTickets),slaRate:calcSlaRate(cTickets),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};}).filter(Boolean).sort(function(a,b){return b.total-a.total;});},[clients,allActive,ticketTypes,allTimeSessions]);
   async function generateInsight(){
     setAiLoading(true);setAiInsight("");
     var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate,topLocations:c.byLoc.slice(0,3).map(function(l){return l.name+" ("+l.total+" tickets, "+(l.loggedMins/60).toFixed(1)+"h logged)";})};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
     try{
-      var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. 📍 Locations/clients needing most attention\n3. ⏱ IT hours analysis — are logged hours proportionate to ticket volume? Any tech working significantly more/less?\n4. 💡 3 actionable recommendations\n\nBe concise. Use bullet points. Note: IT hours are actual logged time from a start/stop timer, not wall-clock time.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
+      var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. 📍 Locations/clients needing most attention\n3. ⏱ IT hours analysis — are logged hours proportionate to ticket volume? Any tech working significantly more/less?\n4. 💡 3 actionable recommendations\n\nBe concise. Use bullet points. Note: IT hours are actual logged time from a start/stop timer, not wall-clock time.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
       var data=await res.json();
       setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");
     }catch(e){setAiInsight("Error: "+e.message);}
     setAiLoading(false);
   }
-
   var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"by_client",label:"🤝 By Client"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
   var filterLabel="";if(fClient){filterLabel=selClientObj?.name||"Client";if(fLocation){var lObj=availLocations.find(function(l){return l.id===fLocation;});filterLabel+=" → "+(lObj?.name||"Location");}}
-
   return<div>
     <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>{VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}</div>
     <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
@@ -1385,13 +1055,18 @@ function PageReports(p){
       {filterLabel&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 10px"}}><span style={{fontSize:11,fontWeight:700,color:"#4338ca"}}>📍 {filterLabel}</span><button onClick={function(){setFClient("");setFLocation("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:13,padding:0,lineHeight:1}}>✕</button></div>}
       <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{active.length} tickets · {fmtDuration(totalLoggedMins)} logged</div>
     </div>
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>{["day","week","month","year","all"].map(function(r){return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;})}</div>
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
+      {["day","week","month","year","all"].map(function(r){
+        if(r==="month"){return<select key="month" value={range.startsWith("month-")?range:"month-"+nowStr} onChange={function(e){setRange(e.target.value);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range.startsWith("month-")?"#6366f1":"#e2e8f0"),background:range.startsWith("month-")?"#6366f1":"#fff",color:range.startsWith("month-")?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0,outline:"none"}}>{MONTH_OPTS.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select>;}
+        return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;
+      })}
+    </div>
     {view==="summary"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"} help={"SLA Rate = tickets resolved within their time target ÷ total tickets × 100. Formula: ("+( active.length-totalBreached)+" on-time ÷ "+active.length+" total) × 100. Green ≥90%, Yellow ≥75%, Red <75%."}/>
-        <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9" help="Average hours from ticket creation to closure, across all closed tickets in this period. Lower is better."/>
-        <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1" help="Number of tickets created within the selected time period and filters."/>
-        <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Total real work time logged by IT staff using the Start/Stop timer. This reflects actual effort spent, not elapsed wall-clock time."/>
+        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"} help={"SLA Rate = tickets resolved within their time target ÷ total tickets × 100."}/>
+        <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9" help="Average hours from ticket creation to closure."/>
+        <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1" help="Number of tickets created within the selected time period."/>
+        <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Total real work time logged by IT staff using the Start/Stop timer."/>
       </div>
       <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
       <Card style={{borderLeft:"4px solid #6366f1"}}>
@@ -1422,13 +1097,7 @@ function PageReports(p){
             {cl.byLoc.map(function(loc){var worstColor=loc.slaRate<75?"#fef2f2":loc.slaRate<90?"#fffbeb":"#f8fafc";return<div key={loc.id} style={{background:worstColor,border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:6}}>
                 <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div>{loc.address&&<div style={{fontSize:10,color:"#64748b"}}>{loc.address}</div>}</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <Badge label={loc.total+" tickets"} color="#6366f1"/>
-                  <Badge label={loc.open+" open"} color={loc.open>0?"#f59e0b":"#10b981"}/>
-                  <Badge label={fmtDuration(loc.loggedMins)+" IT"} color="#8b5cf6"/>
-                  <Badge label={loc.slaRate+"% SLA"} color={slaColor(loc.slaRate)}/>
-                  {loc.breached>0&&<Badge label={loc.breached+" breached"} color="#ef4444"/>}
-                </div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge label={loc.total+" tickets"} color="#6366f1"/><Badge label={loc.open+" open"} color={loc.open>0?"#f59e0b":"#10b981"}/><Badge label={fmtDuration(loc.loggedMins)+" IT"} color="#8b5cf6"/><Badge label={loc.slaRate+"% SLA"} color={slaColor(loc.slaRate)}/>{loc.breached>0&&<Badge label={loc.breached+" breached"} color="#ef4444"/>}</div>
               </div>
               {loc.typeBreakdown.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{loc.typeBreakdown.sort(function(a,b){return b.count-a.count;}).map(function(tb){return<div key={tb.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}><div style={{width:7,height:7,borderRadius:"50%",background:tb.color||"#6366f1",flexShrink:0}}/><span style={{fontSize:11,color:"#334155",fontWeight:600}}>{tb.name}</span><span style={{fontSize:11,color:"#6366f1",fontWeight:800}}>×{tb.count}</span></div>;})}</div>}
             </div>;})}
@@ -1450,29 +1119,11 @@ function PageReports(p){
     </div>}
     {view==="by_type"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byType.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byType.map(function(t){return<Card key={t.id}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span></div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
-          <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
-          <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
-          <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
-          <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
-        </div>
-      </Card>;})}
+      {byType.map(function(t){return<Card key={t.id}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span><span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span><span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span></div></Card>;})}
     </div>}
     {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byUser.map(function(t){return<Card key={t.id}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-          <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
-          <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
-          <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
-          <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
-          <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
-        </div>
-      </Card>;})}
+      {byUser.map(function(t){return<Card key={t.id}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span><span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span><span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span></div></Card>;})}
     </div>}
   </div>;
 }
@@ -1582,31 +1233,15 @@ function PageCompanies(p){
 function PageClients(p){
   var clients=p.clients;var setClients=p.setClients;var companies=p.companies;var addLog=p.addLog;var showToast=p.showToast;var dbSaveClient=p.dbSaveClient;var dbDeleteClient=p.dbDeleteClient;
   var[modal,setModal]=useState(null);var[selCl,setSelCl]=useState(null);var[form,setForm]=useState({});
-  // lForm holds the location being edited; contacts is an array of {id,name,email,phone}
   var[lForm,setLForm]=useState({name:"",address:"",floor:"",contacts:[]});
   var[newContact,setNewContact]=useState({name:"",email:"",phone:""});
-
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
   function lfld(k,v){setLForm(function(prev){return Object.assign({},prev,{[k]:v});});}
   function ncfld(k,v){setNewContact(function(prev){return Object.assign({},prev,{[k]:v});});}
-
-  function addContact(){
-    if(!newContact.name.trim()){showToast("Contact name required","error");return;}
-    lfld("contacts",(lForm.contacts||[]).concat([Object.assign({},newContact,{id:uid()})]));
-    setNewContact({name:"",email:"",phone:""});
-  }
+  function addContact(){if(!newContact.name.trim()){showToast("Contact name required","error");return;}lfld("contacts",(lForm.contacts||[]).concat([Object.assign({},newContact,{id:uid()})]));setNewContact({name:"",email:"",phone:""});}
   function removeContact(cid){lfld("contacts",(lForm.contacts||[]).filter(function(c){return c.id!==cid;}));}
-  function updateContact(cid,field,val){
-    lfld("contacts",(lForm.contacts||[]).map(function(c){return c.id===cid?Object.assign({},c,{[field]:val}):c;}));
-  }
-
-  async function saveCl(){
-    if(!form.name){showToast("Name required","error");return;}
-    if(modal==="newCl"){var nc=Object.assign({},form,{id:uid(),locations:[]});await dbSaveClient(nc);setClients(function(prev){return prev.concat([nc]);});addLog("CLIENT_CREATED",nc.id,"Client \""+nc.name+"\" added");showToast("Client added");}
-    else{var updated=Object.assign({},form,{locations:clients.find(function(c){return c.id===form.id;})?.locations||[]});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===form.id?updated:c;});});showToast("Updated");}
-    setModal(null);
-  }
-
+  function updateContact(cid,field,val){lfld("contacts",(lForm.contacts||[]).map(function(c){return c.id===cid?Object.assign({},c,{[field]:val}):c;}));}
+  async function saveCl(){if(!form.name){showToast("Name required","error");return;}if(modal==="newCl"){var nc=Object.assign({},form,{id:uid(),locations:[]});await dbSaveClient(nc);setClients(function(prev){return prev.concat([nc]);});addLog("CLIENT_CREATED",nc.id,"Client \""+nc.name+"\" added");showToast("Client added");}else{var updated=Object.assign({},form,{locations:clients.find(function(c){return c.id===form.id;})?.locations||[]});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===form.id?updated:c;});});showToast("Updated");}setModal(null);}
   async function saveLoc(){
     if(!lForm.name||!lForm.address){showToast("Location name and address required","error");return;}
     var cl=clients.find(function(c){return c.id===selCl;});if(!cl)return;
@@ -1617,148 +1252,50 @@ function PageClients(p){
     var updated=Object.assign({},cl,{locations:newLocs});
     await dbSaveClient(updated);
     setClients(function(prev){return prev.map(function(c){return c.id===selCl?updated:c;});});
-    showToast(modal==="newLoc"?"Location added":"Location updated");
-    setModal(null);
+    showToast(modal==="newLoc"?"Location added":"Location updated");setModal(null);
   }
-
-  function openNewLoc(clId){
-    setSelCl(clId);
-    setLForm({name:"",address:"",floor:"",contacts:[]});
-    setNewContact({name:"",email:"",phone:""});
-    setModal("newLoc");
-  }
-  function openEditLoc(clId,loc){
-    setSelCl(clId);
-    // Migrate old single-contact format to contacts array if needed
-    var contacts=loc.contacts||(loc.contact?[{id:uid(),name:loc.contact,email:"",phone:""}]:[]);
-    setLForm(Object.assign({},loc,{contacts:contacts}));
-    setNewContact({name:"",email:"",phone:""});
-    setModal("editLoc");
-  }
-
+  function openNewLoc(clId){setSelCl(clId);setLForm({name:"",address:"",floor:"",contacts:[]});setNewContact({name:"",email:"",phone:""});setModal("newLoc");}
+  function openEditLoc(clId,loc){setSelCl(clId);var contacts=loc.contacts||(loc.contact?[{id:uid(),name:loc.contact,email:"",phone:""}]:[]);setLForm(Object.assign({},loc,{contacts:contacts}));setNewContact({name:"",email:"",phone:""});setModal("editLoc");}
   var inp={width:"100%",padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
-
   return<div>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}>
-      <div style={{fontWeight:700,fontSize:14}}>Clients ({clients.length})</div>
-      <Btn onClick={function(){setForm({name:"",email:"",phone:"",industry:"",companyId:companies[0]?.id||""});setModal("newCl");}}>➕ Add Client</Btn>
-    </div>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Clients ({clients.length})</div><Btn onClick={function(){setForm({name:"",email:"",phone:"",industry:"",companyId:companies[0]?.id||""});setModal("newCl");}}>➕ Add Client</Btn></div>
     {clients.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No clients yet.</div></Card>}
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {clients.map(function(cl){
-        return<Card key={cl.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-            <div style={{display:"flex",gap:12,alignItems:"center",flex:1,overflow:"hidden"}}>
-              <div style={{width:42,height:42,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div>
-              <div style={{overflow:"hidden"}}>
-                <div style={{fontWeight:700,color:"#1e293b",fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cl.name}</div>
-                <div style={{fontSize:11,color:"#64748b"}}>📧 {cl.email||"—"} · 📞 {cl.phone||"—"}</div>
+      {clients.map(function(cl){return<Card key={cl.id}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+          <div style={{display:"flex",gap:12,alignItems:"center",flex:1,overflow:"hidden"}}><div style={{width:42,height:42,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div style={{overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {cl.email||"—"} · 📞 {cl.phone||"—"}</div></div></div>
+          <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},cl));setModal("editCl");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteClient(cl.id);setClients(function(prev){return prev.filter(function(x){return x.id!==cl.id;});});showToast("Removed");}}>🗑</Btn></div>
+        </div>
+        <div style={{background:"#f8fafc",borderRadius:10,padding:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div><Btn size="sm" onClick={function(){openNewLoc(cl.id);}}>➕ Add Location</Btn></div>
+          {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No locations yet.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {cl.locations.map(function(loc){var contacts=loc.contacts||(loc.contact?[{id:"leg",name:loc.contact,email:"",phone:""}]:[]);return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:contacts.length>0?8:0}}>
+                <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{loc.address}</div>{loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}</div>
+                <div style={{display:"flex",gap:4,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEditLoc(cl.id,loc);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){var newLocs=cl.locations.filter(function(l){return l.id!==loc.id;});var updated=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===cl.id?updated:c;});});showToast("Location removed");}}>🗑</Btn></div>
               </div>
-            </div>
-            <div style={{display:"flex",gap:6,flexShrink:0}}>
-              <Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},cl));setModal("editCl");}}>✏️</Btn>
-              <Btn size="sm" variant="danger" onClick={async function(){await dbDeleteClient(cl.id);setClients(function(prev){return prev.filter(function(x){return x.id!==cl.id;});});showToast("Removed");}}>🗑</Btn>
-            </div>
+              {contacts.length>0&&<div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>👥 Contact Persons</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{contacts.map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}><Avatar name={ct.name} id={ct.id} size={22}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}{ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}</div></div></div>;})}</div></div>}
+              {contacts.length===0&&<div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",marginTop:4}}>No contacts added yet.</div>}
+            </div>;})}
           </div>
-          <div style={{background:"#f8fafc",borderRadius:10,padding:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div>
-              <Btn size="sm" onClick={function(){openNewLoc(cl.id);}}>➕ Add Location</Btn>
-            </div>
-            {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No locations yet.</div>}
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {cl.locations.map(function(loc){
-                var contacts=loc.contacts||(loc.contact?[{id:"leg",name:loc.contact,email:"",phone:""}]:[]);
-                return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:contacts.length>0?8:0}}>
-                    <div>
-                      <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div>
-                      <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{loc.address}</div>
-                      {loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}
-                    </div>
-                    <div style={{display:"flex",gap:4,flexShrink:0}}>
-                      <Btn size="sm" variant="ghost" onClick={function(){openEditLoc(cl.id,loc);}}>✏️</Btn>
-                      <Btn size="sm" variant="danger" onClick={async function(){var newLocs=cl.locations.filter(function(l){return l.id!==loc.id;});var updated=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===cl.id?updated:c;});});showToast("Location removed");}}>🗑</Btn>
-                    </div>
-                  </div>
-                  {contacts.length>0&&<div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}>
-                    <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>👥 Contact Persons</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {contacts.map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
-                        <Avatar name={ct.name} id={ct.id} size={22}/>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}</div>
-                          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                            {ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}
-                            {ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}
-                          </div>
-                        </div>
-                      </div>;})}
-                    </div>
-                  </div>}
-                  {contacts.length===0&&<div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",marginTop:4}}>No contacts added yet.</div>}
-                </div>;
-              })}
-            </div>
-          </div>
-        </Card>;
-      })}
+        </div>
+      </Card>;})}
     </div>
-
-    {/* Client modal */}
     {(modal==="newCl"||modal==="editCl")&&<Modal title={modal==="newCl"?"Add Client":"Edit Client"} onClose={function(){setModal(null);}}>
-      <FInput label="Client Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/>
-      <FInput label="Email" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/>
-      <FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/>
-      <FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/>
-      <FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompaniesNone(companies)}/>
+      <FInput label="Client Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Email" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompaniesNone(companies)}/>
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveCl}>{modal==="newCl"?"Add Client":"Save"}</Btn></div>
     </Modal>}
-
-    {/* Location modal — with multi-contact */}
     {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={function(){setModal(null);}} wide>
       <FInput label="Location Name *" value={lForm.name||""} onChange={function(e){lfld("name",e.target.value);}} placeholder="e.g. HQ — Makati"/>
       <FInput label="Address *" value={lForm.address||""} onChange={function(e){lfld("address",e.target.value);}}/>
       <FInput label="Floor / Area" value={lForm.floor||""} onChange={function(e){lfld("floor",e.target.value);}} placeholder="e.g. 3rd Floor, East Wing"/>
-
-      {/* Contact persons section */}
       <div style={{marginBottom:14}}>
-        <div style={{fontWeight:700,fontSize:12,color:"#475569",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span>👥 Contact Persons ({(lForm.contacts||[]).length})</span>
-          <span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>Up to 5 contacts per location</span>
-        </div>
-
-        {/* Existing contacts */}
-        {(lForm.contacts||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-          {(lForm.contacts||[]).map(function(ct,idx){return<div key={ct.id} style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#0369a1"}}>Contact {idx+1}</div>
-              <button onClick={function(){removeContact(ct.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:0,lineHeight:1}}>✕</button>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr",gap:6}}>
-              <input value={ct.name} onChange={function(e){updateContact(ct.id,"name",e.target.value);}} placeholder="Full Name *" style={inp}/>
-              <input value={ct.email} onChange={function(e){updateContact(ct.id,"email",e.target.value);}} placeholder="Email address" type="email" style={inp}/>
-              <input value={ct.phone} onChange={function(e){updateContact(ct.id,"phone",e.target.value);}} placeholder="Phone number" style={inp}/>
-            </div>
-          </div>;})}
-        </div>}
-
-        {/* Add new contact form */}
-        {(lForm.contacts||[]).length<5&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:10,padding:12}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>➕ Add Contact Person</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:6,marginBottom:8}}>
-            <input value={newContact.name} onChange={function(e){ncfld("name",e.target.value);}} placeholder="Full Name *" style={inp}/>
-            <input value={newContact.email} onChange={function(e){ncfld("email",e.target.value);}} placeholder="Email address" type="email" style={inp}/>
-            <input value={newContact.phone} onChange={function(e){ncfld("phone",e.target.value);}} placeholder="Phone number" style={inp}/>
-          </div>
-          <Btn size="sm" onClick={addContact} variant="ghost">➕ Add Contact</Btn>
-        </div>}
+        <div style={{fontWeight:700,fontSize:12,color:"#475569",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>👥 Contact Persons ({(lForm.contacts||[]).length})</span><span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>Up to 5 contacts per location</span></div>
+        {(lForm.contacts||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>{(lForm.contacts||[]).map(function(ct,idx){return<div key={ct.id} style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontSize:11,fontWeight:700,color:"#0369a1"}}>Contact {idx+1}</div><button onClick={function(){removeContact(ct.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:0,lineHeight:1}}>✕</button></div><div style={{display:"grid",gridTemplateColumns:"1fr",gap:6}}><input value={ct.name} onChange={function(e){updateContact(ct.id,"name",e.target.value);}} placeholder="Full Name *" style={inp}/><input value={ct.email} onChange={function(e){updateContact(ct.id,"email",e.target.value);}} placeholder="Email address" type="email" style={inp}/><input value={ct.phone} onChange={function(e){updateContact(ct.id,"phone",e.target.value);}} placeholder="Phone number" style={inp}/></div></div>;})}</div>}
+        {(lForm.contacts||[]).length<5&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:10,padding:12}}><div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>➕ Add Contact Person</div><div style={{display:"grid",gridTemplateColumns:"1fr",gap:6,marginBottom:8}}><input value={newContact.name} onChange={function(e){ncfld("name",e.target.value);}} placeholder="Full Name *" style={inp}/><input value={newContact.email} onChange={function(e){ncfld("email",e.target.value);}} placeholder="Email address" type="email" style={inp}/><input value={newContact.phone} onChange={function(e){ncfld("phone",e.target.value);}} placeholder="Phone number" style={inp}/></div><Btn size="sm" onClick={addContact} variant="ghost">➕ Add Contact</Btn></div>}
       </div>
-
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-        <Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn>
-        <Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save Location"}</Btn>
-      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save Location"}</Btn></div>
     </Modal>}
   </div>;
 }
@@ -1792,7 +1329,7 @@ function PageTicketTypes(p){
 }
 
 // ── Activity Log ──────────────────────────────────────────────────────────────
-const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},ROLE_CREATED:{icon:"🏷️",color:"#10b981",label:"Role Created"},ROLE_UPDATED:{icon:"🏷️",color:"#0ea5e9",label:"Role Updated"},ROLE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Role Deleted"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},LOCATION_ADDED:{icon:"📍",color:"#10b981",label:"Location Added"},LOCATION_REMOVED:{icon:"📍",color:"#ef4444",label:"Location Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
+const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
 function PageActivityLog(p){
   var logs=p.logs;var users=p.users;var[filter,setFilter]=useState("");
   function fu(id){return users.find(function(x){return x.id===id;});}
@@ -1819,33 +1356,13 @@ function PageIntegrations(p){
   return<div style={{maxWidth:600}}>
     <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🔌 Integrations</div>
     <div style={{fontSize:12,color:"#64748b",marginBottom:20}}>Configure your email provider and review service costs.</div>
-
-    {/* Cost transparency card */}
     <Card style={{borderTop:"3px solid #10b981",marginBottom:20}}>
       <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>💰 Cost Transparency</div>
       <div style={{fontSize:11,color:"#64748b",marginBottom:14}}>Everything this app uses, and what (if anything) you pay for it.</div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {[
-          {name:"Vercel (Hosting)",tier:"Free",detail:"Hobby plan — free forever for personal/small projects. Unlimited deploys, 100GB bandwidth/month.",color:"#10b981",paid:false},
-          {name:"Supabase (Database)",tier:"Free",detail:"Free tier — 500MB database, 1GB file storage, 50,000 monthly active users. More than enough for a helpdesk.",color:"#10b981",paid:false},
-          {name:"GitHub (Code Storage)",tier:"Free",detail:"Free for public and private repos. No cost for storing and deploying your code.",color:"#10b981",paid:false},
-          {name:"Gmail / Nodemailer (Email)",tier:"Free",detail:"Uses your existing Gmail account with an App Password. No cost — Google provides this for free.",color:"#10b981",paid:false},
-          {name:"AI Analysis (Google Gemini)",tier:"Free",detail:"Free tier via Google AI Studio — 1,500 requests/day, no credit card needed. Uses Gemini 2.0 Flash. Get a free API key at aistudio.google.com.",color:"#10b981",paid:false},
-          {name:"Recharts (Charts)",tier:"Free",detail:"Open-source charting library. Zero cost, runs entirely in the browser.",color:"#10b981",paid:false},
-        ].map(function(item){return<div key={item.name} style={{display:"flex",gap:10,padding:"10px 12px",background:item.paid?"#fffbeb":"#f0fdf4",border:"1px solid "+(item.paid?"#fde68a":"#bbf7d0"),borderRadius:10,alignItems:"flex-start"}}>
-          <div style={{width:8,height:8,borderRadius:"50%",background:item.color,flexShrink:0,marginTop:4}}/>
-          <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}>
-              <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{item.name}</span>
-              <span style={{background:item.paid?"#fef3c7":"#d1fae5",color:item.paid?"#92400e":"#065f46",borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{item.tier}</span>
-            </div>
-            <div style={{fontSize:11,color:"#475569",lineHeight:1.6}}>{item.detail}</div>
-          </div>
-        </div>;})}
+        {[{name:"Vercel (Hosting)",tier:"Free",detail:"Hobby plan — free forever for personal/small projects. Unlimited deploys, 100GB bandwidth/month.",color:"#10b981"},{name:"Supabase (Database)",tier:"Free",detail:"Free tier — 500MB database, 1GB file storage, 50,000 monthly active users.",color:"#10b981"},{name:"GitHub (Code Storage)",tier:"Free",detail:"Free for public and private repos.",color:"#10b981"},{name:"Gmail / Nodemailer (Email)",tier:"Free",detail:"Uses your existing Gmail account with an App Password. No cost.",color:"#10b981"},{name:"AI Analysis (Google Gemini)",tier:"Free",detail:"Free tier via Google AI Studio — 1,500 requests/day, no credit card needed. Uses Gemini 2.0 Flash.",color:"#10b981"},{name:"Recharts (Charts)",tier:"Free",detail:"Open-source charting library. Zero cost, runs entirely in the browser.",color:"#10b981"}].map(function(item){return<div key={item.name} style={{display:"flex",gap:10,padding:"10px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,alignItems:"flex-start"}}><div style={{width:8,height:8,borderRadius:"50%",background:item.color,flexShrink:0,marginTop:4}}/><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}><span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{item.name}</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{item.tier}</span></div><div style={{fontSize:11,color:"#475569",lineHeight:1.6}}>{item.detail}</div></div></div>;})}
       </div>
-      <div style={{marginTop:12,background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",fontSize:11,color:"#0369a1",lineHeight:1.7}}>
-        💡 <strong>Summary:</strong> The only component that costs money is the <strong>AI Analysis</strong> button in Reports — and only when you actually click it. Everything else is completely free. A typical month of heavy usage would cost less than <strong>₱5</strong> in AI credits.
-      </div>
+      <div style={{marginTop:12,background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",fontSize:11,color:"#0369a1",lineHeight:1.7}}>💡 <strong>Summary:</strong> Everything is free. The only potential cost is AI Analysis if you exceed free tier limits — typically less than <strong>₱5/month</strong> under normal usage.</div>
     </Card>
     <Card style={{borderTop:"3px solid #6366f1",marginBottom:20}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a></div>
@@ -1857,22 +1374,14 @@ function PageIntegrations(p){
     </Card>
     {isAdmin&&<Card style={{borderTop:"3px solid #6366f1"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-        <div>
-          <div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div>
-          <div style={{fontSize:11,color:"#64748b",marginTop:2}}>Variables: <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div>
-        </div>
+        <div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Variables: <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div></div>
         <Btn onClick={openNew}>➕ Add Template</Btn>
       </div>
       {emailTemplates.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>No templates yet.</div>}
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-            <div style={{flex:1,overflow:"hidden"}}>
-              <div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div>
-              <div style={{fontSize:11,color:"#64748b",marginBottom:2}}>Subject: {t.subject}</div>
-              {t.defaultCC&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Default CC: {t.defaultCC}</div>}
-              <div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div>
-            </div>
+            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div><div style={{fontSize:11,color:"#64748b",marginBottom:2}}>Subject: {t.subject}</div>{t.defaultCC&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Default CC: {t.defaultCC}</div>}<div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div></div>
             <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn></div>
           </div>
         </div>;})}
@@ -1881,8 +1390,7 @@ function PageIntegrations(p){
     {tmplModal&&<Modal title={tmplEdit?"Edit Template":"New Email Template"} onClose={function(){setTmplModal(false);}}>
       <FInput label="Template Name *" value={tmplForm.name} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{name:e.target.value});});}} placeholder="e.g. Initial Response"/>
       <FInput label="Subject *" value={tmplForm.subject} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{subject:e.target.value});});}} placeholder="Re: Your IT Request"/>
-      {/* Default CC field on the template */}
-      <FInput label="Default CC (optional)" value={tmplForm.defaultCC} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{defaultCC:e.target.value});});}} placeholder="manager@company.com, lead@company.com" type="text"/>
+      <FInput label="Default CC (optional)" value={tmplForm.defaultCC} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{defaultCC:e.target.value});});}} placeholder="manager@company.com"/>
       <FTextarea label="Body *" value={tmplForm.body} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{body:e.target.value});});}} rows={8} placeholder={"Hi {{client_name}},\n\nThank you for reaching out...\n\nBest regards,\n{{agent_name}}"}/>
       <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>💡 <strong>{"{{client_name}}"}</strong> and <strong>{"{{agent_name}}"}</strong> auto-fill on tickets. The Default CC will pre-fill the CC field when this template is selected.</div>
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setTmplModal(false);}}>Cancel</Btn><Btn onClick={saveTmpl}>{tmplEdit?"Save Changes":"Create Template"}</Btn></div>
