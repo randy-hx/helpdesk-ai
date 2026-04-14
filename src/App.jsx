@@ -663,6 +663,7 @@ function PageDashboard(p){
       <Stat label="Total" value={tickets.length} icon="🎫" color="#6366f1" help="All active (non-deleted) tickets in the system."/>
       <Stat label="Open" value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b" help="Submitted but not yet assigned or started."/>
       <Stat label="In Progress" value={tickets.filter(function(t){return t.status==="In Progress";}).length} icon="⚙️" color="#6366f1" help="Currently being worked on by an assigned technician."/>
+      <Stat label="Pending" value={tickets.filter(function(t){return t.status==="Pending";}).length} icon="⏳" color="#0ea5e9" help="Awaiting response or action from the requester."/>
       <Stat label="Escalated" value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed" help="Raised to senior staff."/>
       <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981" help="Fully resolved and closed tickets."/>
       <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Real work time logged by IT staff using the Start/Stop timer."/>
@@ -689,6 +690,448 @@ function PageDashboard(p){
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Technician Workload</div>{techs.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No technicians yet.</div>}{techs.map(function(t){var open=tickets.filter(function(tk){return tk.assignedTo===t.id&&tk.status!=="Closed";}).length;var total=tickets.filter(function(tk){return tk.assignedTo===t.id;}).length;var techMins=allTimeSessions.filter(function(s){return s.user_id===t.id&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);return<div key={t.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar name={t.name} id={t.id} size={26}/><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600}}><span>{t.name}</span><span style={{color:"#6366f1"}}>{open}/{total} · <span style={{color:"#8b5cf6"}}>{fmtDuration(techMins)}</span></span></div><div style={{background:"#e2e8f0",borderRadius:4,height:5,marginTop:4}}><div style={{background:"#6366f1",height:5,borderRadius:4,width:(total?Math.min(100,Math.round(open/total*100)):0)+"%"}}/></div></div></div>;})}</Card>
       <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Tickets by Type</div>{byType.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No tickets yet.</div>}{byType.slice(0,6).map(function(t,i){return<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #f1f5f9"}}><span style={{fontSize:12,color:"#475569"}}>{t.name}</span><Badge label={t.value} color={PAL[i%PAL.length]}/></div>;})}</Card>
     </div>
+  </div>;
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────────
+function PageReports(p){
+  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};var allTimeSessions=p.allTimeSessions||[];
+
+  var MONTH_OPTS=useMemo(function(){var opts=[];var now=new Date();for(var i=0;i<13;i++){var d=new Date(now.getFullYear(),now.getMonth()-i,1);var val=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");var lbl=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});opts.push({value:val,label:lbl});}return opts;},[]);
+  var nowStr=(function(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
+  var[view,setView]=useState("summary");
+  var[range,setRange]=useState("month-"+nowStr);
+  var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
+  var selClientObj=clients.find(function(c){return c.id===fClient;});
+  var availLocations=selClientObj?selClientObj.locations:[];
+  function handleClientChange(v){setFClient(v);setFLocation("");}
+
+  var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return mon.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1])-1,1).toISOString();}if(range==="year")return new Date(now.getFullYear(),0,1).toISOString();return new Date(0).toISOString();},[range]);
+  var rangeEnd=useMemo(function(){var now=new Date();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var sun=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon+6,23,59,59,999);return sun.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1]),0,23,59,59,999).toISOString();}return null;},[range]);
+  var rangeLabel={day:"Today",week:"This Week",year:"This Year",all:"All Time"};
+  var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
+
+  var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;var d=new Date(t.createdAt);if(d<new Date(rangeStart))return false;if(rangeEnd&&d>new Date(rangeEnd))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,rangeEnd,fClient,fLocation]);
+  var allActive=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,fClient,fLocation]);
+
+  function loggedMins(ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
+  function userLoggedMins(userId,ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return s.user_id===userId&&ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
+
+  // ── Status time: based purely on statusTimeLog timestamps (status transitions), NOT the IT timer ──
+  // Each statusTimeLog entry records enteredAt and exitedAt — the actual clock time
+  // the ticket spent in that status. durationMins = (exitedAt - enteredAt) in minutes.
+  // For the currently-open status entry, we compute live from enteredAt to now.
+  var statusTimeSummary=useMemo(function(){
+    var totals={};
+    ALL_STATUSES.forEach(function(s){totals[s]=0;});
+    active.forEach(function(t){
+      (t.statusTimeLog||[]).forEach(function(entry){
+        var mins;
+        if(entry.durationMins!=null){
+          // Already computed when status changed: exitedAt - enteredAt
+          mins=entry.durationMins;
+        } else if(entry.exitedAt===null&&entry.enteredAt){
+          // Ticket is still in this status — measure from enteredAt to now
+          mins=parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2));
+        } else {
+          return;
+        }
+        if(totals[entry.status]!==undefined) totals[entry.status]+=mins;
+      });
+    });
+    return totals;
+  },[active]);
+
+  // ── SLA Breach analysis — also uses statusTimeLog timestamps, not IT timer ──
+  var slaBreachAnalysis=useMemo(function(){
+    var cfg=statusSla||DEFAULT_STATUS_SLA;
+    var breachCount={};
+    var breachDuration={};
+    ALL_STATUSES.forEach(function(s){breachCount[s]=0;breachDuration[s]=0;});
+
+    active.forEach(function(t){
+      (t.statusTimeLog||[]).forEach(function(entry){
+        var allowed=cfg[entry.status];
+        if(allowed===null||allowed===undefined)return;
+        var allowedMins=allowed*60;
+
+        var durMins;
+        if(entry.durationMins!=null){
+          durMins=entry.durationMins;
+        } else if(entry.exitedAt===null&&entry.enteredAt){
+          durMins=parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2));
+        } else {
+          return;
+        }
+
+        if(durMins>allowedMins){
+          breachCount[entry.status]=(breachCount[entry.status]||0)+1;
+          breachDuration[entry.status]=(breachDuration[entry.status]||0)+(durMins-allowedMins);
+        }
+      });
+    });
+
+    var totalBreachMins=Object.values(breachDuration).reduce(function(a,b){return a+b;},0);
+    var totalBreachCount=Object.values(breachCount).reduce(function(a,b){return a+b;},0);
+    return{breachCount:breachCount,breachDuration:breachDuration,totalBreachMins:totalBreachMins,totalBreachCount:totalBreachCount};
+  },[active,statusSla]);
+
+  var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:loggedMins(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
+  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:userLoggedMins(t.id,active)};});
+  var totalBreached=active.filter(function(t){return t.slaBreached;}).length;
+  var totalSlaRate=calcSlaRate(active);var avgCloseAll=calcAvgClose(calcClosed(active));var totalLoggedMins=loggedMins(active);
+  var statusPieData=ALL_STATUSES.map(function(s){return{name:s,value:active.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
+  var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
+  var weeklyTrend=useMemo(function(){var now=new Date();var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return Array.from({length:8},function(_,i){var wStart=new Date(thisMon.getTime()-(7-i)*7*86400000);var wEnd=new Date(wStart.getTime()+7*86400000-1);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<=wEnd;});var lbl=wStart.toLocaleDateString("en-US",{month:"short",day:"numeric"});return{label:lbl,total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
+  var byClient=useMemo(function(){return clients.map(function(cl){var cTickets=allActive.filter(function(t){return t.clientId===cl.id;});if(cTickets.length===0)return null;var byLoc=(cl.locations||[]).map(function(loc){var lT=cTickets.filter(function(t){return t.locationId===loc.id;});var typeBreakdown=ticketTypes.map(function(tt){var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;}).filter(Boolean);return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(lT),slaRate:calcSlaRate(lT),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};}).filter(function(l){return l.total>0;});var noLoc=cTickets.filter(function(t){return !t.locationId;});return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(cTickets),slaRate:calcSlaRate(cTickets),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};}).filter(Boolean).sort(function(a,b){return b.total-a.total;});},[clients,allActive,ticketTypes,allTimeSessions]);
+
+  async function generateInsight(){
+    setAiLoading(true);setAiInsight("");
+    var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),statusTimeBreakdown:Object.keys(statusTimeSummary).filter(function(s){return statusTimeSummary[s]>0;}).map(function(s){return s+": "+fmtDuration(statusTimeSummary[s])+" (actual elapsed time in status)";}),slaBreachAnalysis:{totalBreachInstances:slaBreachAnalysis.totalBreachCount,totalBreachTime:fmtDuration(slaBreachAnalysis.totalBreachMins),byStatus:ALL_STATUSES.filter(function(s){return slaBreachAnalysis.breachCount[s]>0;}).map(function(s){return s+" — "+slaBreachAnalysis.breachCount[s]+" breaches, "+fmtDuration(slaBreachAnalysis.breachDuration[s])+" over SLA";})},techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
+    try{
+      var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. ⏳ Status time bottlenecks — which status are tickets stuck in longest? (Note: these are real elapsed clock times from status transitions, not IT work time)\n3. 🚨 SLA breach analysis — which statuses breach most often and for how long?\n4. ⏱ IT hours analysis — are logged work hours proportionate to ticket volume?\n5. 💡 3 actionable recommendations\n\nBe concise. Use bullet points.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
+      var data=await res.json();
+      setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");
+    }catch(e){setAiInsight("Error: "+e.message);}
+    setAiLoading(false);
+  }
+
+  // Removed "status_time" as a separate view — it's now part of summary
+  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"sla_breach",label:"🚨 SLA Breaches"},{id:"by_client",label:"🤝 By Client"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
+  var filterLabel="";if(fClient){filterLabel=selClientObj?.name||"Client";if(fLocation){var lObj=availLocations.find(function(l){return l.id===fLocation;});filterLabel+=" → "+(lObj?.name||"Location");}}
+
+  return<div>
+    <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>{VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}</div>
+
+    {/* Filters */}
+    <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
+      <span style={{fontSize:11,fontWeight:700,color:"#64748b",flexShrink:0}}>🔍 Filter:</span>
+      <select value={fClient} onChange={function(e){handleClientChange(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Clients</option>{clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}</select>
+      {fClient&&availLocations.length>0&&<select value={fLocation} onChange={function(e){setFLocation(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Locations</option>{availLocations.map(function(l){return<option key={l.id} value={l.id}>{l.name}</option>;})}</select>}
+      {filterLabel&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 10px"}}><span style={{fontSize:11,fontWeight:700,color:"#4338ca"}}>📍 {filterLabel}</span><button onClick={function(){setFClient("");setFLocation("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:13,padding:0,lineHeight:1}}>✕</button></div>}
+      <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{active.length} tickets · {fmtDuration(totalLoggedMins)} logged</div>
+    </div>
+
+    {/* Date range buttons */}
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
+      {["day","week","month","year","all"].map(function(r){
+        if(r==="month"){return<select key="month" value={range.startsWith("month-")?range:"month-"+nowStr} onChange={function(e){setRange(e.target.value);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range.startsWith("month-")?"#6366f1":"#e2e8f0"),background:range.startsWith("month-")?"#6366f1":"#fff",color:range.startsWith("month-")?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0,outline:"none"}}>{MONTH_OPTS.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select>;}
+        return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;
+      })}
+    </div>
+
+    {/* ── SUMMARY VIEW (includes Status Time) ── */}
+    {view==="summary"&&<div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"} help="SLA Rate = tickets resolved within their time target ÷ total tickets × 100. Green ≥90%, Yellow ≥75%, Red <75%."/>
+        <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9" help="Average hours from ticket creation to closure."/>
+        <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1" help="Number of tickets created within the selected time period."/>
+        <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual work time" help="Total real work time logged by IT staff using the Start/Stop timer."/>
+        <Stat label="Breach Instances" value={slaBreachAnalysis.totalBreachCount} icon="🚨" color="#ef4444" sub="status-level breaches" help="Total number of times a ticket exceeded its SLA time limit while in a given status."/>
+        <Stat label="Total Breach Time" value={fmtDuration(slaBreachAnalysis.totalBreachMins)} icon="⏰" color="#dc2626" sub="time over SLA limit" help="Cumulative time tickets spent beyond their SLA thresholds across all statuses."/>
+      </div>
+
+      {/* Tickets by Status pie */}
+      <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
+
+      {/* ── STATUS TIME SECTION (now inside Summary) ── */}
+      <Card style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:6}}>
+          <div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>⏳ Time Per Status</div>
+          <span style={{fontSize:10,color:"#64748b",fontStyle:"italic"}}>Actual elapsed clock time between status transitions</span>
+        </div>
+        <div style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"6px 10px",marginBottom:14}}>
+          ℹ️ These times measure how long tickets <strong>actually sat in each status</strong> — from when the status was set to when it changed. This is independent of the IT work timer.
+        </div>
+        {ALL_STATUSES.map(function(s){
+          var sm=STATUS_META[s];
+          var mins=statusTimeSummary[s]||0;
+          var cfg=statusSla||DEFAULT_STATUS_SLA;
+          var allowed=cfg[s];
+          var allowedMins=allowed!=null?allowed*60:null;
+          var maxMins=Math.max.apply(null,ALL_STATUSES.map(function(sx){return statusTimeSummary[sx]||0;}));
+          var barPct=maxMins>0?Math.round(mins/maxMins*100):0;
+          var isOverSla=allowedMins!=null&&mins>allowedMins;
+          var bCount=slaBreachAnalysis.breachCount[s]||0;
+          var ticketsNow=active.filter(function(t){return t.status===s;}).length;
+          return<div key={s} style={{marginBottom:14,padding:"10px 12px",background:isOverSla?"#fef2f2":"#f8fafc",border:"1px solid "+(isOverSla?"#fecaca":"#e2e8f0"),borderRadius:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:6}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
+                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{s}</span>
+                <Badge label={ticketsNow+" now"} color={sm.color}/>
+                {bCount>0&&<Badge label={bCount+" breach"+(bCount!==1?"es":"")} color="#ef4444"/>}
+              </div>
+              <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                {allowedMins!=null&&<span style={{fontSize:10,color:"#94a3b8"}}>SLA: {fmtDuration(allowedMins)}</span>}
+                <span style={{fontSize:14,fontWeight:800,color:isOverSla?"#ef4444":sm.color}}>{mins>0?fmtDuration(mins):"—"}</span>
+              </div>
+            </div>
+            <div style={{height:7,background:"#e2e8f0",borderRadius:4,overflow:"hidden",marginBottom:isOverSla?6:0}}>
+              <div style={{height:"100%",width:barPct+"%",background:isOverSla?"#ef4444":sm.color,borderRadius:4,transition:"width .4s"}}/>
+            </div>
+            {isOverSla&&allowedMins!=null&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>⚠️ Total time exceeds SLA limit by {fmtDuration(mins-allowedMins)}</div>}
+          </div>;
+        })}
+        <div style={{marginTop:4,fontSize:10,color:"#94a3b8",textAlign:"right"}}>
+          {active.filter(function(t){return t.statusTimeLog&&t.statusTimeLog.length>0;}).length} of {active.length} tickets have status tracking data
+        </div>
+      </Card>
+
+      {/* AI Analysis */}
+      <Card style={{borderLeft:"4px solid #6366f1"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+          <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{filterLabel?"Filtered: "+filterLabel:"All clients & locations"} · Includes status time &amp; breach data</div></div>
+          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer",flexShrink:0}}>{aiLoading?"⏳ Analyzing…":"✨ Analyze Now"}</button>
+        </div>
+        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>🔍</div>Click "Analyze Now" for AI insights on status bottlenecks, breach patterns, and IT workload.</div>}
+        {aiLoading&&<div style={{textAlign:"center",padding:20,color:"#6366f1",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>⏳</div>Analyzing {active.length} tickets…</div>}
+        {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
+      </Card>
+    </div>}
+
+    {/* ── SLA BREACH VIEW ── */}
+    {view==="sla_breach"&&<div>
+      <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:24,flexShrink:0}}>🚨</span>
+        <div>
+          <div style={{fontWeight:700,fontSize:14,color:"#dc2626"}}>SLA Breach Report</div>
+          <div style={{fontSize:12,color:"#ef4444",marginTop:2}}>Tracks every instance a ticket exceeded its time limit in a given status, and how long it was over the SLA threshold. Times are based on actual status transition timestamps.</div>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+        <div style={{background:slaBreachAnalysis.totalBreachCount===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.totalBreachCount===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}>
+          <div style={{fontSize:32,fontWeight:800,color:slaBreachAnalysis.totalBreachCount===0?"#10b981":"#ef4444"}}>{slaBreachAnalysis.totalBreachCount}</div>
+          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Total Breach Instances</div>
+          <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>across all statuses</div>
+        </div>
+        <div style={{background:slaBreachAnalysis.totalBreachMins===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.totalBreachMins===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}>
+          <div style={{fontSize:28,fontWeight:800,color:slaBreachAnalysis.totalBreachMins===0?"#10b981":"#dc2626"}}>{slaBreachAnalysis.totalBreachMins>0?fmtDuration(slaBreachAnalysis.totalBreachMins):"0"}</div>
+          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Total Time Over SLA</div>
+          <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>cumulative excess time</div>
+        </div>
+      </div>
+
+      <Card style={{marginBottom:16}}>
+        <div style={{fontWeight:700,color:"#1e293b",marginBottom:14,fontSize:13}}>🚨 Breach Breakdown by Status</div>
+        {ALL_STATUSES.filter(function(s){return s!=="Closed";}).map(function(s){
+          var sm=STATUS_META[s];
+          var cfg=statusSla||DEFAULT_STATUS_SLA;
+          var allowed=cfg[s];
+          var bCount=slaBreachAnalysis.breachCount[s]||0;
+          var bMins=slaBreachAnalysis.breachDuration[s]||0;
+          var maxBCount=Math.max.apply(null,ALL_STATUSES.map(function(sx){return slaBreachAnalysis.breachCount[sx]||0;}));
+          var pct=maxBCount>0?Math.round(bCount/maxBCount*100):0;
+          var hasBreaches=bCount>0;
+          return<div key={s} style={{marginBottom:14,padding:"12px 14px",background:hasBreaches?"#fef2f2":"#f8fafc",border:"1px solid "+(hasBreaches?"#fecaca":"#e2e8f0"),borderRadius:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
+                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{s}</span>
+                {allowed!=null&&<span style={{fontSize:10,color:"#64748b",background:"#f1f5f9",borderRadius:4,padding:"2px 6px"}}>SLA: {allowed}h</span>}
+                {allowed===null&&<span style={{fontSize:10,color:"#94a3b8",fontStyle:"italic"}}>No SLA</span>}
+              </div>
+              <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:hasBreaches?"#ef4444":"#10b981"}}>{bCount}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Breaches</div></div>
+                <div style={{textAlign:"center"}}><div style={{fontSize:14,fontWeight:700,color:hasBreaches?"#dc2626":"#10b981"}}>{bMins>0?fmtDuration(bMins):"—"}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Over SLA</div></div>
+              </div>
+            </div>
+            {allowed!=null&&<div>
+              <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:4}}>
+                <div style={{height:"100%",width:pct+"%",background:hasBreaches?"#ef4444":sm.color,borderRadius:3}}/>
+              </div>
+              {hasBreaches&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>Avg excess per breach: {fmtDuration(bMins/bCount)}</div>}
+              {!hasBreaches&&<div style={{fontSize:10,color:"#10b981",marginTop:4}}>✅ No breaches recorded</div>}
+            </div>}
+          </div>;
+        })}
+      </Card>
+
+      <div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:10}}>🎫 Tickets with SLA Breaches</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {(function(){
+          var cfg=statusSla||DEFAULT_STATUS_SLA;
+          var breachedTickets=active.filter(function(t){
+            return (t.statusTimeLog||[]).some(function(entry){
+              var allowed=cfg[entry.status];
+              if(allowed===null||allowed===undefined)return false;
+              var allowedMins=allowed*60;
+              var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
+              return durMins!=null&&durMins>allowedMins;
+            });
+          });
+          if(breachedTickets.length===0){
+            return<Card><div style={{textAlign:"center",padding:32,color:"#10b981"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontWeight:700,fontSize:14}}>No SLA breaches found</div><div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>All tickets in this period are within their SLA limits.</div></div></Card>;
+          }
+          return breachedTickets.map(function(t){
+            var sm=STATUS_META[t.status]||STATUS_META.Open;
+            var asgn=users.find(function(u){return u.id===t.assignedTo;});
+            var cfg2=statusSla||DEFAULT_STATUS_SLA;
+            var breachedEntries=(t.statusTimeLog||[]).filter(function(entry){
+              var allowed=cfg2[entry.status];
+              if(allowed===null||allowed===undefined)return false;
+              var allowedMins=allowed*60;
+              var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
+              return durMins!=null&&durMins>allowedMins;
+            });
+            var totalExcess=breachedEntries.reduce(function(sum,entry){
+              var allowed=cfg2[entry.status];
+              var allowedMins=allowed*60;
+              var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
+              return sum+(durMins-allowedMins);
+            },0);
+            return<Card key={t.id} style={{padding:14,borderLeft:"3px solid #ef4444"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
+                <div style={{flex:1,overflow:"hidden"}}>
+                  <div style={{fontWeight:700,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+                  <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
+                    <Badge label={t.status} color={sm.color} bg={sm.bg}/>
+                    {asgn&&<span style={{fontSize:11,color:"#64748b"}}>👤 {asgn.name}</span>}
+                    <span style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>🚨 {breachedEntries.length} breach{breachedEntries.length!==1?"es":""} · +{fmtDuration(totalExcess)} over SLA</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {breachedEntries.map(function(entry,i){
+                  var esm=STATUS_META[entry.status]||STATUS_META.Open;
+                  var allowed=cfg2[entry.status];
+                  var allowedMins=allowed*60;
+                  var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
+                  var excess=durMins-allowedMins;
+                  return<div key={i} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"8px 12px"}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{width:8,height:8,borderRadius:"50%",background:esm.color,flexShrink:0}}/>
+                        <span style={{fontSize:12,fontWeight:700,color:esm.color}}>{entry.status}</span>
+                      </div>
+                      <div style={{display:"flex",gap:8,fontSize:11,flexWrap:"wrap"}}>
+                        <span style={{color:"#64748b"}}>Time: <strong>{fmtDuration(durMins)}</strong></span>
+                        <span style={{color:"#64748b"}}>Limit: <strong>{fmtDuration(allowedMins)}</strong></span>
+                        <span style={{color:"#ef4444",fontWeight:700}}>+{fmtDuration(excess)} over</span>
+                        {entry.exitedAt===null&&<Badge label="Active now" color="#ef4444"/>}
+                      </div>
+                    </div>
+                  </div>;
+                })}
+              </div>
+            </Card>;
+          });
+        })()}
+      </div>
+    </div>}
+
+    {/* ── BY CLIENT VIEW ── */}
+    {view==="by_client"&&<div>
+      {byClient.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>🤝</div>No client data yet.</div></Card>}
+      {byClient.map(function(cl){return<Card key={cl.id} style={{marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}><div style={{width:40,height:40,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div><div style={{fontWeight:800,color:"#1e293b",fontSize:14}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>{cl.email}</div></div></div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <div style={{textAlign:"center",background:"#f8fafc",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#6366f1"}}>{cl.total}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Tickets</div></div>
+            <div style={{textAlign:"center",background:"#fef3c7",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#f59e0b"}}>{cl.open}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Open</div></div>
+            <div style={{textAlign:"center",background:"#eef2ff",borderRadius:8,padding:"6px 12px",minWidth:70}}><div style={{fontSize:15,fontWeight:800,color:"#6366f1"}}>{fmtDuration(cl.loggedMins)}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>IT Time</div></div>
+            <div style={{textAlign:"center",background:cl.slaRate>=90?"#f0fdf4":cl.slaRate>=75?"#fffbeb":"#fef2f2",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:slaColor(cl.slaRate)}}>{cl.slaRate}%</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>SLA</div></div>
+          </div>
+        </div>
+        {cl.byLoc.length>0&&<div>
+          <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8,letterSpacing:0.5}}>📍 Locations</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {cl.byLoc.map(function(loc){var worstColor=loc.slaRate<75?"#fef2f2":loc.slaRate<90?"#fffbeb":"#f8fafc";return<div key={loc.id} style={{background:worstColor,border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:6}}>
+                <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div>{loc.address&&<div style={{fontSize:10,color:"#64748b"}}>{loc.address}</div>}</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge label={loc.total+" tickets"} color="#6366f1"/><Badge label={loc.open+" open"} color={loc.open>0?"#f59e0b":"#10b981"}/><Badge label={fmtDuration(loc.loggedMins)+" IT"} color="#8b5cf6"/><Badge label={loc.slaRate+"% SLA"} color={slaColor(loc.slaRate)}/>{loc.breached>0&&<Badge label={loc.breached+" breached"} color="#ef4444"/>}</div>
+              </div>
+              {loc.typeBreakdown.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{loc.typeBreakdown.sort(function(a,b){return b.count-a.count;}).map(function(tb){return<div key={tb.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}><div style={{width:7,height:7,borderRadius:"50%",background:tb.color||"#6366f1",flexShrink:0}}/><span style={{fontSize:11,color:"#334155",fontWeight:600}}>{tb.name}</span><span style={{fontSize:11,color:"#6366f1",fontWeight:800}}>×{tb.count}</span></div>;})}</div>}
+            </div>;})}
+            {cl.noLoc>0&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#94a3b8"}}>+ {cl.noLoc} ticket{cl.noLoc>1?"s":""} with no location assigned</div>}
+          </div>
+        </div>}
+      </Card>;})}
+    </div>}
+
+    {/* ── TREND VIEW ── */}
+    {view==="trend"&&<div>
+      <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Weekly Volume</div><ResponsiveContainer width="100%" height={200}><AreaChart data={weeklyTrend}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="label" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Area type="monotone" dataKey="total" stroke="#6366f1" fill="#eef2ff" name="Total" strokeWidth={2}/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed" strokeWidth={2}/></AreaChart></ResponsiveContainer></Card>
+      <Card style={{borderLeft:"4px solid #6366f1"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+          <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div>
+          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer"}}>{aiLoading?"⏳ Analyzing…":"✨ Generate"}</button>
+        </div>
+        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}>Ready to analyze your data</div>}
+        {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
+      </Card>
+    </div>}
+
+    {/* ── BY TYPE VIEW ── */}
+    {view==="by_type"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {byType.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
+      {byType.map(function(t){
+        var typeTickets=active.filter(function(tk){return tk.typeId===t.id;});
+        var typeStatusTime={};
+        ALL_STATUSES.forEach(function(s){typeStatusTime[s]=0;});
+        typeTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){
+          var mins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
+          if(mins!=null&&typeStatusTime[entry.status]!==undefined)typeStatusTime[entry.status]+=mins;
+        });});
+        var hasStatusData=Object.values(typeStatusTime).some(function(v){return v>0;});
+        return<Card key={t.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span></div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}>
+            <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
+            <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
+          </div>
+          {hasStatusData&&<div>
+            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Elapsed Time Per Status</div>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {ALL_STATUSES.filter(function(s){return typeStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(typeStatusTime));var pct=maxV>0?Math.round(typeStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span>
+                <div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div>
+                <span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(typeStatusTime[s])}</span>
+              </div>;})}
+            </div>
+          </div>}
+        </Card>;
+      })}
+    </div>}
+
+    {/* ── PER USER VIEW ── */}
+    {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
+      {byUser.map(function(t){
+        var userTickets=active.filter(function(tk){return tk.assignedTo===t.id;});
+        var userStatusTime={};
+        ALL_STATUSES.forEach(function(s){userStatusTime[s]=0;});
+        userTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){
+          var mins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
+          if(mins!=null&&userStatusTime[entry.status]!==undefined)userStatusTime[entry.status]+=mins;
+        });});
+        var hasStatusData=Object.values(userStatusTime).some(function(v){return v>0;});
+        return<Card key={t.id}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}>
+            <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
+            <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
+            <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
+          </div>
+          {hasStatusData&&<div>
+            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Elapsed Time Per Status</div>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+              {ALL_STATUSES.filter(function(s){return userStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(userStatusTime));var pct=maxV>0?Math.round(userStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span>
+                <div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div>
+                <span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(userStatusTime[s])}</span>
+              </div>;})}
+            </div>
+          </div>}
+        </Card>;
+      })}
+    </div>}
   </div>;
 }
 
