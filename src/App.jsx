@@ -763,9 +763,10 @@ function PageTeamChat(p){
     await dbSaveTeamChat(msg);
   }
 
-  async function createGroup(){
+ async function createGroup(){
     if(!newGroupName.trim()||newGroupMembers.length===0)return;
-    var g={id:uid(),name:newGroupName.trim(),type:"custom",roleFilter:null,memberIds:newGroupMembers,createdBy:curUser.id,created_at:new Date().toISOString()};
+    var allMembers=newGroupMembers.includes(curUser.id)?newGroupMembers:[curUser.id].concat(newGroupMembers);
+    var g={id:uid(),name:newGroupName.trim(),type:"custom",roleFilter:null,memberIds:allMembers,createdBy:curUser.id,created_at:new Date().toISOString()};
     await dbSaveTeamGroup(g);
     setGroups(function(prev){return prev.concat([g]);});
     setNewGroupName("");setNewGroupMembers([]);setShowNewGroup(false);
@@ -935,12 +936,12 @@ function PageTeamChat(p){
     </div>
     <div style={{flex:1,background:"#fff",borderRadius:14,border:"1px solid #e2e8f0",overflow:"hidden",display:"flex",minHeight:0}}>
       {mainTab==="direct"&&<>
-        {(!isMobile||showUserList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}><OnlineUsersList/></div>}
-        {(!isMobile||!showUserList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}><DirectChatArea/></div>}
+        {(!isMobile||showUserList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}>{OnlineUsersList()}</div>}
+        {(!isMobile||!showUserList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}>{DirectChatArea()}</div>}
       </>}
       {mainTab==="groups"&&<>
-        {(!isMobile||showGroupList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}><GroupList/></div>}
-        {(!isMobile||!showGroupList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}><GroupChatArea/></div>}
+        {(!isMobile||showGroupList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}>{GroupList()}</div>}
+        {(!isMobile||!showGroupList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}>{GroupChatArea()}</div>}
       </>}
     </div>
     {showNewGroup&&<Modal title="➕ New Group" onClose={function(){setShowNewGroup(false);}}>
@@ -1143,7 +1144,7 @@ function PageDashboard(p){
   var byStatus=ALL_STATUSES.map(function(s){return{name:s,value:tickets.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
   var daily=Array.from({length:7},function(_,i){var d=new Date(Date.now()-(6-i)*86400000);return{lbl:d.toLocaleDateString("en",{weekday:"short"}),created:tickets.filter(function(t){return new Date(t.createdAt).toDateString()===d.toDateString();}).length,closed:tickets.filter(function(t){return t.closedAt&&new Date(t.closedAt).toDateString()===d.toDateString();}).length};});
   var techs=users.filter(function(u){return["it_technician","it_manager"].includes(u.role);});
-  var byType=ticketTypes.map(function(tt,i){return{name:tt.name,value:tickets.filter(function(t){return t.typeId===tt.id;}).length,fill:PAL[i%PAL.length]};}).filter(function(x){return x.value>0;});
+  var byType=ticketTypes.map(function(tt,i){return{name:tt.name,value:tickets.filter(function(t){return t.typeId===tt.id;}).length,fill:PAL[i%PAL.length]};}).filter(function(x){return x.value>0;}).sort(function(a,b){return b.value-a.value;});
   var totalLoggedMins=allTimeSessions.filter(function(s){return s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
   return<div>
     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:16}}>
