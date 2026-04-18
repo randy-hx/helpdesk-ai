@@ -1497,7 +1497,7 @@ function TicketDetail(p){
 // ── Time Tracking ─────────────────────────────────────────────────────────────
 function PageTimeTracking(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
-  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[dateFrom,setDateFrom]=useState("");var[dateTo,setDateTo]=useState("");var[activeTab,setActiveTab]=useState("it_time");
+ var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[dateFrom,setDateFrom]=useState("");var[dateTo,setDateTo]=useState("");var[activeTab,setActiveTab]=useState(curUser.role==="end_user"?"create_time":"it_time");
   var scope=useMemo(function(){var base=tickets.filter(function(t){return !t.deleted;});if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id||t.assignedTo===curUser.id;});if(filterUser)return base.filter(function(t){return t.assignedTo===filterUser||t.submittedBy===filterUser;});return base;},[tickets,curUser,isAdmin,filterUser]);
   var filtered=useMemo(function(){var q=search.toLowerCase();return scope.filter(function(t){if(q&&!t.title.toLowerCase().includes(q)&&!t.id.includes(q))return false;if(dateFrom){var from=new Date(dateFrom);from.setHours(0,0,0,0);if(new Date(t.createdAt)<from)return false;}if(dateTo){var to=new Date(dateTo);to.setHours(23,59,59,999);if(new Date(t.createdAt)>to)return false;}return true;});},[scope,search,dateFrom,dateTo]);
   function fu(id){return users.find(function(x){return x.id===id;});}
@@ -1509,7 +1509,7 @@ function PageTimeTracking(p){
   var selStyle={padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",boxSizing:"border-box"};
   return<div>
     <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking</div>
-    <div style={{display:"flex",gap:6,marginBottom:14}}>{[{id:"it_time",label:"🕐 IT Work Time"},{id:"create_time",label:"📝 Ticket Creation Time"}].map(function(tab){return<button key={tab.id} onClick={function(){setActiveTab(tab.id);}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:activeTab===tab.id?"#6366f1":"#f1f5f9",color:activeTab===tab.id?"#fff":"#475569",fontSize:12,fontWeight:700,cursor:"pointer"}}>{tab.label}</button>;})}</div>
+    <div style={{display:"flex",gap:6,marginBottom:14}}>{(curUser.role==="end_user"?[{id:"create_time",label:"📝 My Ticket Creation Time"}]:[{id:"it_time",label:"🕐 IT Work Time"},{id:"create_time",label:"📝 Ticket Creation Time"}]).map(function(tab){return<button key={tab.id} onClick={function(){setActiveTab(tab.id);}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:activeTab===tab.id?"#6366f1":"#f1f5f9",color:activeTab===tab.id?"#fff":"#475569",fontSize:12,fontWeight:700,cursor:"pointer"}}>{tab.label}</button>;})}</div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
       {activeTab==="it_time"?<><Stat label="Total IT Hours" value={fmtDuration(totalITMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/><Stat label="Tickets Timed" value={ticketsWithITTime+"/"+filtered.length} icon="⏱" color="#0ea5e9"/></>:<><Stat label="Total Create Time" value={fmtMs(totalCreateMins)} icon="📝" color="#f59e0b" sub={filtered.length+" tickets"}/><Stat label="Avg Create Time" value={fmtMs(avgCreateMins)} icon="⏱" color="#0ea5e9"/></>}
     </div>
