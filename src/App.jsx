@@ -2196,7 +2196,7 @@ function PageClients(p){
         </div>
         {(cl.contacts||[]).length>0&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12,marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:"#0369a1",textTransform:"uppercase",marginBottom:8,letterSpacing:0.5}}>👥 Contact Persons</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{(cl.contacts||[]).map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",borderRadius:8,padding:"7px 10px"}}><Avatar name={ct.name} id={ct.id} size={22}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}{ct.position&&<span style={{fontWeight:400,color:"#64748b",fontSize:11}}> · {ct.position}</span>}</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}{ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}</div></div></div>;})}</div></div>}
         <div style={{background:"#f8fafc",borderRadius:10,padding:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div><Btn size="sm" onClick={function(){openNewLoc(cl.id);}}>➕ Add Location</Btn></div>
           {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No locations yet.</div>}
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {cl.locations.map(function(loc){var contacts=loc.contacts||(loc.contact?[{id:"leg",name:loc.contact,email:"",phone:""}]:[]);return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}>
@@ -2207,7 +2207,6 @@ function PageClients(p){
               {contacts.length>0&&<div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>👥 Contact Persons</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{contacts.map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}><Avatar name={ct.name} id={ct.id} size={22}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}{ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}</div></div></div>;})}</div></div>}
               {contacts.length===0&&<div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",marginTop:4}}>No contacts added yet.</div>}
             </div>;})}
-         </div>;})}
           </div>
         </div>
       </Card>;})}
