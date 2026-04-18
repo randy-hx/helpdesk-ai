@@ -2207,6 +2207,7 @@ function PageClients(p){
               {contacts.length>0&&<div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>👥 Contact Persons</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{contacts.map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}><Avatar name={ct.name} id={ct.id} size={22}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}{ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}</div></div></div>;})}</div></div>}
               {contacts.length===0&&<div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",marginTop:4}}>No contacts added yet.</div>}
             </div>;})}
+         </div>;})}
           </div>
         </div>
       </Card>;})}
