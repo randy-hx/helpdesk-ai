@@ -37,7 +37,7 @@ export async function dbGetClients(){
   return (r.data||[]).map(dbClientToApp);
 }
 export async function dbSaveClient(c){
-  await supabase.from('clients').upsert({id:c.id,name:c.name,email:c.email||'',phone:c.phone||'',industry:c.industry||'',company_id:c.companyId||null,locations:c.locations||[]});
+  await supabase.from('clients').upsert({id:c.id,name:c.name,email:c.email||'',phone:c.phone||'',industry:c.industry||'',company_id:c.companyId||null,locations:c.locations||[],contacts:c.contacts||[]});
 }
 export async function dbDeleteClient(id){
   await supabase.from('clients').delete().eq('id',id);
@@ -284,7 +284,7 @@ export function dbCompanyToApp(c){
   return{id:c.id,name:c.name,domain:c.domain||'',address:c.address||'',phone:c.phone||'',industry:c.industry||'',size:c.size||'',createdAt:c.created_at};
 }
 export function dbClientToApp(c){
-  return{id:c.id,name:c.name,email:c.email||'',phone:c.phone||'',industry:c.industry||'',companyId:c.company_id||'',locations:c.locations||[]};
+  return{id:c.id,name:c.name,email:c.email||'',phone:c.phone||'',industry:c.industry||'',companyId:c.company_id||'',locations:c.locations||[],contacts:c.contacts||[]};
 }
 export function dbTicketTypeToApp(t){
   return{id:t.id,name:t.name,priority:t.priority,slaHours:t.sla_hours,color:t.color||'#6366f1',keywords:t.keywords||[],defaultAssignee:t.default_assignee||''};
