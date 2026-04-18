@@ -171,9 +171,12 @@ async function dbSaveTeamChat(msg){
 async function dbGetDirectChats(userA,userB){
   try{
     var{data,error}=await supabase.from("direct_chats").select("*")
-      .or("and(from_id.eq."+userA+",to_id.eq."+userB+"),and(from_id.eq."+userB+",to_id.eq."+userA+")")
       .order("created_at",{ascending:true}).limit(300);
-    if(error)throw error;return data||[];
+    if(error)throw error;
+    var all=data||[];
+    return all.filter(function(m){
+      return(m.from_id===userA&&m.to_id===userB)||(m.from_id===userB&&m.to_id===userA);
+    });
   }catch(e){console.error("dbGetDirectChats",e);return[];}
 }
 async function dbSaveDirectChat(msg){
@@ -733,11 +736,23 @@ function PageTeamChat(p){
   var groupChannelRef=useRef(null);
 
   useEffect(function(){
-    dbGetTeamGroups().then(function(data){setGroups(data);});
+    dbGetTeamGroups().then(async function(data){
+      setGroups(data||[]);
+      // Repair any groups created by current user that are missing their ID in memberIds
+      for(var i=0;i<(data||[]).length;i++){
+        var g=data[i];
+        if(g.createdBy===curUser.id&&!(g.memberIds||[]).includes(curUser.id)){
+          var repaired=Object.assign({},g,{memberIds:[curUser.id].concat(g.memberIds||[])});
+          await dbSaveTeamGroup(repaired);
+          setGroups(function(prev){return prev.map(function(x){return x.id===repaired.id?repaired:x;});});
+        }
+      }
+    });
   },[]);
 
   function isGroupMember(group){
     if(curUser.role==="admin")return true;
+    if(group.createdBy===curUser.id)return true;
     return(group.memberIds||[]).includes(curUser.id);
   }
   var visibleGroups=groups.filter(function(g){return isGroupMember(g);});
