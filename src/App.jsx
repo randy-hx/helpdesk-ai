@@ -104,6 +104,69 @@ async function notifyAdmin(subject,body){
   try{ await callSendEmail({to:"randy@omnisecurityinc.com",subject:subject,body:body}); }catch(e){ console.error("notifyAdmin failed:",e); }
 }
 
+// ── Notify all involved users on ticket events ────────────────────────────────
+// recipients: array of email strings, deduped internally
+async function notifyUsers(recipients,subject,body){
+  if(!recipients||!recipients.length)return;
+  var deduped=recipients.filter(function(e,i,a){return e&&e.trim()&&a.indexOf(e)===i;});
+  for(var i=0;i<deduped.length;i++){
+    try{ await callSendEmail({to:deduped[i],subject:subject,body:body}); }catch(e){ console.error("notifyUsers failed for "+deduped[i],e); }
+  }
+}
+
+// Returns array of emails for everyone involved in a ticket
+function getTicketEmails(ticket,users){
+  var emails=["randy@omnisecurityinc.com"];
+  if(ticket.submittedBy){var sub=users.find(function(u){return u.id===ticket.submittedBy;});if(sub&&sub.email)emails.push(sub.email);}
+  if(ticket.assignedTo){var asgn=users.find(function(u){return u.id===ticket.assignedTo;});if(asgn&&asgn.email)emails.push(asgn.email);}
+  if(ticket.externalEmail&&ticket.externalEmail.trim())emails.push(ticket.externalEmail.trim());
+  return emails.filter(function(e,i,a){return e&&a.indexOf(e)===i;});
+}
+
+// ── Supabase: app_notifications table ────────────────────────────────────────
+async function dbGetNotifications(userId){
+  try{var{data,error}=await supabase.from("app_notifications").select("*").eq("user_id",userId).order("created_at",{ascending:false}).limit(50);if(error)throw error;return data||[];}catch(e){console.error("dbGetNotifications",e);return[];}
+}
+async function dbSaveNotification(notif){
+  try{var{error}=await supabase.from("app_notifications").upsert([notif]);if(error)throw error;}catch(e){console.error("dbSaveNotification",e);}
+}
+async function dbMarkNotificationsRead(userId){
+  try{var{error}=await supabase.from("app_notifications").update({read:true}).eq("user_id",userId).eq("read",false);if(error)throw error;}catch(e){console.error("dbMarkNotificationsRead",e);}
+}
+
+// Creates in-app notifications for all IT users + ticket submitter (excludes excludeUserId)
+async function createNotificationsForTicket(ticket,users,message,type,excludeUserId){
+  var targets=users.filter(function(u){
+    if(!u.active)return false;
+    if(u.id===excludeUserId)return false;
+    // notify all IT staff + admin + submitter
+    if(IT_ROLES.includes(u.role))return true;
+    if(u.id===ticket.submittedBy)return true;
+    return false;
+  });
+  for(var i=0;i<targets.length;i++){
+    var notif={id:uid(),user_id:targets[i].id,ticket_id:ticket.id,ticket_title:ticket.title,message:message,type:type||"info",read:false,created_at:new Date().toISOString()};
+    await dbSaveNotification(notif);
+  }
+}
+
+// ── Supabase: chat_groups + team_chats tables ─────────────────────────────────
+async function dbGetTeamGroups(){
+  try{var{data,error}=await supabase.from("chat_groups").select("*").order("created_at",{ascending:true});if(error)throw error;return data||[];}catch(e){console.error("dbGetTeamGroups",e);return[];}
+}
+async function dbSaveTeamGroup(g){
+  try{var{error}=await supabase.from("chat_groups").upsert([g]);if(error)throw error;}catch(e){console.error("dbSaveTeamGroup",e);}
+}
+async function dbDeleteTeamGroup(id){
+  try{var{error}=await supabase.from("chat_groups").delete().eq("id",id);if(error)throw error;}catch(e){console.error("dbDeleteTeamGroup",e);}
+}
+async function dbGetTeamChats(groupId){
+  try{var{data,error}=await supabase.from("team_chats").select("*").eq("group_id",groupId).order("created_at",{ascending:true}).limit(200);if(error)throw error;return data||[];}catch(e){console.error("dbGetTeamChats",e);return[];}
+}
+async function dbSaveTeamChat(msg){
+  try{var{error}=await supabase.from("team_chats").upsert([msg]);if(error)throw error;}catch(e){console.error("dbSaveTeamChat",e);}
+}
+
 async function dbGetChats(ticketId){
   try{var{data,error}=await supabase.from("ticket_chats").select("*").eq("ticket_id",ticketId).order("created_at",{ascending:true});if(error)throw error;return data||[];}catch(e){console.error("dbGetChats",e);return[];}
 }
@@ -172,16 +235,54 @@ function FTextarea(p){var label=p.label;var rest=Object.assign({},p);delete rest
 function Btn(p){var v=p.variant||"primary";var sm=p.size==="sm";var base={border:"none",cursor:"pointer",borderRadius:8,fontWeight:600,fontSize:sm?11:13,display:"inline-flex",alignItems:"center",gap:4,padding:sm?"6px 12px":"10px 18px"};var cols={primary:{background:"#6366f1",color:"#fff"},danger:{background:"#ef4444",color:"#fff"},success:{background:"#10b981",color:"#fff"},warning:{background:"#f59e0b",color:"#fff"},ghost:{background:"#f1f5f9",color:"#475569"}};var rest=Object.assign({},p);delete rest.variant;delete rest.size;return<button style={Object.assign({},base,cols[v]||cols.primary,p.style||{})} {...rest}>{p.children}</button>;}
 function FocusInput(p){var[focused,setFocused]=useState(false);var extraPad=p.extraPad;var rest=Object.assign({},p);delete rest.extraPad;return<input {...rest} onFocus={function(){setFocused(true);}} onBlur={function(){setFocused(false);}} style={{width:"100%",padding:extraPad?"12px 44px 12px 14px":"12px 14px",border:"1.5px solid "+(focused?"#0ea5e9":"#e2e8f0"),borderRadius:10,fontSize:15,outline:"none",boxSizing:"border-box",background:"#f8fafc",transition:"border-color .2s"}}/>;}
 
+// ── Notification Bell ─────────────────────────────────────────────────────────
+function NotificationBell(p){
+  var notifications=p.notifications||[];
+  var onMarkRead=p.onMarkRead||function(){};
+  var onGoTicket=p.onGoTicket||function(){};
+  var[open,setOpen]=useState(false);
+  var unread=notifications.filter(function(n){return !n.read;}).length;
+  var bellRef=useRef(null);
+  useEffect(function(){
+    function handleClick(e){if(bellRef.current&&!bellRef.current.contains(e.target))setOpen(false);}
+    document.addEventListener("mousedown",handleClick);
+    return function(){document.removeEventListener("mousedown",handleClick);};
+  },[]);
+  var TYPE_ICON={"ticket":"🎫","status":"🔄","chat":"💬","email":"📧","sla":"🚨","team_chat":"💬","info":"🔔"};
+  return<div ref={bellRef} style={{position:"relative"}}>
+    <button onClick={function(){setOpen(!open);if(!open&&unread>0)onMarkRead();}} style={{position:"relative",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:18}}>
+      🔔
+      {unread>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#ef4444",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:9,fontWeight:800,minWidth:16,textAlign:"center",lineHeight:"14px"}}>{unread>99?"99+":unread}</span>}
+    </button>
+    {open&&<div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:320,maxHeight:440,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,.18)",border:"1px solid #e2e8f0",zIndex:9999,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🔔 Notifications</div>
+        {unread>0&&<button onClick={onMarkRead} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#6366f1",fontWeight:700,padding:0}}>Mark all read</button>}
+      </div>
+      <div style={{overflowY:"auto",flex:1}}>
+        {notifications.length===0&&<div style={{padding:"28px 16px",textAlign:"center",color:"#94a3b8",fontSize:12}}>No notifications yet</div>}
+        {notifications.map(function(n){return<div key={n.id} onClick={function(){if(n.ticket_id)onGoTicket(n.ticket_id);setOpen(false);}} style={{padding:"10px 16px",borderBottom:"1px solid #f1f5f9",cursor:n.ticket_id?"pointer":"default",background:n.read?"#fff":"#eef2ff",display:"flex",gap:10,alignItems:"flex-start"}}>
+          <span style={{fontSize:16,flexShrink:0,marginTop:2}}>{TYPE_ICON[n.type]||"🔔"}</span>
+          <div style={{flex:1,minWidth:0}}>
+            {n.ticket_title&&<div style={{fontWeight:600,fontSize:11,color:"#6366f1",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.ticket_title}</div>}
+            <div style={{fontSize:12,color:"#334155",lineHeight:1.5}}>{n.message}</div>
+            <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>{ago(n.created_at)}</div>
+          </div>
+          {!n.read&&<div style={{width:8,height:8,borderRadius:"50%",background:"#6366f1",flexShrink:0,marginTop:4}}/>}
+        </div>;})}
+      </div>
+    </div>}
+  </div>;
+}
+
 // ── Time Session Timer Component ──────────────────────────────────────────────
-// autoStart: if true, immediately starts the timer on mount (for IT users opening a ticket)
-// onAutoStarted: callback so parent can show the banner notification
 function TicketTimer(p){
   var ticketId=p.ticketId;
   var curUser=p.curUser;
   var users=p.users;
   var autoStart=p.autoStart||false;
   var onAutoStarted=p.onAutoStarted||function(){};
-  var forceStopRef=p.forceStopRef; // ref that parent can use to trigger a stop
+  var forceStopRef=p.forceStopRef;
 
   var[sessions,setSessions]=useState([]);
   var[activeSession,setActiveSession]=useState(null);
@@ -201,7 +302,6 @@ function TicketTimer(p){
         setLoading(false);
       } else {
         setLoading(false);
-        // Auto-start if requested and no active session and ticket is not closed
         if(autoStart&&!autoStartedRef.current){
           autoStartedRef.current=true;
           var now=new Date().toISOString();
@@ -217,7 +317,6 @@ function TicketTimer(p){
     });
   },[ticketId]);
 
-  // Allow parent to force-stop via ref
   useEffect(function(){
     if(!forceStopRef)return;
     forceStopRef.current=async function(){
@@ -337,7 +436,7 @@ function ScheduleEditor(p){
 
 // ── Ticket Chat ───────────────────────────────────────────────────────────────
 function TicketChat(p){
-  var ticketId=p.ticketId;var curUser=p.curUser;var users=p.users;
+  var ticketId=p.ticketId;var curUser=p.curUser;var users=p.users;var ticket=p.ticket;
   var[msgs,setMsgs]=useState([]);var[text,setText]=useState("");var[sending,setSending]=useState(false);
   var bottomRef=useRef(null);
   useEffect(function(){
@@ -346,7 +445,22 @@ function TicketChat(p){
     return function(){supabase.removeChannel(sub);};
   },[ticketId]);
   useEffect(function(){if(bottomRef.current)bottomRef.current.scrollIntoView({behavior:"smooth"});},[msgs]);
-  async function send(){var trimmed=text.trim();if(!trimmed||sending)return;setSending(true);var msg={id:uid(),ticket_id:ticketId,user_id:curUser.id,message:trimmed,created_at:new Date().toISOString()};setMsgs(function(prev){return prev.concat([msg]);});setText("");setSending(false);await dbSaveChat(msg);}
+  async function send(){
+    var trimmed=text.trim();if(!trimmed||sending)return;setSending(true);
+    var msg={id:uid(),ticket_id:ticketId,user_id:curUser.id,message:trimmed,created_at:new Date().toISOString()};
+    setMsgs(function(prev){return prev.concat([msg]);});setText("");setSending(false);
+    await dbSaveChat(msg);
+    // Notify involved users by email (exclude sender)
+    if(ticket){
+      var emails=getTicketEmails(ticket,users).filter(function(e){
+        var sender=users.find(function(u){return u.id===curUser.id;});
+        return !sender||e!==sender.email;
+      });
+      var subj="💬 New Chat Message — "+ticket.title;
+      var body="A new chat message was posted on ticket #"+ticket.id.slice(-8)+".\n\nTicket: "+ticket.title+"\nFrom: "+curUser.name+"\n\nMessage:\n"+trimmed+"\n\nLog in to Hoptix to view the full conversation.";
+      notifyUsers(emails,subj,body);
+    }
+  }
   function fu(id){return users.find(function(u){return u.id===id;});}
   return<div style={{display:"flex",flexDirection:"column",height:380}}>
     <div style={{flex:1,overflowY:"auto",padding:"4px 0",marginBottom:8,WebkitOverflowScrolling:"touch"}}>
@@ -405,9 +519,7 @@ function TicketHistory(p){
       return null;
     })}
   </div>;
-}
-
-// ── Login ─────────────────────────────────────────────────────────────────────
+}// ── Login ─────────────────────────────────────────────────────────────────────
 function LoginPage(p){
   var users=p.users;var setUsers=p.setUsers;var companies=p.companies;var onLogin=p.onLogin;
   var[view,setView]=useState("login");
@@ -525,7 +637,159 @@ function ProfileModal(p){
       <ScheduleEditor userId={curUser.id} schedules={schedules} onChange={handleScheduleChange}/>
     </div>}
   </Modal>;
-}// ── Root App ──────────────────────────────────────────────────────────────────
+}
+
+// ── Team Chat Page ─────────────────────────────────────────────────────────────
+function PageTeamChat(p){
+  var curUser=p.curUser;var users=p.users;var isAdmin=p.isAdmin;var isMobile=p.isMobile;
+  var[groups,setGroups]=useState([]);
+  var[selGroup,setSelGroup]=useState(null);
+  var[msgs,setMsgs]=useState([]);
+  var[text,setText]=useState("");
+  var[sending,setSending]=useState(false);
+  var[showNewGroup,setShowNewGroup]=useState(false);
+  var[newGroupName,setNewGroupName]=useState("");
+  var[newGroupMembers,setNewGroupMembers]=useState([]);
+  var[showGroupList,setShowGroupList]=useState(true);
+  var bottomRef=useRef(null);
+  var channelRef=useRef(null);
+
+  // Load custom groups only
+  useEffect(function(){
+    dbGetTeamGroups().then(function(data){setGroups(data);});
+  },[]);
+
+  // Admin sees all groups; others only see groups they are members of
+  function isMember(group){
+    if(curUser.role==="admin")return true;
+    var ids=group.memberIds||[];
+    return ids.includes(curUser.id);
+  }
+
+  var visibleGroups=groups.filter(function(g){return isMember(g);});
+
+  // Load messages when group changes + real-time
+  useEffect(function(){
+    if(!selGroup){setMsgs([]);return;}
+    dbGetTeamChats(selGroup.id).then(function(data){setMsgs(data);});
+    if(channelRef.current)supabase.removeChannel(channelRef.current);
+    var sub=supabase.channel("team-chat-"+selGroup.id)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats",filter:"group_id=eq."+selGroup.id},function(payload){
+        setMsgs(function(prev){if(prev.find(function(m){return m.id===payload.new.id;}))return prev;return prev.concat([payload.new]);});
+      }).subscribe();
+    channelRef.current=sub;
+    return function(){supabase.removeChannel(sub);};
+  },[selGroup?.id]);
+
+  useEffect(function(){if(bottomRef.current)bottomRef.current.scrollIntoView({behavior:"smooth"});},[msgs]);
+
+  async function sendMsg(){
+    var trimmed=text.trim();if(!trimmed||sending||!selGroup)return;setSending(true);
+    var msg={id:uid(),group_id:selGroup.id,user_id:curUser.id,message:trimmed,created_at:new Date().toISOString()};
+    setMsgs(function(prev){return prev.concat([msg]);});setText("");setSending(false);
+    await dbSaveTeamChat(msg);
+  }
+
+  async function createGroup(){
+    if(!newGroupName.trim()||newGroupMembers.length===0){return;}
+    var g={id:uid(),name:newGroupName.trim(),type:"custom",roleFilter:null,memberIds:newGroupMembers,createdBy:curUser.id,created_at:new Date().toISOString()};
+    await dbSaveTeamGroup(g);
+    setGroups(function(prev){return prev.concat([g]);});
+    setNewGroupName("");setNewGroupMembers([]);setShowNewGroup(false);
+  }
+
+  async function deleteGroup(gid){
+    await dbDeleteTeamGroup(gid);
+    setGroups(function(prev){return prev.filter(function(g){return g.id!==gid;});});
+    if(selGroup&&selGroup.id===gid)setSelGroup(null);
+  }
+
+  function fu(id){return users.find(function(u){return u.id===id;});}
+
+  function GroupList(){
+    return<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"14px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>💬 Team Chat</div>
+        {isAdmin&&<Btn size="sm" onClick={function(){setShowNewGroup(true);}}>➕ Group</Btn>}
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:8}}>
+        {visibleGroups.length===0&&<div style={{textAlign:"center",padding:"32px 16px",color:"#94a3b8",fontSize:12}}>{isAdmin?"No groups yet — click ➕ to create one.":"No groups available. Ask an admin."}</div>}
+        {visibleGroups.map(function(g){var active=selGroup&&selGroup.id===g.id;var mc=(g.memberIds||[]).length;return<div key={g.id} onClick={function(){setSelGroup(g);if(isMobile)setShowGroupList(false);}} style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:4,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:36,height:36,borderRadius:10,background:active?"#6366f1":avCol(g.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,color:"#fff"}}>💬</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</div>
+            <div style={{fontSize:10,color:"#94a3b8"}}>{mc} member{mc!==1?"s":""}</div>
+          </div>
+          {isAdmin&&<button onClick={function(e){e.stopPropagation();deleteGroup(g.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:4,flexShrink:0,lineHeight:1}}>🗑</button>}
+        </div>;})}
+      </div>
+    </div>;
+  }
+
+  function ChatArea(){
+    if(!selGroup)return<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#94a3b8"}}>
+      <div style={{fontSize:48}}>💬</div>
+      <div style={{fontSize:14,fontWeight:600}}>Select a group to start chatting</div>
+      <div style={{fontSize:12}}>Choose from the {isMobile?"list above":"list on the left"}</div>
+    </div>;
+
+    return<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minHeight:0}}>
+      <div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        {isMobile&&<button onClick={function(){setShowGroupList(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:0,color:"#64748b"}}>←</button>}
+        <div style={{width:32,height:32,borderRadius:8,background:avCol(selGroup.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"#fff"}}>💬</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:14,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selGroup.name}</div>
+          <div style={{fontSize:10,color:"#94a3b8"}}>{(selGroup.memberIds||[]).length} members</div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"12px 16px",WebkitOverflowScrolling:"touch"}}>
+        {msgs.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontSize:13,fontWeight:600}}>No messages yet</div><div style={{fontSize:11,marginTop:4}}>Be the first to say something!</div></div>}
+        {msgs.map(function(msg,i){
+          var sender=fu(msg.user_id);var isMe=msg.user_id===curUser.id;
+          var showAvatar=i===0||msgs[i-1].user_id!==msg.user_id;
+          var showDate=i===0||new Date(msgs[i].created_at).toDateString()!==new Date(msgs[i-1].created_at).toDateString();
+          return<div key={msg.id}>
+            {showDate&&<div style={{textAlign:"center",margin:"12px 0 8px"}}><span style={{background:"#f1f5f9",color:"#94a3b8",fontSize:10,fontWeight:600,borderRadius:6,padding:"3px 10px"}}>{new Date(msg.created_at).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span></div>}
+            <div style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:8,marginBottom:showAvatar?10:3,alignItems:"flex-end"}}>
+              <div style={{width:28,flexShrink:0}}>{showAvatar&&<Avatar name={sender?sender.name:"?"} id={msg.user_id} size={28}/>}</div>
+              <div style={{maxWidth:"70%"}}>
+                {showAvatar&&<div style={{fontSize:10,fontWeight:700,color:"#64748b",marginBottom:3,textAlign:isMe?"right":"left"}}>{isMe?"You":sender?sender.name:"Unknown"}{sender&&sender.role&&<span style={{color:ROLE_META[sender.role]?.color||"#94a3b8"}}> · {ROLE_META[sender.role]?.label||sender.role}</span>} · {ago(msg.created_at)}</div>}
+                <div style={{background:isMe?"#6366f1":"#f1f5f9",color:isMe?"#fff":"#1e293b",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.5,wordBreak:"break-word"}}>{msg.message}</div>
+              </div>
+            </div>
+          </div>;
+        })}
+        <div ref={bottomRef}/>
+      </div>
+      <div style={{padding:"10px 16px",borderTop:"1px solid #e2e8f0",display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+        <textarea value={text} onChange={function(e){setText(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();}}} placeholder={"Message "+selGroup.name+"…"} rows={2} style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:10,fontSize:14,outline:"none",resize:"none",background:"#f8fafc",boxSizing:"border-box"}}/>
+        <button onClick={sendMsg} disabled={sending||!text.trim()} style={{padding:"12px 18px",background:sending||!text.trim()?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:sending||!text.trim()?"not-allowed":"pointer",flexShrink:0,minHeight:46}}>Send</button>
+      </div>
+    </div>;
+  }
+
+  return<div style={{height:"calc(100vh - 120px)",display:"flex",gap:0,background:"#fff",borderRadius:14,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+    {(!isMobile||showGroupList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}><GroupList/></div>}
+    {(!isMobile||!showGroupList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}><ChatArea/></div>}
+    {showNewGroup&&<Modal title="➕ New Group" onClose={function(){setShowNewGroup(false);}}>
+      <FInput label="Group Name *" value={newGroupName} onChange={function(e){setNewGroupName(e.target.value);}} placeholder="e.g. Project Alpha"/>
+      <div style={{marginBottom:14}}>
+        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:8}}>Members (pick at least 1)</label>
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
+          {users.filter(function(u){return u.active&&u.id!==curUser.id;}).map(function(u){var checked=newGroupMembers.includes(u.id);return<label key={u.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:checked?"#eef2ff":"transparent",cursor:"pointer"}}>
+            <input type="checkbox" checked={checked} onChange={function(){setNewGroupMembers(function(prev){return checked?prev.filter(function(id){return id!==u.id;}):prev.concat([u.id]);});}} style={{accentColor:"#6366f1"}}/>
+            <Avatar name={u.name} id={u.id} size={22}/>
+            <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[u.role]?.label||u.role}</div></div>
+          </label>;})}
+        </div>
+        <div style={{fontSize:11,color:"#64748b",marginTop:6}}>{newGroupMembers.length} member{newGroupMembers.length!==1?"s":""} selected</div>
+      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setShowNewGroup(false);}}>Cancel</Btn><Btn onClick={createGroup}>Create Group</Btn></div>
+    </Modal>}
+  </div>;
+}
+
+// ── Root App ──────────────────────────────────────────────────────────────────
 export default function App(){
   var[users,setUsers]=useState([]);var[companies,setCompanies]=useState([]);var[clients,setClients]=useState([]);
   var[tickets,setTicketsR]=useState([]);var[ticketTypes,setTTR]=useState([]);
@@ -533,11 +797,13 @@ export default function App(){
   var[logs,setLogsR]=useState([]);var[emailTemplates,setEmailTemplates]=useState([]);
   var[allTimeSessions,setAllTimeSessions]=useState([]);
   var[curUser,setCurUserR]=useState(function(){return loadState("hd_curUser",null);});
-  var[page,setPageR]=useState(function(){try{var s=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
+  var[page,setPageR]=useState(function(){try{var s=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
   var[selTicket,setSelTicket]=useState(null);var[toast,setToast]=useState(null);
   var[breaches,setBreaches]=useState([]);var[inboxAlerts,setInboxAlerts]=useState([]);
   var[showProfile,setShowProfile]=useState(false);var[loading,setLoading]=useState(true);
   var[sidebarOpen,setSidebarOpen]=useState(false);
+  var[notifications,setNotifications]=useState([]);
+  var prevBreachIdsRef=useRef([]);
   var isMobile=useIsMobile();
 
   useEffect(function(){
@@ -549,6 +815,26 @@ export default function App(){
     }
     loadAll();
   },[]);
+
+  // Load notifications when user logs in
+  useEffect(function(){
+    if(!curUser)return;
+    dbGetNotifications(curUser.id).then(function(data){setNotifications(data);});
+    var sub=supabase.channel("notifs-"+curUser.id)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"app_notifications",filter:"user_id=eq."+curUser.id},function(payload){
+        setNotifications(function(prev){if(prev.find(function(n){return n.id===payload.new.id;}))return prev;return[payload.new].concat(prev);});
+      }).subscribe();
+    return function(){supabase.removeChannel(sub);};
+  },[curUser?.id]);
+
+  // Update browser tab title with separate SLA breach + unread notification counts
+  var unreadCount=useMemo(function(){return notifications.filter(function(n){return !n.read;}).length;},[notifications]);
+  useEffect(function(){
+    var parts=[];
+    if(breaches.length>0)parts.push("\uD83D\uDEA8"+breaches.length);
+    if(unreadCount>0)parts.push("\uD83D\uDD14"+unreadCount);
+    document.title=parts.length>0?"("+parts.join(" | ")+") Hoptix":"Hoptix";
+  },[unreadCount,breaches]);
 
   var refreshTimeSessions=useCallback(async function(){
     var ts=await dbGetAllTimeSessions();setAllTimeSessions(ts);
@@ -568,12 +854,39 @@ export default function App(){
   function setPage(v){saveState("hd_page",v);setPageR(v);setSidebarOpen(false);}
   var addLog=useCallback(function(action,target,detail,uId){var entry={id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};setLogsR(function(p){return[entry].concat(p).slice(0,500);});dbAddLog(entry);},[curUser]);
   var showToast=useCallback(function(msg,type){setToast({msg,type:type||"ok"});setTimeout(function(){setToast(null);},3500);},[]);
-  useEffect(function(){function check(){setBreaches(tickets.filter(function(t){if(t.deleted||t.status==="Closed")return false;var s=getStatusSla(t,statusSla,schedules);return s&&s.breached;}));}check();var iv=setInterval(check,30000);return function(){clearInterval(iv);};},[tickets,statusSla,schedules]);
+
+  // SLA breach checking + email notifications on new breaches
+  useEffect(function(){
+    function check(){
+      var newBreaches=tickets.filter(function(t){if(t.deleted||t.status==="Closed")return false;var s=getStatusSla(t,statusSla,schedules);return s&&s.breached;});
+      setBreaches(newBreaches);
+      // Notify on newly detected breaches
+      if(curUser){
+        newBreaches.forEach(function(t){
+          if(!prevBreachIdsRef.current.includes(t.id)){
+            var emails=getTicketEmails(t,users);
+            var subj="🚨 SLA Breach — "+t.title;
+            var body="A ticket has exceeded its SLA time limit.\n\nTicket: "+t.title+"\nStatus: "+t.status+"\nAssigned To: "+(users.find(function(u){return u.id===t.assignedTo;})?.name||"Unassigned")+"\n\nPlease attend to this ticket immediately.";
+            notifyUsers(emails,subj,body);
+            createNotificationsForTicket(t,users,"SLA breach on ticket: "+t.title,"sla",null);
+          }
+        });
+        prevBreachIdsRef.current=newBreaches.map(function(t){return t.id;});
+      }
+    }
+    check();var iv=setInterval(check,30000);return function(){clearInterval(iv);};},[tickets,statusSla,schedules,users,curUser]);
+
   useEffect(function(){
     if(!curUser)return;
     async function fetchReplies(){try{var res=await fetch("/api/fetch-replies");if(!res.ok)return;var data=await res.json();if(!data.replies||!data.replies.length)return;var updated=tickets.slice();data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});setTickets(function(){return updated;});setInboxAlerts(function(prev){return prev.concat(data.replies);});showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");}catch(e){}}
     fetchReplies();var iv=setInterval(fetchReplies,60000);return function(){clearInterval(iv);};
   },[curUser]);
+
+  async function handleMarkNotificationsRead(){
+    if(!curUser)return;
+    await dbMarkNotificationsRead(curUser.id);
+    setNotifications(function(prev){return prev.map(function(n){return Object.assign({},n,{read:true});});});
+  }
 
   var isAdmin=["admin","it_manager"].includes(curUser?.role);
   var isTech=IT_ROLES.includes(curUser?.role);
@@ -589,6 +902,7 @@ export default function App(){
     {id:"tickets",icon:"🎫",label:"Tickets"},
     {id:"new_ticket",icon:"➕",label:"New Ticket"},
     {id:"time_tracking",icon:"⏱️",label:"Time Tracking"},
+    {id:"team_chat",icon:"💬",label:"Team Chat"},
     {id:"reports",icon:"📊",label:"Reports",admin:true},
     {id:"users",icon:"👥",label:"Users",admin:true},
     {id:"companies",icon:"🏢",label:"Companies",superAdmin:true},
@@ -622,6 +936,7 @@ export default function App(){
             {pendingUsers.length>0&&isAdmin&&<div onClick={function(){setPage("users");}} style={{cursor:"pointer",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:20,padding:"4px 10px",color:"#92400e",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>⏳ {pendingUsers.length}</div>}
             {breaches.length>0&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:20,padding:"4px 10px",color:"#dc2626",fontSize:10,fontWeight:700}}>⚠️ {breaches.length}</div>}
             {inboxAlerts.length>0&&<div style={{cursor:"pointer",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:20,padding:"4px 10px",color:"#0369a1",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:4}} onClick={function(){setPage("tickets");}}>📬 {inboxAlerts.length}<button onClick={function(e){e.stopPropagation();setInboxAlerts([]);}} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:11,padding:0,lineHeight:1}}>✕</button></div>}
+            <NotificationBell notifications={notifications} onMarkRead={handleMarkNotificationsRead} onGoTicket={function(ticketId){setSelTicket(ticketId);}}/>
             <button onClick={function(){setShowProfile(true);}} style={{display:"flex",alignItems:"center",gap:6,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"5px 10px 5px 5px",cursor:"pointer"}}><Avatar name={curUser.name} id={curUser.id} size={26}/>{!isMobile&&<div style={{textAlign:"left"}}><div style={{fontWeight:700,fontSize:11}}>{curUser.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div>}<span style={{fontSize:10,color:"#94a3b8"}}>▼</span></button>
           </div>
         </div>
@@ -629,8 +944,9 @@ export default function App(){
         <div style={{flex:1,overflowY:"auto",padding:isMobile?"12px":"24px",paddingBottom:isMobile?"80px":"24px",WebkitOverflowScrolling:"touch"}}>
           {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
           {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile}/>}
-          {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage} allTimeSessions={allTimeSessions}/>}
+          {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage} setSelTicket={setSelTicket} allTimeSessions={allTimeSessions}/>}
           {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
+          {page==="team_chat"    &&<PageTeamChat    curUser={curUser} users={users} isAdmin={isAdmin} isMobile={isMobile}/>}
           {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules} allTimeSessions={allTimeSessions}/>}
           {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
           {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast} dbSaveCompany={dbSaveCompany} dbDeleteCompany={dbDeleteCompany}/>}
@@ -648,9 +964,7 @@ export default function App(){
       {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} schedules={schedules} setSchedules={setSchedulesR} dbSaveSchedule={dbSaveSchedule} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
-}
-
-// ── Dashboard ─────────────────────────────────────────────────────────────────
+}// ── Dashboard ─────────────────────────────────────────────────────────────────
 function PageDashboard(p){
   var tickets=p.tickets;var allTickets=p.allTickets||p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var setPage=p.setPage;var setSelTicket=p.setSelTicket;var breaches=p.breaches||[];var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
   var byStatus=ALL_STATUSES.map(function(s){return{name:s,value:tickets.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
@@ -693,507 +1007,18 @@ function PageDashboard(p){
   </div>;
 }
 
-// ── Reports ───────────────────────────────────────────────────────────────────
-function PageReports(p){
-  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};var allTimeSessions=p.allTimeSessions||[];
-
-  var MONTH_OPTS=useMemo(function(){var opts=[];var now=new Date();for(var i=0;i<13;i++){var d=new Date(now.getFullYear(),now.getMonth()-i,1);var val=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");var lbl=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});opts.push({value:val,label:lbl});}return opts;},[]);
-  var nowStr=(function(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
-  var[view,setView]=useState("summary");
-  var[range,setRange]=useState("month-"+nowStr);
-  var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
-  var selClientObj=clients.find(function(c){return c.id===fClient;});
-  var availLocations=selClientObj?selClientObj.locations:[];
-  function handleClientChange(v){setFClient(v);setFLocation("");}
-
-  var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return mon.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1])-1,1).toISOString();}if(range==="year")return new Date(now.getFullYear(),0,1).toISOString();return new Date(0).toISOString();},[range]);
-  var rangeEnd=useMemo(function(){var now=new Date();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var sun=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon+6,23,59,59,999);return sun.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1]),0,23,59,59,999).toISOString();}return null;},[range]);
-  var rangeLabel={day:"Today",week:"This Week",year:"This Year",all:"All Time"};
-  var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
-
-  var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;var d=new Date(t.createdAt);if(d<new Date(rangeStart))return false;if(rangeEnd&&d>new Date(rangeEnd))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,rangeEnd,fClient,fLocation]);
-  var allActive=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,fClient,fLocation]);
-
-  function loggedMins(ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
-  function userLoggedMins(userId,ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return s.user_id===userId&&ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
-
-  // ── Status time: based purely on statusTimeLog timestamps (status transitions), NOT the IT timer ──
-  // Each statusTimeLog entry records enteredAt and exitedAt — the actual clock time
-  // the ticket spent in that status. durationMins = (exitedAt - enteredAt) in minutes.
-  // For the currently-open status entry, we compute live from enteredAt to now.
-  var statusTimeSummary=useMemo(function(){
-    var totals={};
-    ALL_STATUSES.forEach(function(s){totals[s]=0;});
-    active.forEach(function(t){
-      (t.statusTimeLog||[]).forEach(function(entry){
-        var mins;
-        if(entry.durationMins!=null){
-          // Already computed when status changed: exitedAt - enteredAt
-          mins=entry.durationMins;
-        } else if(entry.exitedAt===null&&entry.enteredAt){
-          // Ticket is still in this status — measure from enteredAt to now
-          mins=parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2));
-        } else {
-          return;
-        }
-        if(totals[entry.status]!==undefined) totals[entry.status]+=mins;
-      });
-    });
-    return totals;
-  },[active]);
-
-  // ── SLA Breach analysis — also uses statusTimeLog timestamps, not IT timer ──
-  var slaBreachAnalysis=useMemo(function(){
-    var cfg=statusSla||DEFAULT_STATUS_SLA;
-    var breachCount={};
-    var breachDuration={};
-    ALL_STATUSES.forEach(function(s){breachCount[s]=0;breachDuration[s]=0;});
-
-    active.forEach(function(t){
-      (t.statusTimeLog||[]).forEach(function(entry){
-        var allowed=cfg[entry.status];
-        if(allowed===null||allowed===undefined)return;
-        var allowedMins=allowed*60;
-
-        var durMins;
-        if(entry.durationMins!=null){
-          durMins=entry.durationMins;
-        } else if(entry.exitedAt===null&&entry.enteredAt){
-          durMins=parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2));
-        } else {
-          return;
-        }
-
-        if(durMins>allowedMins){
-          breachCount[entry.status]=(breachCount[entry.status]||0)+1;
-          breachDuration[entry.status]=(breachDuration[entry.status]||0)+(durMins-allowedMins);
-        }
-      });
-    });
-
-    var totalBreachMins=Object.values(breachDuration).reduce(function(a,b){return a+b;},0);
-    var totalBreachCount=Object.values(breachCount).reduce(function(a,b){return a+b;},0);
-    return{breachCount:breachCount,breachDuration:breachDuration,totalBreachMins:totalBreachMins,totalBreachCount:totalBreachCount};
-  },[active,statusSla]);
-
-  var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:loggedMins(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
-  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:userLoggedMins(t.id,active)};});
-  var totalBreached=active.filter(function(t){return t.slaBreached;}).length;
-  var totalSlaRate=calcSlaRate(active);var avgCloseAll=calcAvgClose(calcClosed(active));var totalLoggedMins=loggedMins(active);
-  var statusPieData=ALL_STATUSES.map(function(s){return{name:s,value:active.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
-  var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
-  var weeklyTrend=useMemo(function(){var now=new Date();var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return Array.from({length:8},function(_,i){var wStart=new Date(thisMon.getTime()-(7-i)*7*86400000);var wEnd=new Date(wStart.getTime()+7*86400000-1);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<=wEnd;});var lbl=wStart.toLocaleDateString("en-US",{month:"short",day:"numeric"});return{label:lbl,total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
-  var byClient=useMemo(function(){return clients.map(function(cl){var cTickets=allActive.filter(function(t){return t.clientId===cl.id;});if(cTickets.length===0)return null;var byLoc=(cl.locations||[]).map(function(loc){var lT=cTickets.filter(function(t){return t.locationId===loc.id;});var typeBreakdown=ticketTypes.map(function(tt){var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;}).filter(Boolean);return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(lT),slaRate:calcSlaRate(lT),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};}).filter(function(l){return l.total>0;});var noLoc=cTickets.filter(function(t){return !t.locationId;});return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(cTickets),slaRate:calcSlaRate(cTickets),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};}).filter(Boolean).sort(function(a,b){return b.total-a.total;});},[clients,allActive,ticketTypes,allTimeSessions]);
-
-  async function generateInsight(){
-    setAiLoading(true);setAiInsight("");
-    var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),statusTimeBreakdown:Object.keys(statusTimeSummary).filter(function(s){return statusTimeSummary[s]>0;}).map(function(s){return s+": "+fmtDuration(statusTimeSummary[s])+" (actual elapsed time in status)";}),slaBreachAnalysis:{totalBreachInstances:slaBreachAnalysis.totalBreachCount,totalBreachTime:fmtDuration(slaBreachAnalysis.totalBreachMins),byStatus:ALL_STATUSES.filter(function(s){return slaBreachAnalysis.breachCount[s]>0;}).map(function(s){return s+" — "+slaBreachAnalysis.breachCount[s]+" breaches, "+fmtDuration(slaBreachAnalysis.breachDuration[s])+" over SLA";})},techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
-    try{
-      var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. ⏳ Status time bottlenecks — which status are tickets stuck in longest? (Note: these are real elapsed clock times from status transitions, not IT work time)\n3. 🚨 SLA breach analysis — which statuses breach most often and for how long?\n4. ⏱ IT hours analysis — are logged work hours proportionate to ticket volume?\n5. 💡 3 actionable recommendations\n\nBe concise. Use bullet points.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
-      var data=await res.json();
-      setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");
-    }catch(e){setAiInsight("Error: "+e.message);}
-    setAiLoading(false);
-  }
-
-  // Removed "status_time" as a separate view — it's now part of summary
-  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"sla_breach",label:"🚨 SLA Breaches"},{id:"by_client",label:"🤝 By Client"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
-  var filterLabel="";if(fClient){filterLabel=selClientObj?.name||"Client";if(fLocation){var lObj=availLocations.find(function(l){return l.id===fLocation;});filterLabel+=" → "+(lObj?.name||"Location");}}
-
-  return<div>
-    <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>{VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}</div>
-
-    {/* Filters */}
-    <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
-      <span style={{fontSize:11,fontWeight:700,color:"#64748b",flexShrink:0}}>🔍 Filter:</span>
-      <select value={fClient} onChange={function(e){handleClientChange(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Clients</option>{clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}</select>
-      {fClient&&availLocations.length>0&&<select value={fLocation} onChange={function(e){setFLocation(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Locations</option>{availLocations.map(function(l){return<option key={l.id} value={l.id}>{l.name}</option>;})}</select>}
-      {filterLabel&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 10px"}}><span style={{fontSize:11,fontWeight:700,color:"#4338ca"}}>📍 {filterLabel}</span><button onClick={function(){setFClient("");setFLocation("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:13,padding:0,lineHeight:1}}>✕</button></div>}
-      <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{active.length} tickets · {fmtDuration(totalLoggedMins)} logged</div>
-    </div>
-
-    {/* Date range buttons */}
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
-      {["day","week","month","year","all"].map(function(r){
-        if(r==="month"){return<select key="month" value={range.startsWith("month-")?range:"month-"+nowStr} onChange={function(e){setRange(e.target.value);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range.startsWith("month-")?"#6366f1":"#e2e8f0"),background:range.startsWith("month-")?"#6366f1":"#fff",color:range.startsWith("month-")?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0,outline:"none"}}>{MONTH_OPTS.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select>;}
-        return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;
-      })}
-    </div>
-
-    {/* ── SUMMARY VIEW (includes Status Time) ── */}
-    {view==="summary"&&<div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"} help="SLA Rate = tickets resolved within their time target ÷ total tickets × 100. Green ≥90%, Yellow ≥75%, Red <75%."/>
-        <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9" help="Average hours from ticket creation to closure."/>
-        <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1" help="Number of tickets created within the selected time period."/>
-        <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual work time" help="Total real work time logged by IT staff using the Start/Stop timer."/>
-        <Stat label="Breach Instances" value={slaBreachAnalysis.totalBreachCount} icon="🚨" color="#ef4444" sub="status-level breaches" help="Total number of times a ticket exceeded its SLA time limit while in a given status."/>
-        <Stat label="Total Breach Time" value={fmtDuration(slaBreachAnalysis.totalBreachMins)} icon="⏰" color="#dc2626" sub="time over SLA limit" help="Cumulative time tickets spent beyond their SLA thresholds across all statuses."/>
-      </div>
-
-      {/* Tickets by Status pie */}
-      <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
-
-      {/* ── STATUS TIME SECTION (now inside Summary) ── */}
-      <Card style={{marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:6}}>
-          <div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>⏳ Time Per Status</div>
-          <span style={{fontSize:10,color:"#64748b",fontStyle:"italic"}}>Actual elapsed clock time between status transitions</span>
-        </div>
-        <div style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"6px 10px",marginBottom:14}}>
-          ℹ️ These times measure how long tickets <strong>actually sat in each status</strong> — from when the status was set to when it changed. This is independent of the IT work timer.
-        </div>
-        {ALL_STATUSES.map(function(s){
-          var sm=STATUS_META[s];
-          var mins=statusTimeSummary[s]||0;
-          var cfg=statusSla||DEFAULT_STATUS_SLA;
-          var allowed=cfg[s];
-          var allowedMins=allowed!=null?allowed*60:null;
-          var maxMins=Math.max.apply(null,ALL_STATUSES.map(function(sx){return statusTimeSummary[sx]||0;}));
-          var barPct=maxMins>0?Math.round(mins/maxMins*100):0;
-          var isOverSla=allowedMins!=null&&mins>allowedMins;
-          var bCount=slaBreachAnalysis.breachCount[s]||0;
-          var ticketsNow=active.filter(function(t){return t.status===s;}).length;
-          return<div key={s} style={{marginBottom:14,padding:"10px 12px",background:isOverSla?"#fef2f2":"#f8fafc",border:"1px solid "+(isOverSla?"#fecaca":"#e2e8f0"),borderRadius:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:6}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
-                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{s}</span>
-                <Badge label={ticketsNow+" now"} color={sm.color}/>
-                {bCount>0&&<Badge label={bCount+" breach"+(bCount!==1?"es":"")} color="#ef4444"/>}
-              </div>
-              <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                {allowedMins!=null&&<span style={{fontSize:10,color:"#94a3b8"}}>SLA: {fmtDuration(allowedMins)}</span>}
-                <span style={{fontSize:14,fontWeight:800,color:isOverSla?"#ef4444":sm.color}}>{mins>0?fmtDuration(mins):"—"}</span>
-              </div>
-            </div>
-            <div style={{height:7,background:"#e2e8f0",borderRadius:4,overflow:"hidden",marginBottom:isOverSla?6:0}}>
-              <div style={{height:"100%",width:barPct+"%",background:isOverSla?"#ef4444":sm.color,borderRadius:4,transition:"width .4s"}}/>
-            </div>
-            {isOverSla&&allowedMins!=null&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>⚠️ Total time exceeds SLA limit by {fmtDuration(mins-allowedMins)}</div>}
-          </div>;
-        })}
-        <div style={{marginTop:4,fontSize:10,color:"#94a3b8",textAlign:"right"}}>
-          {active.filter(function(t){return t.statusTimeLog&&t.statusTimeLog.length>0;}).length} of {active.length} tickets have status tracking data
-        </div>
-      </Card>
-
-      {/* AI Analysis */}
-      <Card style={{borderLeft:"4px solid #6366f1"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{filterLabel?"Filtered: "+filterLabel:"All clients & locations"} · Includes status time &amp; breach data</div></div>
-          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer",flexShrink:0}}>{aiLoading?"⏳ Analyzing…":"✨ Analyze Now"}</button>
-        </div>
-        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>🔍</div>Click "Analyze Now" for AI insights on status bottlenecks, breach patterns, and IT workload.</div>}
-        {aiLoading&&<div style={{textAlign:"center",padding:20,color:"#6366f1",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>⏳</div>Analyzing {active.length} tickets…</div>}
-        {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
-      </Card>
-    </div>}
-
-    {/* ── SLA BREACH VIEW ── */}
-    {view==="sla_breach"&&<div>
-      <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
-        <span style={{fontSize:24,flexShrink:0}}>🚨</span>
-        <div>
-          <div style={{fontWeight:700,fontSize:14,color:"#dc2626"}}>SLA Breach Report</div>
-          <div style={{fontSize:12,color:"#ef4444",marginTop:2}}>Tracks every instance a ticket exceeded its time limit in a given status, and how long it was over the SLA threshold. Times are based on actual status transition timestamps.</div>
-        </div>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-        <div style={{background:slaBreachAnalysis.totalBreachCount===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.totalBreachCount===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}>
-          <div style={{fontSize:32,fontWeight:800,color:slaBreachAnalysis.totalBreachCount===0?"#10b981":"#ef4444"}}>{slaBreachAnalysis.totalBreachCount}</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Total Breach Instances</div>
-          <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>across all statuses</div>
-        </div>
-        <div style={{background:slaBreachAnalysis.totalBreachMins===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.totalBreachMins===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}>
-          <div style={{fontSize:28,fontWeight:800,color:slaBreachAnalysis.totalBreachMins===0?"#10b981":"#dc2626"}}>{slaBreachAnalysis.totalBreachMins>0?fmtDuration(slaBreachAnalysis.totalBreachMins):"0"}</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Total Time Over SLA</div>
-          <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>cumulative excess time</div>
-        </div>
-      </div>
-
-      <Card style={{marginBottom:16}}>
-        <div style={{fontWeight:700,color:"#1e293b",marginBottom:14,fontSize:13}}>🚨 Breach Breakdown by Status</div>
-        {ALL_STATUSES.filter(function(s){return s!=="Closed";}).map(function(s){
-          var sm=STATUS_META[s];
-          var cfg=statusSla||DEFAULT_STATUS_SLA;
-          var allowed=cfg[s];
-          var bCount=slaBreachAnalysis.breachCount[s]||0;
-          var bMins=slaBreachAnalysis.breachDuration[s]||0;
-          var maxBCount=Math.max.apply(null,ALL_STATUSES.map(function(sx){return slaBreachAnalysis.breachCount[sx]||0;}));
-          var pct=maxBCount>0?Math.round(bCount/maxBCount*100):0;
-          var hasBreaches=bCount>0;
-          return<div key={s} style={{marginBottom:14,padding:"12px 14px",background:hasBreaches?"#fef2f2":"#f8fafc",border:"1px solid "+(hasBreaches?"#fecaca":"#e2e8f0"),borderRadius:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
-                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{s}</span>
-                {allowed!=null&&<span style={{fontSize:10,color:"#64748b",background:"#f1f5f9",borderRadius:4,padding:"2px 6px"}}>SLA: {allowed}h</span>}
-                {allowed===null&&<span style={{fontSize:10,color:"#94a3b8",fontStyle:"italic"}}>No SLA</span>}
-              </div>
-              <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:hasBreaches?"#ef4444":"#10b981"}}>{bCount}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Breaches</div></div>
-                <div style={{textAlign:"center"}}><div style={{fontSize:14,fontWeight:700,color:hasBreaches?"#dc2626":"#10b981"}}>{bMins>0?fmtDuration(bMins):"—"}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Over SLA</div></div>
-              </div>
-            </div>
-            {allowed!=null&&<div>
-              <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:4}}>
-                <div style={{height:"100%",width:pct+"%",background:hasBreaches?"#ef4444":sm.color,borderRadius:3}}/>
-              </div>
-              {hasBreaches&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>Avg excess per breach: {fmtDuration(bMins/bCount)}</div>}
-              {!hasBreaches&&<div style={{fontSize:10,color:"#10b981",marginTop:4}}>✅ No breaches recorded</div>}
-            </div>}
-          </div>;
-        })}
-      </Card>
-
-      <div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:10}}>🎫 Tickets with SLA Breaches</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {(function(){
-          var cfg=statusSla||DEFAULT_STATUS_SLA;
-          var breachedTickets=active.filter(function(t){
-            return (t.statusTimeLog||[]).some(function(entry){
-              var allowed=cfg[entry.status];
-              if(allowed===null||allowed===undefined)return false;
-              var allowedMins=allowed*60;
-              var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-              return durMins!=null&&durMins>allowedMins;
-            });
-          });
-          if(breachedTickets.length===0){
-            return<Card><div style={{textAlign:"center",padding:32,color:"#10b981"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontWeight:700,fontSize:14}}>No SLA breaches found</div><div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>All tickets in this period are within their SLA limits.</div></div></Card>;
-          }
-          return breachedTickets.map(function(t){
-            var sm=STATUS_META[t.status]||STATUS_META.Open;
-            var asgn=users.find(function(u){return u.id===t.assignedTo;});
-            var cfg2=statusSla||DEFAULT_STATUS_SLA;
-            var breachedEntries=(t.statusTimeLog||[]).filter(function(entry){
-              var allowed=cfg2[entry.status];
-              if(allowed===null||allowed===undefined)return false;
-              var allowedMins=allowed*60;
-              var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-              return durMins!=null&&durMins>allowedMins;
-            });
-            var totalExcess=breachedEntries.reduce(function(sum,entry){
-              var allowed=cfg2[entry.status];
-              var allowedMins=allowed*60;
-              var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-              return sum+(durMins-allowedMins);
-            },0);
-            return<Card key={t.id} style={{padding:14,borderLeft:"3px solid #ef4444"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
-                <div style={{flex:1,overflow:"hidden"}}>
-                  <div style={{fontWeight:700,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-                  <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
-                    <Badge label={t.status} color={sm.color} bg={sm.bg}/>
-                    {asgn&&<span style={{fontSize:11,color:"#64748b"}}>👤 {asgn.name}</span>}
-                    <span style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>🚨 {breachedEntries.length} breach{breachedEntries.length!==1?"es":""} · +{fmtDuration(totalExcess)} over SLA</span>
-                  </div>
-                </div>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                {breachedEntries.map(function(entry,i){
-                  var esm=STATUS_META[entry.status]||STATUS_META.Open;
-                  var allowed=cfg2[entry.status];
-                  var allowedMins=allowed*60;
-                  var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-                  var excess=durMins-allowedMins;
-                  return<div key={i} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"8px 12px"}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <div style={{width:8,height:8,borderRadius:"50%",background:esm.color,flexShrink:0}}/>
-                        <span style={{fontSize:12,fontWeight:700,color:esm.color}}>{entry.status}</span>
-                      </div>
-                      <div style={{display:"flex",gap:8,fontSize:11,flexWrap:"wrap"}}>
-                        <span style={{color:"#64748b"}}>Time: <strong>{fmtDuration(durMins)}</strong></span>
-                        <span style={{color:"#64748b"}}>Limit: <strong>{fmtDuration(allowedMins)}</strong></span>
-                        <span style={{color:"#ef4444",fontWeight:700}}>+{fmtDuration(excess)} over</span>
-                        {entry.exitedAt===null&&<Badge label="Active now" color="#ef4444"/>}
-                      </div>
-                    </div>
-                  </div>;
-                })}
-              </div>
-            </Card>;
-          });
-        })()}
-      </div>
-    </div>}
-
-    {/* ── BY CLIENT VIEW ── */}
-    {view==="by_client"&&<div>
-      {byClient.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>🤝</div>No client data yet.</div></Card>}
-      {byClient.map(function(cl){return<Card key={cl.id} style={{marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div style={{display:"flex",gap:10,alignItems:"center"}}><div style={{width:40,height:40,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div><div style={{fontWeight:800,color:"#1e293b",fontSize:14}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>{cl.email}</div></div></div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <div style={{textAlign:"center",background:"#f8fafc",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#6366f1"}}>{cl.total}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Tickets</div></div>
-            <div style={{textAlign:"center",background:"#fef3c7",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#f59e0b"}}>{cl.open}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Open</div></div>
-            <div style={{textAlign:"center",background:"#eef2ff",borderRadius:8,padding:"6px 12px",minWidth:70}}><div style={{fontSize:15,fontWeight:800,color:"#6366f1"}}>{fmtDuration(cl.loggedMins)}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>IT Time</div></div>
-            <div style={{textAlign:"center",background:cl.slaRate>=90?"#f0fdf4":cl.slaRate>=75?"#fffbeb":"#fef2f2",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:slaColor(cl.slaRate)}}>{cl.slaRate}%</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>SLA</div></div>
-          </div>
-        </div>
-        {cl.byLoc.length>0&&<div>
-          <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8,letterSpacing:0.5}}>📍 Locations</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {cl.byLoc.map(function(loc){var worstColor=loc.slaRate<75?"#fef2f2":loc.slaRate<90?"#fffbeb":"#f8fafc";return<div key={loc.id} style={{background:worstColor,border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:6}}>
-                <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div>{loc.address&&<div style={{fontSize:10,color:"#64748b"}}>{loc.address}</div>}</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge label={loc.total+" tickets"} color="#6366f1"/><Badge label={loc.open+" open"} color={loc.open>0?"#f59e0b":"#10b981"}/><Badge label={fmtDuration(loc.loggedMins)+" IT"} color="#8b5cf6"/><Badge label={loc.slaRate+"% SLA"} color={slaColor(loc.slaRate)}/>{loc.breached>0&&<Badge label={loc.breached+" breached"} color="#ef4444"/>}</div>
-              </div>
-              {loc.typeBreakdown.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{loc.typeBreakdown.sort(function(a,b){return b.count-a.count;}).map(function(tb){return<div key={tb.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}><div style={{width:7,height:7,borderRadius:"50%",background:tb.color||"#6366f1",flexShrink:0}}/><span style={{fontSize:11,color:"#334155",fontWeight:600}}>{tb.name}</span><span style={{fontSize:11,color:"#6366f1",fontWeight:800}}>×{tb.count}</span></div>;})}</div>}
-            </div>;})}
-            {cl.noLoc>0&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#94a3b8"}}>+ {cl.noLoc} ticket{cl.noLoc>1?"s":""} with no location assigned</div>}
-          </div>
-        </div>}
-      </Card>;})}
-    </div>}
-
-    {/* ── TREND VIEW ── */}
-    {view==="trend"&&<div>
-      <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Weekly Volume</div><ResponsiveContainer width="100%" height={200}><AreaChart data={weeklyTrend}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="label" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Area type="monotone" dataKey="total" stroke="#6366f1" fill="#eef2ff" name="Total" strokeWidth={2}/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed" strokeWidth={2}/></AreaChart></ResponsiveContainer></Card>
-      <Card style={{borderLeft:"4px solid #6366f1"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div>
-          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer"}}>{aiLoading?"⏳ Analyzing…":"✨ Generate"}</button>
-        </div>
-        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}>Ready to analyze your data</div>}
-        {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
-      </Card>
-    </div>}
-
-    {/* ── BY TYPE VIEW ── */}
-    {view==="by_type"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {byType.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byType.map(function(t){
-        var typeTickets=active.filter(function(tk){return tk.typeId===t.id;});
-        var typeStatusTime={};
-        ALL_STATUSES.forEach(function(s){typeStatusTime[s]=0;});
-        typeTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){
-          var mins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-          if(mins!=null&&typeStatusTime[entry.status]!==undefined)typeStatusTime[entry.status]+=mins;
-        });});
-        var hasStatusData=Object.values(typeStatusTime).some(function(v){return v>0;});
-        return<Card key={t.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span></div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}>
-            <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
-            <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
-          </div>
-          {hasStatusData&&<div>
-            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Elapsed Time Per Status</div>
-            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-              {ALL_STATUSES.filter(function(s){return typeStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(typeStatusTime));var pct=maxV>0?Math.round(typeStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span>
-                <div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div>
-                <span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(typeStatusTime[s])}</span>
-              </div>;})}
-            </div>
-          </div>}
-        </Card>;
-      })}
-    </div>}
-
-    {/* ── PER USER VIEW ── */}
-    {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byUser.map(function(t){
-        var userTickets=active.filter(function(tk){return tk.assignedTo===t.id;});
-        var userStatusTime={};
-        ALL_STATUSES.forEach(function(s){userStatusTime[s]=0;});
-        userTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){
-          var mins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-          if(mins!=null&&userStatusTime[entry.status]!==undefined)userStatusTime[entry.status]+=mins;
-        });});
-        var hasStatusData=Object.values(userStatusTime).some(function(v){return v>0;});
-        return<Card key={t.id}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div>
-          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}>
-            <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
-            <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
-          </div>
-          {hasStatusData&&<div>
-            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Elapsed Time Per Status</div>
-            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-              {ALL_STATUSES.filter(function(s){return userStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(userStatusTime));var pct=maxV>0?Math.round(userStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span>
-                <div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div>
-                <span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(userStatusTime[s])}</span>
-              </div>;})}
-            </div>
-          </div>}
-        </Card>;
-      })}
-    </div>}
-  </div>;
+// ── New Ticket — stays on page after submit, clears form ──────────────────────
+function blankForm(ticketTypes,companies,curUser){
+  return{title:"",description:"",typeId:ticketTypes[0]?.id||"",companyId:curUser.companyId||companies[0]?.id||"",clientId:"",locationId:"",externalEmail:"",customTypeName:""};
 }
-
-// ── Tickets ───────────────────────────────────────────────────────────────────
-function PageTickets(p){
-  var tickets=p.tickets;var users=p.users;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
-  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setSelTicket=p.setSelTicket;var setPage=p.setPage;var isAdmin=p.isAdmin;var statusSla=p.statusSla;var schedules=p.schedules||{};var isMobile=p.isMobile;
-  var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");
-  var[fAssignee,setFAssignee]=useState(function(){return(p.curUser&&IT_ROLES.includes(p.curUser.role)&&p.curUser.role!=="admin"&&p.curUser.role!=="it_manager")?p.curUser.id:"";});
-  var techUsers=useMemo(function(){return users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});},[users]);
-  var filtered=tickets.filter(function(t){var q=search.toLowerCase();return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType)&&(!fAssignee||(fAssignee==="unassigned"?!t.assignedTo:t.assignedTo===fAssignee));});
-  function delTicket(id){setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});});addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted");showToast("Ticket deleted");}
-  function fu(id){return users.find(function(x){return x.id===id;});}function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}function fcl(id){return clients.find(function(x){return x.id===id;});}
-  var selStyle={padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0};
-  return<div>
-    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}><input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none"}}/><Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn></div>
-    <div style={{display:"flex",gap:6,marginBottom:8,overflowX:"auto",paddingBottom:4,flexWrap:isMobile?"wrap":"nowrap"}}>
-      <select value={fStat} onChange={function(e){setFStat(e.target.value);}} style={selStyle}><option value="">All Status</option>{ALL_STATUSES.map(function(s){return<option key={s} value={s}>{s}</option>;})}</select>
-      <select value={fPri} onChange={function(e){setFPri(e.target.value);}} style={selStyle}><option value="">All Priority</option>{Object.keys(PRI_META).map(function(k){return<option key={k} value={k}>{PRI_META[k].label}</option>;})}</select>
-      <select value={fType} onChange={function(e){setFType(e.target.value);}} style={selStyle}><option value="">All Types</option>{ticketTypes.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>
-      <select value={fAssignee} onChange={function(e){setFAssignee(e.target.value);}} style={Object.assign({},selStyle,{background:fAssignee?"#eef2ff":"",color:fAssignee?"#4338ca":"",fontWeight:fAssignee?700:400})}><option value="">All Assignees</option><option value="unassigned">— Unassigned —</option>{techUsers.map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>
-      {fAssignee&&<button onClick={function(){setFAssignee("");}} style={{padding:"7px 10px",border:"1px solid #c7d2fe",borderRadius:8,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer",flexShrink:0}}>✕ Clear</button>}
-    </div>
-    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}{fAssignee&&fAssignee!=="unassigned"&&<span> assigned to <strong style={{color:"#6366f1"}}>{fu(fAssignee)?.name||"?"}</strong></span>}{fAssignee==="unassigned"&&<span> that are <strong style={{color:"#ef4444"}}>unassigned</strong></span>}</div>
-    {isMobile?(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found</div></Card>}
-      {filtered.map(function(t){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
-        return<div key={t.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:14,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}} onClick={function(){setSelTicket(t.id);}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}><div style={{flex:1}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,marginBottom:2}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ago(t.createdAt)}</div></div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>📬 New</span>}</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}><Badge label={t.status} color={sm.color} bg={sm.bg}/><Badge label={pri.label} color={pri.color} bg={pri.bg}/>{type&&<Badge label={type.name} color={type.color||"#94a3b8"}/>}</div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:11,color:"#64748b"}}>{asgn?<span>👤 {asgn.name}</span>:<span style={{color:"#ef4444"}}>Unassigned</span>}{client&&<span> · 🤝 {client.name}</span>}</div>{sSla&&<div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h"}</div>}</div>
-          {isAdmin&&<div style={{marginTop:8,display:"flex",justifyContent:"flex-end"}} onClick={function(e){e.stopPropagation();delTicket(t.id);}}><Btn size="sm" variant="danger">🗑 Delete</Btn></div>}
-        </div>;})}
-    </div>):(<div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}>
-        <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Assigned To","SLA",""].map(function(h){return<th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
-        <tbody>
-          {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found</td></tr>}
-          {filtered.map(function(t,i){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
-            return<tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
-              <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id.slice(-6)}</td>
-              <td style={{padding:"9px 12px",maxWidth:200}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>📬</span>}</td>
-              <td style={{padding:"9px 12px"}}><Badge label={type?.name||"—"} color={type?.color||"#94a3b8"}/></td>
-              <td style={{padding:"9px 12px"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/></td>
-              <td style={{padding:"9px 12px"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/></td>
-              <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{client?<span>🤝 {client.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
-              <td style={{padding:"9px 12px"}}>{asgn?<div style={{display:"flex",alignItems:"center",gap:5}}><Avatar name={asgn.name} id={asgn.id} size={20}/><span style={{fontSize:11}}>{asgn.name}</span></div>:<span style={{fontSize:11,color:"#ef4444"}}>Unassigned</span>}</td>
-              <td style={{padding:"9px 12px",minWidth:120}}>{sSla?<div><div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600,marginBottom:2}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h left"}</div><div style={{height:4,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div></div>:<span style={{fontSize:10,color:"#94a3b8"}}>—</span>}</td>
-              <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn>{isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}</div></td>
-            </tr>;})}
-        </tbody>
-      </table>
-    </div>)}
-  </div>;
-}
-
-// ── New Ticket ────────────────────────────────────────────────────────────────
 function PageNewTicket(p){
   var users=p.users;var companies=p.companies;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
-  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setPage=p.setPage;
-  var[form,setForm]=useState({title:"",description:"",typeId:ticketTypes[0]?.id||"",companyId:curUser.companyId||companies[0]?.id||"",clientId:"",locationId:"",externalEmail:"",customTypeName:""});
-  var[start]=useState(Date.now());var[preview,setPreview]=useState(null);var[attachments,setAttachments]=useState([]);
+  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setPage=p.setPage;var setSelTicket=p.setSelTicket;
+  var[form,setForm]=useState(function(){return blankForm(ticketTypes,companies,curUser);});
+  var[startTime,setStartTime]=useState(Date.now());
+  var[preview,setPreview]=useState(null);
+  var[attachments,setAttachments]=useState([]);
+
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
   var selType=ticketTypes.find(function(t){return t.id===form.typeId;});
   var selClient=clients.find(function(c){return c.id===form.clientId;});var availLocs=selClient?selClient.locations:[];
@@ -1205,8 +1030,8 @@ function PageNewTicket(p){
     var assign=aiAssign(form.title,form.description,form.typeId,users,ticketTypes);
     var tt=ticketTypes.find(function(t){return t.id===form.typeId;});
     var now=new Date().toISOString();var sla=new Date(Date.now()+(tt?tt.slaHours:24)*3600000).toISOString();
-    var mins=Math.max(0.017,(Date.now()-start)/60000);
-    var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:new Date(start).toISOString(),slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],statusTimeLog:[{status:"Open",enteredAt:now,exitedAt:null,durationMins:null}],conversations:[],closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
+    var mins=Math.max(0.017,(Date.now()-startTime)/60000);
+    var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:new Date(startTime).toISOString(),slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],statusTimeLog:[{status:"Open",enteredAt:now,exitedAt:null,durationMins:null}],conversations:[],closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
     setPreview({draft:draft,assign:assign});
   }
   function handleSubmit(){
@@ -1214,8 +1039,18 @@ function PageNewTicket(p){
     addLog("TICKET_CREATED",preview.draft.id,"Ticket \""+preview.draft.title+"\" created.");
     var assignedUser=users.find(function(u){return u.id===preview.draft.assignedTo;});
     var tt2=ticketTypes.find(function(t){return t.id===preview.draft.typeId;});
-    notifyAdmin("🎫 New Ticket Created — "+preview.draft.title,"A new support ticket has been submitted.\n\nTicket ID: #"+preview.draft.id.slice(-8)+"\nTitle: "+preview.draft.title+"\nType: "+(tt2?tt2.name:"—")+"\nPriority: "+(PRI_META[preview.draft.priority]?PRI_META[preview.draft.priority].label:preview.draft.priority)+"\nSubmitted By: "+(users.find(function(u){return u.id===preview.draft.submittedBy;})?.name||"Unknown")+"\nAssigned To: "+(assignedUser?assignedUser.name:"Unassigned")+"\n\nDescription:\n"+preview.draft.description.slice(0,300)+(preview.draft.description.length>300?"…":""));
-    showToast("✅ Ticket submitted!");setPage("tickets");
+    // Notify all involved users
+    var emails=getTicketEmails(preview.draft,users);
+    var subjNew="🎫 New Ticket: "+preview.draft.title;
+    var bodyNew="A new support ticket has been submitted.\n\nTicket: "+preview.draft.title+"\nType: "+(tt2?tt2.name:"—")+"\nPriority: "+(PRI_META[preview.draft.priority]?.label||preview.draft.priority)+"\nSubmitted By: "+(users.find(function(u){return u.id===preview.draft.submittedBy;})?.name||"Unknown")+"\nAssigned To: "+(assignedUser?assignedUser.name:"Unassigned")+"\n\nDescription:\n"+preview.draft.description.slice(0,300)+(preview.draft.description.length>300?"…":"");
+    notifyUsers(emails,subjNew,bodyNew);
+    notifyAdmin("🎫 New Ticket Created — "+preview.draft.title,bodyNew);
+    createNotificationsForTicket(preview.draft,users,"New ticket submitted: "+preview.draft.title,"ticket",null);
+    // Open the new ticket detail immediately
+    var newId=preview.draft.id;
+    setPreview(null);
+    showToast("✅ Ticket submitted!");
+    setSelTicket(newId);
   }
   return<div style={{maxWidth:640,margin:"0 auto"}}>
     <Card>
@@ -1265,7 +1100,6 @@ function TicketDetail(p){
   var[showTimerBanner,setShowTimerBanner]=useState(false);
   var forceStopRef=useRef(null);
 
-  // ── Auto-start timer when IT user opens a non-closed ticket ─────────────────
   var shouldAutoStart=isTech&&ticket.status!=="Closed";
 
   function handleAutoStarted(){
@@ -1295,23 +1129,19 @@ function TicketDetail(p){
   if(!ticket)return null;
   var sSla=getStatusSla(ticket,statusSla,schedules);
 
-  // Check if ticket has any logged time
   var ticketSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
   var hasLoggedTime=ticketSessions.length>0;
   var totalLoggedMins=ticketSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
 
-  // ── PATCHES 3 & 4: Status save with auto-stop timer + status time tracking ──
   async function saveStatus(){
     var statusChanged=status!==ticket.status;
     var now=new Date().toISOString();
 
-    // If closing and timer is running, auto-stop it first
     if(status==="Closed"&&forceStopRef.current){
       await forceStopRef.current();
       refreshTimeSessions();
     }
 
-    // Build status time log: close out the current status entry, open new one
     var prevLog=ticket.statusTimeLog||[];
     var newLog=prevLog.map(function(entry){
       if(entry.exitedAt===null&&statusChanged){
@@ -1327,7 +1157,6 @@ function TicketDetail(p){
     var hist={status,assignedTo:asgn||null,timestamp:now,changedBy:curUser.id,note:note||(statusChanged?"Status changed to "+status:"Details updated")};
     if(!statusChanged)hist._noSlaReset=true;
 
-    // Attach duration-in-previous-status to history entry for display in timeline
     if(statusChanged&&prevLog.length>0){
       var lastEntry=prevLog[prevLog.length-1];
       if(lastEntry&&lastEntry.exitedAt===null){
@@ -1346,12 +1175,17 @@ function TicketDetail(p){
 
     if(statusChanged){
       var assigneeName=fu(asgn)?.name||"Unassigned";
-      notifyAdmin("🔄 Ticket Status Updated — "+ticket.title,"A ticket status has been changed.\n\nTicket ID: #"+ticket.id.slice(-8)+"\nTitle: "+ticket.title+"\nNew Status: "+status+"\nAssigned To: "+assigneeName+"\nChanged By: "+curUser.name+"\n"+(note?"Note: "+note+"\n":"")+"\nLog in to Hoptix to view this ticket.");
+      // Notify all involved users
+      var emails=getTicketEmails(ticket,users).filter(function(e){var me=users.find(function(u){return u.id===curUser.id;});return !me||e!==me.email;});
+      var subjStatus="🔄 Ticket Updated: "+ticket.title+" → "+status;
+      var bodyStatus="A ticket status has been changed.\n\nTicket: "+ticket.title+"\nNew Status: "+status+"\nAssigned To: "+assigneeName+"\nChanged By: "+curUser.name+"\n"+(note?"Note: "+note+"\n":"");
+      notifyUsers(emails,subjStatus,bodyStatus);
+      notifyAdmin("🔄 Ticket Status Updated — "+ticket.title,bodyStatus);
+      createNotificationsForTicket(ticket,users,"Status changed to "+status+": "+ticket.title,"status",curUser.id);
       if(status==="Closed"){
-        // Check for no time logged (re-check after potential auto-stop)
         var latestSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
         if(latestSessions.length===0){
-          notifyAdmin("⚠️ Ticket Closed Without Timer — "+ticket.title,"A ticket was closed without any IT work time being logged.\n\nTicket ID: #"+ticket.id.slice(-8)+"\nTitle: "+ticket.title+"\nClosed By: "+curUser.name+"\nAssigned To: "+assigneeName+"\n\nPlease ensure the technician logs their time before closing tickets.");
+          notifyAdmin("⚠️ Ticket Closed Without Timer — "+ticket.title,"A ticket was closed without any IT work time being logged.\n\nTicket: "+ticket.title+"\nClosed By: "+curUser.name+"\nAssigned To: "+assigneeName);
         }
       }
     }
@@ -1373,6 +1207,12 @@ function TicketDetail(p){
     setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;return Object.assign({},t,{conversations:finalConvs});});});
     await dbSaveTicket(Object.assign({},ticket,{conversations:finalConvs}));
     addLog("EMAIL_SENT",ticket.id,"Email to "+msgTo+(ccStr?" CC: "+ccStr:""));
+    // Notify involved users that email was sent
+    if(allOk){
+      var notifEmails=getTicketEmails(ticket,users).filter(function(e){return !toList.includes(e)&&e!==curUser.email;});
+      notifyUsers(notifEmails,"📧 Email Sent on Ticket: "+ticket.title,"An email was sent on ticket: "+ticket.title+"\n\nFrom: "+curUser.name+"\nTo: "+msgTo+"\nSubject: "+msgSubj);
+      createNotificationsForTicket(ticket,users,"Email sent by "+curUser.name+": "+msgSubj,"email",curUser.id);
+    }
     showToast(allOk?"📧 Email sent!":"⚠️ Failed",allOk?"ok":"error");
     setEmailSending(false);
     if(allOk){setMsgTo("");setMsgCC("");setMsgBody("");}
@@ -1383,45 +1223,32 @@ function TicketDetail(p){
   var tabFullLabels={details:"Details",status:"Status",timer:"Timer",email:"Email",chat:"Chat",history:"History"};
 
   return<Modal title={ticket.title} onClose={onClose} wide>
-    {/* Auto-timer started banner */}
     {showTimerBanner&&<div style={{background:"linear-gradient(135deg,#064e3b,#065f46)",borderRadius:10,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:18}}>⏱</span>
-      <div style={{flex:1}}>
-        <div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Timer automatically started</div>
-        <div style={{fontSize:11,color:"#a7f3d0",marginTop:2}}>Remember to stop the timer when you are done working on this ticket. Go to the ⏱️ Timer tab to stop it.</div>
-      </div>
+      <div style={{flex:1}}><div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Timer automatically started</div><div style={{fontSize:11,color:"#a7f3d0",marginTop:2}}>Remember to stop the timer when you are done working on this ticket.</div></div>
       <button onClick={function(){setShowTimerBanner(false);setTab("timer");}} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>View Timer</button>
     </div>}
-
-    {/* Warning: closed with no time logged */}
     {ticket.status==="Closed"&&!hasLoggedTime&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:16}}>⚠️</span>
-      <div style={{flex:1}}><div style={{fontWeight:700,color:"#92400e",fontSize:13}}>No time was logged for this ticket</div><div style={{fontSize:11,color:"#b45309",marginTop:2}}>This ticket was closed without any IT work time being recorded. Please add time if any work was performed.</div></div>
+      <div style={{flex:1}}><div style={{fontWeight:700,color:"#92400e",fontSize:13}}>No time was logged for this ticket</div><div style={{fontSize:11,color:"#b45309",marginTop:2}}>This ticket was closed without any IT work time being recorded.</div></div>
       <button onClick={function(){setTab("timer");}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>Add Time</button>
     </div>}
-
     {liveTicket.hasUnreadReply&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:16}}>📬</span><div style={{flex:1}}><div style={{fontWeight:700,color:"#166534",fontSize:13}}>New reply received</div></div>
       <button onClick={function(){setTab("email");setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});}} style={{padding:"6px 12px",background:"#10b981",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0}}>View</button>
     </div>}
-
     <div style={{display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
       {TABS.map(function(t){return<button key={t} onClick={function(){if(t==="email"&&ticket.hasUnreadReply)setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});setTab(t);}} style={{background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0,position:"relative"}}>
         {tabLabels[t]} {tabFullLabels[t]}{t==="email"&&ticket.hasUnreadReply&&<span style={{position:"absolute",top:-3,right:-3,background:"#10b981",color:"#fff",borderRadius:"50%",width:14,height:14,fontSize:8,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>!</span>}
       </button>;})}
     </div>
-
     {tab==="details"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         {[["Type",tt?.name||"—"],["Priority",<Badge key="p" label={PRI_META[ticket.priority]?.label||ticket.priority} color={PRI_META[ticket.priority]?.color||"#6366f1"}/>],["Status",<Badge key="s" label={ticket.status} color={STATUS_META[ticket.status]?.color||"#6366f1"}/>],["Company",co?.name||"—"],["Submitted By",fu(ticket.submittedBy)?.name||"—"],["Assigned To",fu(ticket.assignedTo)?.name||"Unassigned"],["Created",fdt(ticket.createdAt)],["SLA Deadline",fdt(ticket.slaDeadline)]].map(function(pair){return<div key={pair[0]} style={{background:"#f8fafc",padding:10,borderRadius:8}}><div style={{color:"#64748b",fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>{pair[0]}</div><div style={{fontWeight:600,color:"#1e293b",fontSize:12}}>{pair[1]}</div></div>;})}
       </div>
-      {/* IT Hours logged summary */}
       <div style={{background:hasLoggedTime?"#f0fdf4":"#fffbeb",border:"1px solid "+(hasLoggedTime?"#bbf7d0":"#fde68a"),borderRadius:10,padding:10,marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
         <span style={{fontSize:18}}>{hasLoggedTime?"🕐":"⚠️"}</span>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:700,fontSize:12,color:hasLoggedTime?"#166534":"#92400e"}}>IT Time Logged</div>
-          <div style={{fontSize:11,color:hasLoggedTime?"#16a34a":"#b45309",marginTop:1}}>{hasLoggedTime?fmtDuration(totalLoggedMins)+" logged across "+ticketSessions.length+" session"+(ticketSessions.length!==1?"s":""):"No time logged yet"}</div>
-        </div>
+        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:12,color:hasLoggedTime?"#166534":"#92400e"}}>IT Time Logged</div><div style={{fontSize:11,color:hasLoggedTime?"#16a34a":"#b45309",marginTop:1}}>{hasLoggedTime?fmtDuration(totalLoggedMins)+" logged across "+ticketSessions.length+" session"+(ticketSessions.length!==1?"s":""):"No time logged yet"}</div></div>
         {isTech&&<button onClick={function(){setTab("timer");}} style={{padding:"5px 10px",background:hasLoggedTime?"#10b981":"#f59e0b",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>{hasLoggedTime?"View":"Add Time"}</button>}
       </div>
       {client&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12,marginBottom:12}}><div style={{fontWeight:700,color:"#0369a1",fontSize:12,marginBottom:8}}>🤝 {client.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {client.email} · 📞 {client.phone}</div>{loc&&<div style={{fontSize:11,color:"#64748b",marginTop:4}}>📍 {loc.name} — {loc.address}</div>}</div>}
@@ -1431,7 +1258,6 @@ function TicketDetail(p){
         <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:8}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,fontSize:11}}><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Allowed</div><div style={{fontWeight:700}}>{sSla.hoursAllowed}h</div></div><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Spent</div><div style={{fontWeight:700}}>{sSla.hoursSpent}h</div></div><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Left</div><div style={{fontWeight:700,color:sSla.breached?"#ef4444":"#10b981"}}>{sSla.breached?"0h":sSla.remaining+"h"}</div></div></div>
       </div>}
-      {/* Status time breakdown */}
       {ticket.statusTimeLog&&ticket.statusTimeLog.length>0&&<div style={{marginTop:12}}>
         <div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>⏳ Time Per Status</div>
         <div style={{display:"flex",flexDirection:"column",gap:4}}>
@@ -1445,7 +1271,6 @@ function TicketDetail(p){
       </div>}
       {ticket.attachments&&ticket.attachments.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>📎 Attachments ({ticket.attachments.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>{ticket.attachments.map(function(a){var isImg=a.type.startsWith("image/");return<div key={a.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){var w=window.open();w.document.write(isImg?'<img src="'+a.dataUrl+'" style="max-width:100%;"/>':'<video src="'+a.dataUrl+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:80,objectFit:"cover",display:"block"}}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:28}}>▶️</span></div>}</div>;})}</div></div>}
     </div>}
-
     {tab==="status"&&isTech&&<div>
       <FSelect label="Update Status" value={status} onChange={function(e){setStatus(e.target.value);}} options={OPT_STATUSES}/>
       {status==="Closed"&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⚠️ Closing this ticket will automatically stop the timer if it is running.</div>}
@@ -1455,9 +1280,7 @@ function TicketDetail(p){
       <FTextarea label="Note" value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What was done or why?" rows={3}/>
       <Btn onClick={saveStatus} style={{width:"100%"}}>💾 Save Changes</Btn>
     </div>}
-
     {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions} autoStart={shouldAutoStart} onAutoStarted={handleAutoStarted} forceStopRef={forceStopRef}/>}
-
     {tab==="email"&&<div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{fontWeight:700,color:"#1e293b"}}>📧 Send Email</div>
@@ -1477,11 +1300,12 @@ function TicketDetail(p){
         <div style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>
       </div>;})}
     </div>}
-
-    {tab==="chat"&&<TicketChat ticketId={ticket.id} curUser={curUser} users={users}/>}
+    {tab==="chat"&&<TicketChat ticketId={ticket.id} curUser={curUser} users={users} ticket={ticket}/>}
     {tab==="history"&&<TicketHistory ticket={ticket} users={users} curUser={curUser}/>}
   </Modal>;
-}// ── Time Tracking ─────────────────────────────────────────────────────────────
+}
+
+// ── Time Tracking ─────────────────────────────────────────────────────────────
 function PageTimeTracking(p){
   var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
   var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[dateFrom,setDateFrom]=useState("");var[dateTo,setDateTo]=useState("");var[activeTab,setActiveTab]=useState("it_time");
@@ -1547,272 +1371,67 @@ function PageTimeTracking(p){
   </div>;
 }
 
-// ── Users ─────────────────────────────────────────────────────────────────────
-function PageUsers(p){
-  var users=p.users;var companies=p.companies;var setUsers=p.setUsers;var curUser=p.curUser;var addLog=p.addLog;var showToast=p.showToast;var schedules=p.schedules||{};var setSchedules=p.setSchedules;var isMobile=p.isMobile;
-  var dbSaveUser=p.dbSaveUser;var dbDeleteUser=p.dbDeleteUser;var dbSetPassword=p.dbSetPassword;var dbSaveSchedule=p.dbSaveSchedule;
-  var[modal,setModal]=useState(null);var[form,setForm]=useState({});var[emailStatus,setEmailStatus]=useState(null);
-  var[pwModal,setPwModal]=useState(null);var[newPw,setNewPw]=useState("");var[pwErr,setPwErr]=useState("");
-  var[roles,setRolesState]=useState(function(){return loadRoles();});
-  var[rolesModal,setRolesModal]=useState(false);
-  var[roleForm,setRoleForm]=useState({key:"",label:"",color:"#6366f1"});var[roleEdit,setRoleEdit]=useState(null);
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function syncRoles(next){saveRoles(next);setRolesState(next);Object.keys(ROLE_META).forEach(function(k){delete ROLE_META[k];});Object.assign(ROLE_META,next);}
-  function addRole(){if(!roleForm.key.trim()||!roleForm.label.trim()){showToast("Key and label required","error");return;}var key=roleForm.key.trim().toLowerCase().replace(/\s+/g,"_");if(roles[key]){showToast("Role key already exists","error");return;}var next=Object.assign({},roles);next[key]={label:roleForm.label.trim(),color:roleForm.color,system:false};syncRoles(next);showToast("Role added!");setRoleForm({key:"",label:"",color:"#6366f1"});}
-  function saveRoleEdit(){if(!roleForm.label.trim()){showToast("Label required","error");return;}var next=Object.assign({},roles);next[roleEdit]=Object.assign({},next[roleEdit],{label:roleForm.label.trim(),color:roleForm.color});syncRoles(next);showToast("Role updated!");setRoleEdit(null);setRoleForm({key:"",label:"",color:"#6366f1"});}
-  function deleteRole(key){if(roles[key]?.system){showToast("Cannot delete system roles","error");return;}if(users.some(function(u){return u.role===key;})){showToast("Cannot delete — in use","error");return;}var next=Object.assign({},roles);delete next[key];syncRoles(next);showToast("Role deleted!");}
-  async function resetPassword(){if(!newPw||newPw.length<6){setPwErr("Minimum 6 characters");return;}await dbSetPassword(pwModal.id,newPw);addLog("PASSWORD_RESET",pwModal.id,"Password reset for "+pwModal.name);showToast("✅ Password reset!");setPwModal(null);setNewPw("");setPwErr("");}
-  async function approveUser(u){var updated=Object.assign({},u,{active:true});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});addLog("USER_APPROVED",u.id,u.name+" approved");showToast("✅ Account approved!");}
-  function handleScheduleChange(userId,sch){setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});dbSaveSchedule(userId,sch);}
-  var allRoleOpts=Object.keys(roles).map(function(k){return mkOpt(k,roles[k].label);});
-  var pendingUsers=users.filter(function(u){return !u.active;});
-  var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
-  async function save(){
-    if(!form.name||!form.email){showToast("Name and email required","error");return;}
-    if(modal==="new"){var nu=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString(),lastLogin:null});await dbSaveUser(nu);await dbSetPassword(nu.id,"password123");setUsers(function(prev){return prev.concat([nu]);});addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");showToast("User created");setEmailStatus("sending");var emailBody=["Hi "+nu.name+",","","An account has been created for you on the Hoptix IT Helpdesk portal.","","📧 Email: "+nu.email,"🔑 Temporary Password: password123","","⚠️ Please sign in and change your password immediately.","","— The Hoptix IT Team"].join("\n");var result=await callSendEmail({to:nu.email,subject:"🎉 Your Hoptix IT Helpdesk account is ready",body:emailBody});setEmailStatus(result.success?"sent":"failed");}
-    else{var old=users.find(function(u){return u.id===form.id;});await dbSaveUser(form);setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});if(old&&old.role!==form.role)addLog("USER_ROLE_CHANGE",form.id,"Role changed");showToast("User updated");}
-    setModal(null);
-  }
+// ── Tickets ───────────────────────────────────────────────────────────────────
+function PageTickets(p){
+  var tickets=p.tickets;var users=p.users;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
+  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setSelTicket=p.setSelTicket;var setPage=p.setPage;var isAdmin=p.isAdmin;var statusSla=p.statusSla;var schedules=p.schedules||{};var isMobile=p.isMobile;
+  var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");
+  var[fAssignee,setFAssignee]=useState(function(){return(p.curUser&&IT_ROLES.includes(p.curUser.role)&&p.curUser.role!=="admin"&&p.curUser.role!=="it_manager")?p.curUser.id:"";});
+  var techUsers=useMemo(function(){return users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});},[users]);
+  var filtered=tickets.filter(function(t){var q=search.toLowerCase();return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType)&&(!fAssignee||(fAssignee==="unassigned"?!t.assignedTo:t.assignedTo===fAssignee));});
+  function delTicket(id){setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});});addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted");showToast("Ticket deleted");}
+  function fu(id){return users.find(function(x){return x.id===id;});}function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}function fcl(id){return clients.find(function(x){return x.id===id;});}
+  var selStyle={padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0};
   return<div>
-    {pendingUsers.length>0&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:14,marginBottom:16}}>
-      <div style={{fontWeight:700,color:"#92400e",marginBottom:10,fontSize:13}}>⏳ {pendingUsers.length} Account{pendingUsers.length>1?"s":""} Awaiting Approval</div>
-      {pendingUsers.map(function(u){return<div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fde68a",marginBottom:6,gap:8}}>
-        <div style={{display:"flex",gap:8,alignItems:"center",flex:1,overflow:"hidden"}}><Avatar name={u.name} id={u.id} size={30}/><div style={{overflow:"hidden"}}><div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div></div></div>
-        <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Rejected");}}>✕</Btn></div>
-      </div>;})}
-    </div>}
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,gap:8,flexWrap:"wrap",alignItems:"center"}}>
-      <div style={{fontWeight:700,fontSize:14}}>Users ({users.length})</div>
-      <div style={{display:"flex",gap:8}}><Btn variant="ghost" size="sm" onClick={function(){setRolesModal(true);}}>🏷️ Roles</Btn><Btn onClick={function(){setEmailStatus(null);setForm({name:"",email:"",role:"end_user",companyId:companies[0]?.id||"",phone:"",dept:"",active:true});setModal("new");}}>➕ Add</Btn></div>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}><input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none"}}/><Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn></div>
+    <div style={{display:"flex",gap:6,marginBottom:8,overflowX:"auto",paddingBottom:4,flexWrap:isMobile?"wrap":"nowrap"}}>
+      <select value={fStat} onChange={function(e){setFStat(e.target.value);}} style={selStyle}><option value="">All Status</option>{ALL_STATUSES.map(function(s){return<option key={s} value={s}>{s}</option>;})}</select>
+      <select value={fPri} onChange={function(e){setFPri(e.target.value);}} style={selStyle}><option value="">All Priority</option>{Object.keys(PRI_META).map(function(k){return<option key={k} value={k}>{PRI_META[k].label}</option>;})}</select>
+      <select value={fType} onChange={function(e){setFType(e.target.value);}} style={selStyle}><option value="">All Types</option>{ticketTypes.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>
+      <select value={fAssignee} onChange={function(e){setFAssignee(e.target.value);}} style={Object.assign({},selStyle,{background:fAssignee?"#eef2ff":"",color:fAssignee?"#4338ca":"",fontWeight:fAssignee?700:400})}><option value="">All Assignees</option><option value="unassigned">— Unassigned —</option>{techUsers.map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>
+      {fAssignee&&<button onClick={function(){setFAssignee("");}} style={{padding:"7px 10px",border:"1px solid #c7d2fe",borderRadius:8,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer",flexShrink:0}}>✕ Clear</button>}
     </div>
-    <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {users.map(function(u){var co=companies.find(function(c){return c.id===u.companyId;});var rm=roles[u.role]||{label:u.role,color:"#6366f1"};
-        return<Card key={u.id} style={{padding:14}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar name={u.name} id={u.id} size={36}/><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div></div><Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/></div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}><Badge label={rm.label} color={rm.color}/>{co&&<span style={{fontSize:11,color:"#64748b"}}>🏢 {co.name}</span>}</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️ Edit</Btn>
-            <Btn size="sm" variant="ghost" onClick={function(){setPwModal(u);setNewPw("");setPwErr("");}}>🔑 Password</Btn>
-            <Btn size="sm" variant={u.active?"warning":"success"} onClick={async function(){var updated=Object.assign({},u,{active:!u.active});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>
-            {u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}
-          </div>
-        </Card>;
-      })}
-    </div>
-    {modal&&<Modal title={modal==="new"?"Add User":"Edit User"} onClose={function(){setModal(null);}}>
-      <FInput label="Full Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Email *" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Department" value={form.dept||""} onChange={function(e){fld("dept",e.target.value);}}/><FSelect label="Role" value={form.role||"end_user"} onChange={function(e){fld("role",e.target.value);}} options={allRoleOpts}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompanies(companies)}/>
-      {IT_ROLES.includes(form.role)&&<ScheduleEditor userId={form.id||"__new__"} schedules={schedules} onChange={handleScheduleChange}/>}
-      {modal==="new"&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1"}}>📧 A welcome email will be sent upon creation.</div>}
-      {emailStatus==="sending"&&<div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⏳ Sending welcome email…</div>}
-      {emailStatus==="sent"&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#166534"}}>✅ Welcome email sent!</div>}
-      {emailStatus==="failed"&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#dc2626"}}>⚠️ Email failed. Account still created.</div>}
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create & Email":"Save"}</Btn></div>
-    </Modal>}
-    {pwModal&&<Modal title={"🔑 Reset — "+pwModal.name} onClose={function(){setPwModal(null);setNewPw("");setPwErr("");}}>
-      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#92400e"}}>Resetting password for <strong>{pwModal.name}</strong></div>
-      <div style={{marginBottom:8}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password (min 6 chars)</label><input type="password" value={newPw} onChange={function(e){setNewPw(e.target.value);setPwErr("");}} placeholder="••••••••" style={inp}/></div>
-      {pwErr&&<div style={{fontSize:12,color:"#dc2626",marginBottom:10}}>⚠️ {pwErr}</div>}
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:8}}><Btn variant="ghost" onClick={function(){setPwModal(null);}}>Cancel</Btn><Btn variant="danger" onClick={resetPassword}>🔑 Reset</Btn></div>
-    </Modal>}
-    {rolesModal&&<Modal title="🏷️ Manage Roles" onClose={function(){setRolesModal(false);setRoleEdit(null);setRoleForm({key:"",label:"",color:"#6366f1"});}}>
-      <div style={{marginBottom:16}}>{Object.keys(roles).map(function(key){var r=roles[key];var isEditing=roleEdit===key;return<div key={key} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f8fafc",borderRadius:8,marginBottom:6,border:"1px solid #e2e8f0"}}>
-        {isEditing?<><input value={roleForm.label} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{label:e.target.value});});}} style={{flex:1,padding:"6px 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:13,outline:"none"}}/><input type="color" value={roleForm.color} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{color:e.target.value});});}} style={{width:32,height:30,border:"none",borderRadius:4,cursor:"pointer",padding:0}}/><Btn size="sm" variant="success" onClick={saveRoleEdit}>✓</Btn><Btn size="sm" variant="ghost" onClick={function(){setRoleEdit(null);}}>✕</Btn></>:<><div style={{width:10,height:10,borderRadius:"50%",background:r.color,flexShrink:0}}/><span style={{flex:1,fontSize:13,fontWeight:600}}>{r.label}</span><span style={{fontSize:10,color:"#94a3b8",background:"#e2e8f0",borderRadius:4,padding:"2px 6px"}}>{key}</span>{r.system&&<span style={{fontSize:10,color:"#6366f1",fontWeight:600}}>sys</span>}<Btn size="sm" variant="ghost" onClick={function(){setRoleEdit(key);setRoleForm({key:key,label:r.label,color:r.color});}}>✏️</Btn>{!r.system&&<Btn size="sm" variant="danger" onClick={function(){deleteRole(key);}}>🗑</Btn>}</>}
-      </div>;})}
-      </div>
-      <div style={{borderTop:"1px solid #e2e8f0",paddingTop:14}}>
-        <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>➕ Add Role</div>
-        <FInput label="Key" value={roleForm.key} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{key:e.target.value});});}} placeholder="e.g. supervisor"/>
-        <FInput label="Label" value={roleForm.label} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{label:e.target.value});});}} placeholder="Supervisor"/>
-        <Btn onClick={addRole}>➕ Add Role</Btn>
-      </div>
-    </Modal>}
-  </div>;
-}
-
-// ── Companies ─────────────────────────────────────────────────────────────────
-function PageCompanies(p){
-  var companies=p.companies;var users=p.users;var setCompanies=p.setCompanies;var addLog=p.addLog;var showToast=p.showToast;var dbSaveCompany=p.dbSaveCompany;var dbDeleteCompany=p.dbDeleteCompany;
-  var[modal,setModal]=useState(null);var[form,setForm]=useState({});
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  async function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nc=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString()});await dbSaveCompany(nc);setCompanies(function(prev){return prev.concat([nc]);});addLog("COMPANY_CREATED",nc.id,'"'+nc.name+'" created');showToast("Created");}else{await dbSaveCompany(form);setCompanies(function(prev){return prev.map(function(c){return c.id===form.id?Object.assign({},form):c;});});showToast("Updated");}setModal(null);}
-  return<div>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Companies ({companies.length})</div><Btn onClick={function(){setForm({name:"",domain:"",address:"",phone:"",industry:"",size:""});setModal("new");}}>➕ Add</Btn></div>
-    {companies.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No companies yet.</div></Card>}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
-      {companies.map(function(c){var members=users.filter(function(u){return u.companyId===c.id;});return<Card key={c.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><div style={{width:40,height:40,borderRadius:10,background:avCol(c.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16}}>{c.name[0]}</div><div style={{display:"flex",gap:6}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},c));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteCompany(c.id);setCompanies(function(prev){return prev.filter(function(x){return x.id!==c.id;});});showToast("Deleted");}}>🗑</Btn></div></div><div style={{fontWeight:700,color:"#1e293b",marginBottom:6,fontSize:14}}>{c.name}</div><div style={{fontSize:12,color:"#64748b"}}>🌐 {c.domain||"—"} · 📍 {c.address||"—"}</div><div style={{fontSize:12,color:"#64748b",marginBottom:10}}>🏭 {c.industry||"—"} · {c.size||"—"}</div><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{members.slice(0,5).map(function(m){return<Avatar key={m.id} name={m.name} id={m.id} size={22}/>;})}{members.length>5&&<div style={{fontSize:10,color:"#94a3b8",alignSelf:"center"}}>+{members.length-5}</div>}</div></Card>;})}
-    </div>
-    {modal&&<Modal title={modal==="new"?"Add Company":"Edit Company"} onClose={function(){setModal(null);}}>
-      <FInput label="Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Domain" value={form.domain||""} onChange={function(e){fld("domain",e.target.value);}}/><FInput label="Address" value={form.address||""} onChange={function(e){fld("address",e.target.value);}}/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FInput label="Size" value={form.size||""} onChange={function(e){fld("size",e.target.value);}}/>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div>
-    </Modal>}
-  </div>;
-}
-
-// ── Clients ───────────────────────────────────────────────────────────────────
-function PageClients(p){
-  var clients=p.clients;var setClients=p.setClients;var companies=p.companies;var addLog=p.addLog;var showToast=p.showToast;var dbSaveClient=p.dbSaveClient;var dbDeleteClient=p.dbDeleteClient;
-  var[modal,setModal]=useState(null);var[selCl,setSelCl]=useState(null);var[form,setForm]=useState({});
-  var[lForm,setLForm]=useState({name:"",address:"",floor:"",contacts:[]});
-  var[newContact,setNewContact]=useState({name:"",email:"",phone:""});
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function lfld(k,v){setLForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function ncfld(k,v){setNewContact(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function addContact(){if(!newContact.name.trim()){showToast("Contact name required","error");return;}lfld("contacts",(lForm.contacts||[]).concat([Object.assign({},newContact,{id:uid()})]));setNewContact({name:"",email:"",phone:""});}
-  function removeContact(cid){lfld("contacts",(lForm.contacts||[]).filter(function(c){return c.id!==cid;}));}
-  function updateContact(cid,field,val){lfld("contacts",(lForm.contacts||[]).map(function(c){return c.id===cid?Object.assign({},c,{[field]:val}):c;}));}
-  async function saveCl(){if(!form.name){showToast("Name required","error");return;}if(modal==="newCl"){var nc=Object.assign({},form,{id:uid(),locations:[]});await dbSaveClient(nc);setClients(function(prev){return prev.concat([nc]);});addLog("CLIENT_CREATED",nc.id,"Client \""+nc.name+"\" added");showToast("Client added");}else{var updated=Object.assign({},form,{locations:clients.find(function(c){return c.id===form.id;})?.locations||[]});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===form.id?updated:c;});});showToast("Updated");}setModal(null);}
-  async function saveLoc(){
-    if(!lForm.name||!lForm.address){showToast("Location name and address required","error");return;}
-    var cl=clients.find(function(c){return c.id===selCl;});if(!cl)return;
-    var locToSave=Object.assign({},lForm,{contacts:lForm.contacts||[]});
-    var newLocs;
-    if(modal==="newLoc"){var nl=Object.assign({},locToSave,{id:uid()});newLocs=cl.locations.concat([nl]);}
-    else{newLocs=cl.locations.map(function(l){return l.id===lForm.id?locToSave:l;});}
-    var updated=Object.assign({},cl,{locations:newLocs});
-    await dbSaveClient(updated);
-    setClients(function(prev){return prev.map(function(c){return c.id===selCl?updated:c;});});
-    showToast(modal==="newLoc"?"Location added":"Location updated");setModal(null);
-  }
-  function openNewLoc(clId){setSelCl(clId);setLForm({name:"",address:"",floor:"",contacts:[]});setNewContact({name:"",email:"",phone:""});setModal("newLoc");}
-  function openEditLoc(clId,loc){setSelCl(clId);var contacts=loc.contacts||(loc.contact?[{id:uid(),name:loc.contact,email:"",phone:""}]:[]);setLForm(Object.assign({},loc,{contacts:contacts}));setNewContact({name:"",email:"",phone:""});setModal("editLoc");}
-  var inp={width:"100%",padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
-  return<div>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Clients ({clients.length})</div><Btn onClick={function(){setForm({name:"",email:"",phone:"",industry:"",companyId:companies[0]?.id||""});setModal("newCl");}}>➕ Add Client</Btn></div>
-    {clients.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No clients yet.</div></Card>}
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {clients.map(function(cl){return<Card key={cl.id}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-          <div style={{display:"flex",gap:12,alignItems:"center",flex:1,overflow:"hidden"}}><div style={{width:42,height:42,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div style={{overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {cl.email||"—"} · 📞 {cl.phone||"—"}</div></div></div>
-          <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},cl));setModal("editCl");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteClient(cl.id);setClients(function(prev){return prev.filter(function(x){return x.id!==cl.id;});});showToast("Removed");}}>🗑</Btn></div>
-        </div>
-        <div style={{background:"#f8fafc",borderRadius:10,padding:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div><Btn size="sm" onClick={function(){openNewLoc(cl.id);}}>➕ Add Location</Btn></div>
-          {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No locations yet.</div>}
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {cl.locations.map(function(loc){var contacts=loc.contacts||(loc.contact?[{id:"leg",name:loc.contact,email:"",phone:""}]:[]);return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:contacts.length>0?8:0}}>
-                <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{loc.address}</div>{loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}</div>
-                <div style={{display:"flex",gap:4,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEditLoc(cl.id,loc);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){var newLocs=cl.locations.filter(function(l){return l.id!==loc.id;});var updated=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===cl.id?updated:c;});});showToast("Location removed");}}>🗑</Btn></div>
-              </div>
-              {contacts.length>0&&<div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>👥 Contact Persons</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{contacts.map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}><Avatar name={ct.name} id={ct.id} size={22}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}{ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}</div></div></div>;})}</div></div>}
-              {contacts.length===0&&<div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",marginTop:4}}>No contacts added yet.</div>}
-            </div>;})}
-          </div>
-        </div>
-      </Card>;})}
-    </div>
-    {(modal==="newCl"||modal==="editCl")&&<Modal title={modal==="newCl"?"Add Client":"Edit Client"} onClose={function(){setModal(null);}}>
-      <FInput label="Client Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Email" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompaniesNone(companies)}/>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveCl}>{modal==="newCl"?"Add Client":"Save"}</Btn></div>
-    </Modal>}
-    {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={function(){setModal(null);}} wide>
-      <FInput label="Location Name *" value={lForm.name||""} onChange={function(e){lfld("name",e.target.value);}} placeholder="e.g. HQ — Makati"/>
-      <FInput label="Address *" value={lForm.address||""} onChange={function(e){lfld("address",e.target.value);}}/>
-      <FInput label="Floor / Area" value={lForm.floor||""} onChange={function(e){lfld("floor",e.target.value);}} placeholder="e.g. 3rd Floor, East Wing"/>
-      <div style={{marginBottom:14}}>
-        <div style={{fontWeight:700,fontSize:12,color:"#475569",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>👥 Contact Persons ({(lForm.contacts||[]).length})</span><span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>Up to 5 contacts per location</span></div>
-        {(lForm.contacts||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>{(lForm.contacts||[]).map(function(ct,idx){return<div key={ct.id} style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontSize:11,fontWeight:700,color:"#0369a1"}}>Contact {idx+1}</div><button onClick={function(){removeContact(ct.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:0,lineHeight:1}}>✕</button></div><div style={{display:"grid",gridTemplateColumns:"1fr",gap:6}}><input value={ct.name} onChange={function(e){updateContact(ct.id,"name",e.target.value);}} placeholder="Full Name *" style={inp}/><input value={ct.email} onChange={function(e){updateContact(ct.id,"email",e.target.value);}} placeholder="Email address" type="email" style={inp}/><input value={ct.phone} onChange={function(e){updateContact(ct.id,"phone",e.target.value);}} placeholder="Phone number" style={inp}/></div></div>;})}</div>}
-        {(lForm.contacts||[]).length<5&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:10,padding:12}}><div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>➕ Add Contact Person</div><div style={{display:"grid",gridTemplateColumns:"1fr",gap:6,marginBottom:8}}><input value={newContact.name} onChange={function(e){ncfld("name",e.target.value);}} placeholder="Full Name *" style={inp}/><input value={newContact.email} onChange={function(e){ncfld("email",e.target.value);}} placeholder="Email address" type="email" style={inp}/><input value={newContact.phone} onChange={function(e){ncfld("phone",e.target.value);}} placeholder="Phone number" style={inp}/></div><Btn size="sm" onClick={addContact} variant="ghost">➕ Add Contact</Btn></div>}
-      </div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save Location"}</Btn></div>
-    </Modal>}
-  </div>;
-}
-
-// ── Ticket Types ──────────────────────────────────────────────────────────────
-function PageTicketTypes(p){
-  var ticketTypes=p.ticketTypes;var users=p.users;var setTicketTypes=p.setTicketTypes;var statusSla=p.statusSla;var setStatusSla=p.setStatusSla;var addLog=p.addLog;var showToast=p.showToast;var dbSaveTicketType=p.dbSaveTicketType;var dbDeleteTicketType=p.dbDeleteTicketType;
-  var[modal,setModal]=useState(null);var[form,setForm]=useState({});var[kwInput,setKwInput]=useState("");
-  var[slaEdit,setSlaEdit]=useState(function(){return Object.assign({},statusSla);});var[slaChanged,setSlaChanged]=useState(false);
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  async function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nt=Object.assign({},form,{id:uid(),keywords:form.keywords||[]});await dbSaveTicketType(nt);setTicketTypes(function(prev){return prev.concat([nt]);});showToast("Created");}else{await dbSaveTicketType(form);setTicketTypes(function(prev){return prev.map(function(t){return t.id===form.id?Object.assign({},form):t;});});showToast("Updated");}setModal(null);}
-  function addKw(){if(kwInput.trim()){fld("keywords",(form.keywords||[]).concat([kwInput.trim()]));setKwInput("");}}
-  function updateSlaField(status,val){var n=Object.assign({},slaEdit);n[status]=val===""||val===null?null:parseFloat(val);setSlaEdit(n);setSlaChanged(true);}
-  function saveSla(){setStatusSla(slaEdit);saveStatusSlaStore(slaEdit);addLog("SLA_UPDATED","system","SLA thresholds updated");showToast("✅ SLA settings saved!");setSlaChanged(false);}
-  var SLA_DESC={"Open":"Acknowledgement time","In Progress":"Resolution time","Pending":"Awaiting requester","Escalated":"Senior staff response","Closed":"No SLA"};
-  return<div>
-    <Card style={{marginBottom:20,borderTop:"3px solid #6366f1"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>⏱ Status SLA Thresholds</div></div><div style={{display:"flex",gap:8}}><Btn size="sm" variant="ghost" onClick={function(){setSlaEdit(Object.assign({},DEFAULT_STATUS_SLA));setSlaChanged(true);}}>↺ Reset</Btn><Btn size="sm" variant={slaChanged?"primary":"ghost"} onClick={saveSla} style={{opacity:slaChanged?1:0.5}}>💾 Save</Btn></div></div>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {ALL_STATUSES.map(function(status){var sm=STATUS_META[status];var isClosed=status==="Closed";var val=slaEdit[status];return<div key={status} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:sm.color}}/><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{status}</div></div>{!isClosed&&val!==null?<Badge label={val+"h"} color={sm.color}/>:<Badge label="No SLA" color="#94a3b8"/>}</div><div style={{fontSize:11,color:"#64748b",marginBottom:isClosed?0:10}}>{SLA_DESC[status]}</div>{!isClosed&&<div style={{display:"flex",alignItems:"center",gap:8}}><input type="number" min="0.5" step="0.5" value={val===null||val===undefined?"":val} onChange={function(e){updateSlaField(status,e.target.value);}} style={{width:80,padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#fff",boxSizing:"border-box"}}/><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>hours</span></div>}</div>;})}
-      </div>
-      {slaChanged&&<div style={{marginTop:12,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e"}}>⚠️ Unsaved changes — click Save.</div>}
-    </Card>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Ticket Types ({ticketTypes.length})</div><Btn onClick={function(){setForm({name:"",priority:"medium",slaHours:24,color:"#6366f1",keywords:[],defaultAssignee:""});setModal("new");}}>➕ Add Type</Btn></div>
-    {ticketTypes.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No ticket types yet.</div></Card>}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:12}}>
-      {ticketTypes.map(function(tt){var asgn=users.find(function(u){return u.id===tt.defaultAssignee;});return<Card key={tt.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:tt.color}}/><span style={{fontWeight:700,color:"#1e293b"}}>{tt.name}</span></div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},tt,{keywords:(tt.keywords||[]).slice()}));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteTicketType(tt.id);setTicketTypes(function(prev){return prev.filter(function(t){return t.id!==tt.id;});});showToast("Deleted");}}>🗑</Btn></div></div><div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}><Badge label={PRI_META[tt.priority]?.label||tt.priority} color={PRI_META[tt.priority]?.color||"#6366f1"}/><Badge label={"SLA "+tt.slaHours+"h"} color="#0ea5e9"/></div>{asgn&&<div style={{fontSize:11,color:"#64748b",marginBottom:6}}>👤 {asgn.name}</div>}<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(tt.keywords||[]).slice(0,4).map(function(k){return<span key={k} style={{background:"#f1f5f9",color:"#475569",fontSize:10,padding:"2px 6px",borderRadius:4}}>{k}</span>;})}{ (tt.keywords||[]).length>4&&<span style={{fontSize:10,color:"#94a3b8"}}>+{(tt.keywords||[]).length-4}</span>}</div></Card>;})}
-    </div>
-    {modal&&<Modal title={modal==="new"?"Add Ticket Type":"Edit Ticket Type"} onClose={function(){setModal(null);}}><FInput label="Type Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FSelect label="Priority" value={form.priority||"medium"} onChange={function(e){fld("priority",e.target.value);}} options={OPT_PRIORITY}/><FInput label="SLA Hours" value={form.slaHours||24} onChange={function(e){fld("slaHours",Number(e.target.value));}} type="number" min={1}/><FInput label="Color" value={form.color||"#6366f1"} onChange={function(e){fld("color",e.target.value);}} type="color"/><FSelect label="Default Assignee" value={form.defaultAssignee||""} onChange={function(e){fld("defaultAssignee",e.target.value);}} options={optAssignees(users)}/><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Keywords</label><div style={{display:"flex",gap:6,marginBottom:6}}><input value={kwInput} onChange={function(e){setKwInput(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addKw();}} placeholder="e.g. printer" style={{flex:1,padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:13,outline:"none"}}/><Btn size="sm" onClick={addKw}>Add</Btn></div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(form.keywords||[]).map(function(k,i){return<span key={i} onClick={function(){fld("keywords",(form.keywords||[]).filter(function(_,j){return j!==i;}));}} style={{background:"#eef2ff",color:"#4338ca",fontSize:12,padding:"3px 10px",borderRadius:4,cursor:"pointer"}}>{k} ×</span>;})}</div></div><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div></Modal>}
-  </div>;
-}
-
-// ── Activity Log ──────────────────────────────────────────────────────────────
-const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
-function PageActivityLog(p){
-  var logs=p.logs;var users=p.users;var[filter,setFilter]=useState("");
-  function fu(id){return users.find(function(x){return x.id===id;});}
-  var filtered=filter?logs.filter(function(l){return l.action===filter;}):logs;
-  return<div>
-    <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}><div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div><select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return<option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select></div>
-    <Card style={{padding:0}}>
-      {filtered.length===0&&<div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No activity found</div>}
-      {filtered.map(function(log,i){var am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action};var actor=fu(log.userId);return<div key={log.id} style={{display:"flex",gap:12,padding:"12px 16px",borderBottom:i<filtered.length-1?"1px solid #f1f5f9":"none",alignItems:"flex-start"}}><div style={{width:32,height:32,borderRadius:8,background:am.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{am.icon}</div><div style={{flex:1,minWidth:0}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><Badge label={am.label} color={am.color}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(log.timestamp)}</span></div><div style={{fontSize:12,color:"#334155",marginTop:4,overflow:"hidden",textOverflow:"ellipsis"}}>{log.detail}</div>{actor&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Avatar name={actor.name} id={actor.id} size={14}/>By {actor.name}</div>}</div></div>;})}
-    </Card>
-  </div>;
-}
-
-// ── Integrations ──────────────────────────────────────────────────────────────
-function PageIntegrations(p){
-  var emailTemplates=p.emailTemplates||[];var setEmailTemplates=p.setEmailTemplates||function(){};var isAdmin=p.isAdmin;var showToast=p.showToast;
-  var[testTo,setTestTo]=useState("");var[sending,setSending]=useState(false);var[status,setStatus]=useState("");
-  var[tmplModal,setTmplModal]=useState(false);var[tmplForm,setTmplForm]=useState({name:"",subject:"",body:"",defaultCC:""});var[tmplEdit,setTmplEdit]=useState(null);
-  function openNew(){setTmplForm({name:"",subject:"",body:"",defaultCC:""});setTmplEdit(null);setTmplModal(true);}
-  function openEdit(t){setTmplForm({name:t.name,subject:t.subject,body:t.body,defaultCC:t.defaultCC||""});setTmplEdit(t.id);setTmplModal(true);}
-  async function saveTmpl(){if(!tmplForm.name.trim()||!tmplForm.subject.trim()||!tmplForm.body.trim()){showToast("Name, subject, and body required","error");return;}var t={id:tmplEdit||uid(),name:tmplForm.name.trim(),subject:tmplForm.subject.trim(),body:tmplForm.body.trim(),defaultCC:tmplForm.defaultCC.trim(),createdAt:new Date().toISOString()};await dbSaveEmailTemplate(t);setEmailTemplates(function(prev){return tmplEdit?prev.map(function(x){return x.id===tmplEdit?t:x;}):prev.concat([t]);});showToast(tmplEdit?"Template updated!":"Template created!");setTmplModal(false);}
-  async function deleteTmpl(id){await dbDeleteEmailTemplate(id);setEmailTemplates(function(prev){return prev.filter(function(x){return x.id!==id;});});showToast("Template deleted");}
-  async function runTest(){if(!testTo.trim()){showToast("Enter a recipient email","error");return;}setSending(true);setStatus("");try{var r=await callSendEmail({to:testTo.trim(),subject:"Hoptix Test",body:"Your email integration is working!"});if(r.success){setStatus("ok");showToast("📧 Test sent!");}else{setStatus("fail");showToast("Failed: "+r.error,"error");}}catch(e){setStatus("fail");showToast("Error: "+e.message,"error");}setSending(false);}
-  return<div style={{maxWidth:600}}>
-    <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🔌 Integrations</div>
-    <div style={{fontSize:12,color:"#64748b",marginBottom:20}}>Configure your email provider and review service costs.</div>
-    <Card style={{borderTop:"3px solid #10b981",marginBottom:20}}>
-      <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>💰 Cost Transparency</div>
-      <div style={{fontSize:11,color:"#64748b",marginBottom:14}}>Everything this app uses, and what (if anything) you pay for it.</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {[{name:"Vercel (Hosting)",tier:"Free",detail:"Hobby plan — free forever for personal/small projects. Unlimited deploys, 100GB bandwidth/month.",color:"#10b981"},{name:"Supabase (Database)",tier:"Free",detail:"Free tier — 500MB database, 1GB file storage, 50,000 monthly active users.",color:"#10b981"},{name:"GitHub (Code Storage)",tier:"Free",detail:"Free for public and private repos.",color:"#10b981"},{name:"Gmail / Nodemailer (Email)",tier:"Free",detail:"Uses your existing Gmail account with an App Password. No cost.",color:"#10b981"},{name:"AI Analysis (Google Gemini)",tier:"Free",detail:"Free tier via Google AI Studio — 1,500 requests/day, no credit card needed. Uses Gemini 2.0 Flash.",color:"#10b981"},{name:"Recharts (Charts)",tier:"Free",detail:"Open-source charting library. Zero cost, runs entirely in the browser.",color:"#10b981"}].map(function(item){return<div key={item.name} style={{display:"flex",gap:10,padding:"10px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,alignItems:"flex-start"}}><div style={{width:8,height:8,borderRadius:"50%",background:item.color,flexShrink:0,marginTop:4}}/><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}><span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{item.name}</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{item.tier}</span></div><div style={{fontSize:11,color:"#475569",lineHeight:1.6}}>{item.detail}</div></div></div>;})}
-      </div>
-      <div style={{marginTop:12,background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",fontSize:11,color:"#0369a1",lineHeight:1.7}}>💡 <strong>Summary:</strong> Everything is free. The only potential cost is AI Analysis if you exceed free tier limits — typically less than <strong>₱5/month</strong> under normal usage.</div>
-    </Card>
-    <Card style={{borderTop:"3px solid #6366f1",marginBottom:20}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a></div>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1",lineHeight:1.8}}>Set in Vercel → Settings → Environment Variables:<br/><code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_USER</code> and <code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_APP_PASSWORD</code></div>
-      <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>Send Test Email</label>
-      <div style={{display:"flex",gap:8,marginBottom:8}}><input type="email" value={testTo} onChange={function(e){setTestTo(e.target.value);}} placeholder="recipient@example.com" style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}/><button onClick={runTest} disabled={sending} style={{padding:"10px 16px",background:sending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:sending?"not-allowed":"pointer",flexShrink:0}}>{sending?"Sending…":"📤 Test"}</button></div>
-      {status==="ok"&&<div style={{padding:"8px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,fontSize:12,color:"#166534"}}>✅ Test email delivered!</div>}
-      {status==="fail"&&<div style={{padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:12,color:"#dc2626"}}>❌ Failed — check env variables.</div>}
-    </Card>
-    {isAdmin&&<Card style={{borderTop:"3px solid #6366f1"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-        <div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Variables: <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div></div>
-        <Btn onClick={openNew}>➕ Add Template</Btn>
-      </div>
-      {emailTemplates.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>No templates yet.</div>}
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div><div style={{fontSize:11,color:"#64748b",marginBottom:2}}>Subject: {t.subject}</div>{t.defaultCC&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Default CC: {t.defaultCC}</div>}<div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div></div>
-            <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn></div>
-          </div>
+    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}{fAssignee&&fAssignee!=="unassigned"&&<span> assigned to <strong style={{color:"#6366f1"}}>{fu(fAssignee)?.name||"?"}</strong></span>}{fAssignee==="unassigned"&&<span> that are <strong style={{color:"#ef4444"}}>unassigned</strong></span>}</div>
+    {isMobile?(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found</div></Card>}
+      {filtered.map(function(t){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
+        return<div key={t.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:14,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}} onClick={function(){setSelTicket(t.id);}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}><div style={{flex:1}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,marginBottom:2}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ago(t.createdAt)}</div></div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>📬 New</span>}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}><Badge label={t.status} color={sm.color} bg={sm.bg}/><Badge label={pri.label} color={pri.color} bg={pri.bg}/>{type&&<Badge label={type.name} color={type.color||"#94a3b8"}/>}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:11,color:"#64748b"}}>{asgn?<span>👤 {asgn.name}</span>:<span style={{color:"#ef4444"}}>Unassigned</span>}{client&&<span> · 🤝 {client.name}</span>}</div>{sSla&&<div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h"}</div>}</div>
+          {isAdmin&&<div style={{marginTop:8,display:"flex",justifyContent:"flex-end"}} onClick={function(e){e.stopPropagation();delTicket(t.id);}}><Btn size="sm" variant="danger">🗑 Delete</Btn></div>}
         </div>;})}
-      </div>
-    </Card>}
-    {tmplModal&&<Modal title={tmplEdit?"Edit Template":"New Email Template"} onClose={function(){setTmplModal(false);}}>
-      <FInput label="Template Name *" value={tmplForm.name} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{name:e.target.value});});}} placeholder="e.g. Initial Response"/>
-      <FInput label="Subject *" value={tmplForm.subject} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{subject:e.target.value});});}} placeholder="Re: Your IT Request"/>
-      <FInput label="Default CC (optional)" value={tmplForm.defaultCC} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{defaultCC:e.target.value});});}} placeholder="manager@company.com"/>
-      <FTextarea label="Body *" value={tmplForm.body} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{body:e.target.value});});}} rows={8} placeholder={"Hi {{client_name}},\n\nThank you for reaching out...\n\nBest regards,\n{{agent_name}}"}/>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>💡 <strong>{"{{client_name}}"}</strong> and <strong>{"{{agent_name}}"}</strong> auto-fill on tickets. The Default CC will pre-fill the CC field when this template is selected.</div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setTmplModal(false);}}>Cancel</Btn><Btn onClick={saveTmpl}>{tmplEdit?"Save Changes":"Create Template"}</Btn></div>
-    </Modal>}
+    </div>):(<div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}>
+        <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Assigned To","SLA",""].map(function(h){return<th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
+        <tbody>
+          {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found</td></tr>}
+          {filtered.map(function(t,i){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
+            return<tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
+              <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id.slice(-6)}</td>
+              <td style={{padding:"9px 12px",maxWidth:200}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>📬</span>}</td>
+              <td style={{padding:"9px 12px"}}><Badge label={type?.name||"—"} color={type?.color||"#94a3b8"}/></td>
+              <td style={{padding:"9px 12px"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/></td>
+              <td style={{padding:"9px 12px"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/></td>
+              <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{client?<span>🤝 {client.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
+              <td style={{padding:"9px 12px"}}>{asgn?<div style={{display:"flex",alignItems:"center",gap:5}}><Avatar name={asgn.name} id={asgn.id} size={20}/><span style={{fontSize:11}}>{asgn.name}</span></div>:<span style={{fontSize:11,color:"#ef4444"}}>Unassigned</span>}</td>
+              <td style={{padding:"9px 12px",minWidth:120}}>{sSla?<div><div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600,marginBottom:2}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h left"}</div><div style={{height:4,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div></div>:<span style={{fontSize:10,color:"#94a3b8"}}>—</span>}</td>
+              <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn>{isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}</div></td>
+            </tr>;})}
+        </tbody>
+      </table>
+    </div>)}
   </div>;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NOTE: The following pages are UNCHANGED from the previous version.
+// Copy them verbatim from your existing App.jsx:
+//   - PageReports
+//   - PageUsers
+//   - PageCompanies
+//   - PageClients
+//   - PageTicketTypes
+//   - PageActivityLog
+//   - PageIntegrations
+// ══════════════════════════════════════════════════════════════════════════════
