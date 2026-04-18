@@ -167,6 +167,19 @@ async function dbSaveTeamChat(msg){
   try{var{error}=await supabase.from("team_chats").upsert([msg]);if(error)throw error;}catch(e){console.error("dbSaveTeamChat",e);}
 }
 
+// ── Supabase: direct_chats table ──────────────────────────────────────────────
+async function dbGetDirectChats(userA,userB){
+  try{
+    var{data,error}=await supabase.from("direct_chats").select("*")
+      .or("and(from_id.eq."+userA+",to_id.eq."+userB+"),and(from_id.eq."+userB+",to_id.eq."+userA+")")
+      .order("created_at",{ascending:true}).limit(300);
+    if(error)throw error;return data||[];
+  }catch(e){console.error("dbGetDirectChats",e);return[];}
+}
+async function dbSaveDirectChat(msg){
+  try{var{error}=await supabase.from("direct_chats").upsert([msg]);if(error)throw error;}catch(e){console.error("dbSaveDirectChat",e);}
+}
+
 async function dbGetChats(ticketId){
   try{var{data,error}=await supabase.from("ticket_chats").select("*").eq("ticket_id",ticketId).order("created_at",{ascending:true});if(error)throw error;return data||[];}catch(e){console.error("dbGetChats",e);return[];}
 }
@@ -639,59 +652,119 @@ function ProfileModal(p){
   </Modal>;
 }
 
+
 // ── Team Chat Page ─────────────────────────────────────────────────────────────
 function PageTeamChat(p){
   var curUser=p.curUser;var users=p.users;var isAdmin=p.isAdmin;var isMobile=p.isMobile;
+  var[mainTab,setMainTab]=useState("direct"); // "direct" | "groups"
+
+  // ── Presence tracking ────────────────────────────────────────────────────────
+  var[onlineIds,setOnlineIds]=useState([]);
+  var presenceChannelRef=useRef(null);
+  useEffect(function(){
+    var ch=supabase.channel("online-presence",{config:{presence:{key:curUser.id}}});
+    ch.on("presence",{event:"sync"},function(){
+      var state=ch.presenceState();
+      var ids=Object.keys(state);
+      setOnlineIds(ids);
+    });
+    ch.on("presence",{event:"join"},function(p2){
+      setOnlineIds(function(prev){return prev.includes(p2.key)?prev:prev.concat([p2.key]);});
+    });
+    ch.on("presence",{event:"leave"},function(p2){
+      setOnlineIds(function(prev){return prev.filter(function(id){return id!==p2.key;});});
+    });
+    ch.subscribe(async function(status){
+      if(status==="SUBSCRIBED"){
+        await ch.track({user_id:curUser.id,online_at:new Date().toISOString()});
+      }
+    });
+    presenceChannelRef.current=ch;
+    return function(){supabase.removeChannel(ch);};
+  },[curUser.id]);
+
+  // ── Direct chat state ─────────────────────────────────────────────────────────
+  var[dmTarget,setDmTarget]=useState(null); // user object
+  var[dmMsgs,setDmMsgs]=useState([]);
+  var[dmText,setDmText]=useState("");
+  var[dmSending,setDmSending]=useState(false);
+  var[showUserList,setShowUserList]=useState(true); // mobile toggle
+  var dmBottomRef=useRef(null);
+  var dmChannelRef=useRef(null);
+
+  useEffect(function(){
+    if(!dmTarget){setDmMsgs([]);return;}
+    dbGetDirectChats(curUser.id,dmTarget.id).then(function(data){setDmMsgs(data);});
+    if(dmChannelRef.current)supabase.removeChannel(dmChannelRef.current);
+    var roomId=[curUser.id,dmTarget.id].sort().join("_");
+    var sub=supabase.channel("dm-"+roomId)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_chats"},function(payload){
+        var m=payload.new;
+        var involved=(m.from_id===curUser.id&&m.to_id===dmTarget.id)||(m.from_id===dmTarget.id&&m.to_id===curUser.id);
+        if(!involved)return;
+        setDmMsgs(function(prev){if(prev.find(function(x){return x.id===m.id;}))return prev;return prev.concat([m]);});
+      }).subscribe();
+    dmChannelRef.current=sub;
+    return function(){supabase.removeChannel(sub);};
+  },[dmTarget?.id]);
+
+  useEffect(function(){if(dmBottomRef.current)dmBottomRef.current.scrollIntoView({behavior:"smooth"});},[dmMsgs]);
+
+  async function sendDm(){
+    var trimmed=dmText.trim();if(!trimmed||dmSending||!dmTarget)return;
+    setDmSending(true);
+    var msg={id:uid(),from_id:curUser.id,to_id:dmTarget.id,message:trimmed,created_at:new Date().toISOString()};
+    setDmMsgs(function(prev){return prev.concat([msg]);});
+    setDmText("");setDmSending(false);
+    await dbSaveDirectChat(msg);
+  }
+
+  // ── Group chat state ──────────────────────────────────────────────────────────
   var[groups,setGroups]=useState([]);
   var[selGroup,setSelGroup]=useState(null);
-  var[msgs,setMsgs]=useState([]);
-  var[text,setText]=useState("");
-  var[sending,setSending]=useState(false);
+  var[groupMsgs,setGroupMsgs]=useState([]);
+  var[groupText,setGroupText]=useState("");
+  var[groupSending,setGroupSending]=useState(false);
+  var[showGroupList,setShowGroupList]=useState(true);
   var[showNewGroup,setShowNewGroup]=useState(false);
   var[newGroupName,setNewGroupName]=useState("");
   var[newGroupMembers,setNewGroupMembers]=useState([]);
-  var[showGroupList,setShowGroupList]=useState(true);
-  var bottomRef=useRef(null);
-  var channelRef=useRef(null);
+  var groupBottomRef=useRef(null);
+  var groupChannelRef=useRef(null);
 
-  // Load custom groups only
   useEffect(function(){
     dbGetTeamGroups().then(function(data){setGroups(data);});
   },[]);
 
-  // Admin sees all groups; others only see groups they are members of
-  function isMember(group){
+  function isGroupMember(group){
     if(curUser.role==="admin")return true;
-    var ids=group.memberIds||[];
-    return ids.includes(curUser.id);
+    return(group.memberIds||[]).includes(curUser.id);
   }
+  var visibleGroups=groups.filter(function(g){return isGroupMember(g);});
 
-  var visibleGroups=groups.filter(function(g){return isMember(g);});
-
-  // Load messages when group changes + real-time
   useEffect(function(){
-    if(!selGroup){setMsgs([]);return;}
-    dbGetTeamChats(selGroup.id).then(function(data){setMsgs(data);});
-    if(channelRef.current)supabase.removeChannel(channelRef.current);
+    if(!selGroup){setGroupMsgs([]);return;}
+    dbGetTeamChats(selGroup.id).then(function(data){setGroupMsgs(data);});
+    if(groupChannelRef.current)supabase.removeChannel(groupChannelRef.current);
     var sub=supabase.channel("team-chat-"+selGroup.id)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats",filter:"group_id=eq."+selGroup.id},function(payload){
-        setMsgs(function(prev){if(prev.find(function(m){return m.id===payload.new.id;}))return prev;return prev.concat([payload.new]);});
+        setGroupMsgs(function(prev){if(prev.find(function(m){return m.id===payload.new.id;}))return prev;return prev.concat([payload.new]);});
       }).subscribe();
-    channelRef.current=sub;
+    groupChannelRef.current=sub;
     return function(){supabase.removeChannel(sub);};
   },[selGroup?.id]);
 
-  useEffect(function(){if(bottomRef.current)bottomRef.current.scrollIntoView({behavior:"smooth"});},[msgs]);
+  useEffect(function(){if(groupBottomRef.current)groupBottomRef.current.scrollIntoView({behavior:"smooth"});},[groupMsgs]);
 
-  async function sendMsg(){
-    var trimmed=text.trim();if(!trimmed||sending||!selGroup)return;setSending(true);
+  async function sendGroupMsg(){
+    var trimmed=groupText.trim();if(!trimmed||groupSending||!selGroup)return;setGroupSending(true);
     var msg={id:uid(),group_id:selGroup.id,user_id:curUser.id,message:trimmed,created_at:new Date().toISOString()};
-    setMsgs(function(prev){return prev.concat([msg]);});setText("");setSending(false);
+    setGroupMsgs(function(prev){return prev.concat([msg]);});setGroupText("");setGroupSending(false);
     await dbSaveTeamChat(msg);
   }
 
   async function createGroup(){
-    if(!newGroupName.trim()||newGroupMembers.length===0){return;}
+    if(!newGroupName.trim()||newGroupMembers.length===0)return;
     var g={id:uid(),name:newGroupName.trim(),type:"custom",roleFilter:null,memberIds:newGroupMembers,createdBy:curUser.id,created_at:new Date().toISOString()};
     await dbSaveTeamGroup(g);
     setGroups(function(prev){return prev.concat([g]);});
@@ -706,16 +779,102 @@ function PageTeamChat(p){
 
   function fu(id){return users.find(function(u){return u.id===id;});}
 
+  // ── Online Users sidebar (used in Direct tab) ─────────────────────────────────
+  function OnlineUsersList(){
+    var otherUsers=users.filter(function(u){return u.active&&u.id!==curUser.id;});
+    var online=otherUsers.filter(function(u){return onlineIds.includes(u.id);});
+    var offline=otherUsers.filter(function(u){return !onlineIds.includes(u.id);});
+    return<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{padding:"14px 16px",borderBottom:"1px solid #e2e8f0",flexShrink:0}}>
+        <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:2}}>💬 Direct Messages</div>
+        <div style={{fontSize:11,color:"#94a3b8"}}>{onlineIds.filter(function(id){return id!==curUser.id;}).length} online now</div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:8}}>
+        {online.length>0&&<div style={{fontSize:10,fontWeight:700,color:"#10b981",textTransform:"uppercase",letterSpacing:0.5,padding:"6px 8px 4px"}}>● Online</div>}
+        {online.map(function(u){var active=dmTarget&&dmTarget.id===u.id;return<div key={u.id} onClick={function(){setDmTarget(u);if(isMobile)setShowUserList(false);}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:3}}>
+          <div style={{position:"relative",flexShrink:0}}>
+            <Avatar name={u.name} id={u.id} size={32}/>
+            <div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#10b981",border:"2px solid #fff"}}/>
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+            <div style={{fontSize:10,color:"#10b981",fontWeight:600}}>Online</div>
+          </div>
+        </div>;})}
+        {offline.length>0&&<div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.5,padding:"8px 8px 4px"}}>○ Offline</div>}
+        {offline.map(function(u){var active=dmTarget&&dmTarget.id===u.id;return<div key={u.id} onClick={function(){setDmTarget(u);if(isMobile)setShowUserList(false);}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:3}}>
+          <div style={{position:"relative",flexShrink:0}}>
+            <Avatar name={u.name} id={u.id} size={32}/>
+            <div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#cbd5e1",border:"2px solid #fff"}}/>
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+            <div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[u.role]?.label||u.role}</div>
+          </div>
+        </div>;})}
+        {otherUsers.length===0&&<div style={{textAlign:"center",padding:"32px 16px",color:"#94a3b8",fontSize:12}}>No other users found.</div>}
+      </div>
+    </div>;
+  }
+
+  // ── Direct chat panel ─────────────────────────────────────────────────────────
+  function DirectChatArea(){
+    if(!dmTarget)return<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#94a3b8"}}>
+      <div style={{fontSize:48}}>💬</div>
+      <div style={{fontSize:14,fontWeight:600}}>Select a person to message</div>
+      <div style={{fontSize:12}}>Choose from the {isMobile?"list above":"list on the left"}</div>
+    </div>;
+    var isOnline=onlineIds.includes(dmTarget.id);
+    return<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minHeight:0}}>
+      <div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        {isMobile&&<button onClick={function(){setShowUserList(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:0,color:"#64748b"}}>←</button>}
+        <div style={{position:"relative",flexShrink:0}}>
+          <Avatar name={dmTarget.name} id={dmTarget.id} size={32}/>
+          <div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:isOnline?"#10b981":"#cbd5e1",border:"2px solid #fff"}}/>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:14,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dmTarget.name}</div>
+          <div style={{fontSize:10,color:isOnline?"#10b981":"#94a3b8",fontWeight:600}}>{isOnline?"● Online":"○ Offline"}</div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"12px 16px",WebkitOverflowScrolling:"touch"}}>
+        {dmMsgs.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontSize:13,fontWeight:600}}>No messages yet</div><div style={{fontSize:11,marginTop:4}}>Say hello to {dmTarget.name}!</div></div>}
+        {dmMsgs.map(function(msg,i){
+          var isMe=msg.from_id===curUser.id;
+          var sender=isMe?curUser:dmTarget;
+          var showAvatar=i===0||dmMsgs[i-1].from_id!==msg.from_id;
+          var showDate=i===0||new Date(dmMsgs[i].created_at).toDateString()!==new Date(dmMsgs[i-1].created_at).toDateString();
+          return<div key={msg.id}>
+            {showDate&&<div style={{textAlign:"center",margin:"12px 0 8px"}}><span style={{background:"#f1f5f9",color:"#94a3b8",fontSize:10,fontWeight:600,borderRadius:6,padding:"3px 10px"}}>{new Date(msg.created_at).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span></div>}
+            <div style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:8,marginBottom:showAvatar?10:3,alignItems:"flex-end"}}>
+              <div style={{width:28,flexShrink:0}}>{showAvatar&&<Avatar name={sender.name} id={sender.id} size={28}/>}</div>
+              <div style={{maxWidth:"70%"}}>
+                {showAvatar&&<div style={{fontSize:10,fontWeight:700,color:"#64748b",marginBottom:3,textAlign:isMe?"right":"left"}}>{isMe?"You":sender.name} · {ago(msg.created_at)}</div>}
+                <div style={{background:isMe?"#6366f1":"#f1f5f9",color:isMe?"#fff":"#1e293b",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.5,wordBreak:"break-word"}}>{msg.message}</div>
+              </div>
+            </div>
+          </div>;
+        })}
+        <div ref={dmBottomRef}/>
+      </div>
+      <div style={{padding:"10px 16px",borderTop:"1px solid #e2e8f0",display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+        <textarea value={dmText} onChange={function(e){setDmText(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendDm();}}} placeholder={"Message "+dmTarget.name+"…"} rows={2} style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:10,fontSize:14,outline:"none",resize:"none",background:"#f8fafc",boxSizing:"border-box"}}/>
+        <button onClick={sendDm} disabled={dmSending||!dmText.trim()} style={{padding:"12px 18px",background:dmSending||!dmText.trim()?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:dmSending||!dmText.trim()?"not-allowed":"pointer",flexShrink:0,minHeight:46}}>Send</button>
+      </div>
+    </div>;
+  }
+
+  // ── Group list sidebar ────────────────────────────────────────────────────────
   function GroupList(){
     return<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"14px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-        <div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>💬 Team Chat</div>
-        {isAdmin&&<Btn size="sm" onClick={function(){setShowNewGroup(true);}}>➕ Group</Btn>}
+        <div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>👥 Group Chats</div>
+        {isAdmin&&<Btn size="sm" onClick={function(){setShowNewGroup(true);}}>➕</Btn>}
       </div>
       <div style={{flex:1,overflowY:"auto",padding:8}}>
         {visibleGroups.length===0&&<div style={{textAlign:"center",padding:"32px 16px",color:"#94a3b8",fontSize:12}}>{isAdmin?"No groups yet — click ➕ to create one.":"No groups available. Ask an admin."}</div>}
         {visibleGroups.map(function(g){var active=selGroup&&selGroup.id===g.id;var mc=(g.memberIds||[]).length;return<div key={g.id} onClick={function(){setSelGroup(g);if(isMobile)setShowGroupList(false);}} style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:4,display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:36,height:36,borderRadius:10,background:active?"#6366f1":avCol(g.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,color:"#fff"}}>💬</div>
+          <div style={{width:36,height:36,borderRadius:10,background:active?"#6366f1":avCol(g.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,color:"#fff"}}>👥</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontWeight:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</div>
             <div style={{fontSize:10,color:"#94a3b8"}}>{mc} member{mc!==1?"s":""}</div>
@@ -726,28 +885,28 @@ function PageTeamChat(p){
     </div>;
   }
 
-  function ChatArea(){
+  // ── Group chat area ───────────────────────────────────────────────────────────
+  function GroupChatArea(){
     if(!selGroup)return<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#94a3b8"}}>
-      <div style={{fontSize:48}}>💬</div>
+      <div style={{fontSize:48}}>👥</div>
       <div style={{fontSize:14,fontWeight:600}}>Select a group to start chatting</div>
       <div style={{fontSize:12}}>Choose from the {isMobile?"list above":"list on the left"}</div>
     </div>;
-
     return<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minHeight:0}}>
       <div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         {isMobile&&<button onClick={function(){setShowGroupList(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:0,color:"#64748b"}}>←</button>}
-        <div style={{width:32,height:32,borderRadius:8,background:avCol(selGroup.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"#fff"}}>💬</div>
+        <div style={{width:32,height:32,borderRadius:8,background:avCol(selGroup.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"#fff"}}>👥</div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontWeight:700,fontSize:14,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selGroup.name}</div>
           <div style={{fontSize:10,color:"#94a3b8"}}>{(selGroup.memberIds||[]).length} members</div>
         </div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"12px 16px",WebkitOverflowScrolling:"touch"}}>
-        {msgs.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontSize:13,fontWeight:600}}>No messages yet</div><div style={{fontSize:11,marginTop:4}}>Be the first to say something!</div></div>}
-        {msgs.map(function(msg,i){
+        {groupMsgs.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>👥</div><div style={{fontSize:13,fontWeight:600}}>No messages yet</div><div style={{fontSize:11,marginTop:4}}>Be the first to say something!</div></div>}
+        {groupMsgs.map(function(msg,i){
           var sender=fu(msg.user_id);var isMe=msg.user_id===curUser.id;
-          var showAvatar=i===0||msgs[i-1].user_id!==msg.user_id;
-          var showDate=i===0||new Date(msgs[i].created_at).toDateString()!==new Date(msgs[i-1].created_at).toDateString();
+          var showAvatar=i===0||groupMsgs[i-1].user_id!==msg.user_id;
+          var showDate=i===0||new Date(groupMsgs[i].created_at).toDateString()!==new Date(groupMsgs[i-1].created_at).toDateString();
           return<div key={msg.id}>
             {showDate&&<div style={{textAlign:"center",margin:"12px 0 8px"}}><span style={{background:"#f1f5f9",color:"#94a3b8",fontSize:10,fontWeight:600,borderRadius:6,padding:"3px 10px"}}>{new Date(msg.created_at).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span></div>}
             <div style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:8,marginBottom:showAvatar?10:3,alignItems:"flex-end"}}>
@@ -759,18 +918,31 @@ function PageTeamChat(p){
             </div>
           </div>;
         })}
-        <div ref={bottomRef}/>
+        <div ref={groupBottomRef}/>
       </div>
       <div style={{padding:"10px 16px",borderTop:"1px solid #e2e8f0",display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
-        <textarea value={text} onChange={function(e){setText(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();}}} placeholder={"Message "+selGroup.name+"…"} rows={2} style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:10,fontSize:14,outline:"none",resize:"none",background:"#f8fafc",boxSizing:"border-box"}}/>
-        <button onClick={sendMsg} disabled={sending||!text.trim()} style={{padding:"12px 18px",background:sending||!text.trim()?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:sending||!text.trim()?"not-allowed":"pointer",flexShrink:0,minHeight:46}}>Send</button>
+        <textarea value={groupText} onChange={function(e){setGroupText(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendGroupMsg();}}} placeholder={"Message "+selGroup.name+"…"} rows={2} style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:10,fontSize:14,outline:"none",resize:"none",background:"#f8fafc",boxSizing:"border-box"}}/>
+        <button onClick={sendGroupMsg} disabled={groupSending||!groupText.trim()} style={{padding:"12px 18px",background:groupSending||!groupText.trim()?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:14,cursor:groupSending||!groupText.trim()?"not-allowed":"pointer",flexShrink:0,minHeight:46}}>Send</button>
       </div>
     </div>;
   }
 
-  return<div style={{height:"calc(100vh - 120px)",display:"flex",gap:0,background:"#fff",borderRadius:14,border:"1px solid #e2e8f0",overflow:"hidden"}}>
-    {(!isMobile||showGroupList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}><GroupList/></div>}
-    {(!isMobile||!showGroupList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}><ChatArea/></div>}
+  // ── Main render ───────────────────────────────────────────────────────────────
+  return<div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 120px)"}}>
+    <div style={{display:"flex",gap:6,padding:"0 0 12px",flexShrink:0}}>
+      <button onClick={function(){setMainTab("direct");}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:mainTab==="direct"?"#6366f1":"#f1f5f9",color:mainTab==="direct"?"#fff":"#475569",fontSize:13,fontWeight:700,cursor:"pointer"}}>💬 Direct Messages</button>
+      <button onClick={function(){setMainTab("groups");}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:mainTab==="groups"?"#6366f1":"#f1f5f9",color:mainTab==="groups"?"#fff":"#475569",fontSize:13,fontWeight:700,cursor:"pointer"}}>👥 Group Chats</button>
+    </div>
+    <div style={{flex:1,background:"#fff",borderRadius:14,border:"1px solid #e2e8f0",overflow:"hidden",display:"flex",minHeight:0}}>
+      {mainTab==="direct"&&<>
+        {(!isMobile||showUserList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}><OnlineUsersList/></div>}
+        {(!isMobile||!showUserList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}><DirectChatArea/></div>}
+      </>}
+      {mainTab==="groups"&&<>
+        {(!isMobile||showGroupList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}><GroupList/></div>}
+        {(!isMobile||!showGroupList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}><GroupChatArea/></div>}
+      </>}
+    </div>
     {showNewGroup&&<Modal title="➕ New Group" onClose={function(){setShowNewGroup(false);}}>
       <FInput label="Group Name *" value={newGroupName} onChange={function(e){setNewGroupName(e.target.value);}} placeholder="e.g. Project Alpha"/>
       <div style={{marginBottom:14}}>
@@ -778,7 +950,7 @@ function PageTeamChat(p){
         <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
           {users.filter(function(u){return u.active&&u.id!==curUser.id;}).map(function(u){var checked=newGroupMembers.includes(u.id);return<label key={u.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:checked?"#eef2ff":"transparent",cursor:"pointer"}}>
             <input type="checkbox" checked={checked} onChange={function(){setNewGroupMembers(function(prev){return checked?prev.filter(function(id){return id!==u.id;}):prev.concat([u.id]);});}} style={{accentColor:"#6366f1"}}/>
-            <Avatar name={u.name} id={u.id} size={22}/>
+            <div style={{position:"relative"}}><Avatar name={u.name} id={u.id} size={24}/><div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:onlineIds.includes(u.id)?"#10b981":"#cbd5e1",border:"1.5px solid #fff"}}/></div>
             <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[u.role]?.label||u.role}</div></div>
           </label>;})}
         </div>
@@ -788,6 +960,7 @@ function PageTeamChat(p){
     </Modal>}
   </div>;
 }
+
 
 // ── Root App ──────────────────────────────────────────────────────────────────
 export default function App(){
