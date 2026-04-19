@@ -1005,7 +1005,7 @@ export default function App(){
   var[logs,setLogsR]=useState([]);var[emailTemplates,setEmailTemplates]=useState([]);
   var[allTimeSessions,setAllTimeSessions]=useState([]);
   var[curUser,setCurUserR]=useState(function(){return loadState("hd_curUser",null);});
-  var[page,setPageR]=useState(function(){try{var s=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
+  var[page,setPageR]=useState(function(){try{var raw=localStorage.getItem("hd_page");var s=raw?raw.replace(/^"|"$/g,""):null;var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
   var[selTicket,setSelTicket]=useState(null);var[toast,setToast]=useState(null);
   var[breaches,setBreaches]=useState([]);var[inboxAlerts,setInboxAlerts]=useState([]);
   var[showProfile,setShowProfile]=useState(false);var[loading,setLoading]=useState(true);
