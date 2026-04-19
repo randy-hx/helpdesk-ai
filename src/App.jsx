@@ -1013,6 +1013,15 @@ export default function App(){
   var[notifications,setNotifications]=useState([]);
   var prevBreachIdsRef=useRef([]);
   var isMobile=useIsMobile();
+  useEffect(function(){
+    if(!loading&&curUser){
+      var saved=localStorage.getItem("hd_page");
+      var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];
+      if(saved&&safe.includes(saved)&&saved!==page){
+        setPageR(saved);
+      }
+    }
+  },[loading,curUser?.id]);
 
   useEffect(function(){
     async function loadAll(){
