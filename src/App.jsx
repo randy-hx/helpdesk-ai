@@ -1019,6 +1019,9 @@ export default function App(){
       setLoading(true);
       var[u,co,cl,tt,tkt,lg,sch,et,ts]=await Promise.all([dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),dbGetTickets(),dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates(),dbGetAllTimeSessions()]);
       setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);setAllTimeSessions(ts);
+      var savedPage=localStorage.getItem("hd_page");
+      var safePages=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];
+      if(savedPage&&safePages.includes(savedPage))setPageR(savedPage);
       setLoading(false);
     }
     loadAll();
