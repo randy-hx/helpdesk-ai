@@ -7,9 +7,5 @@
       "path": "/api/daily-report",
       "schedule": "0 5 * * *"
     },
-    {
-      "path": "/api/daily-ai-insight",
-      "schedule": "0 5 * * *"
-    }
-  ]
+    ]
 }
