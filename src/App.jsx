@@ -46,6 +46,25 @@ function calcBusinessHoursElapsed(startMs,endMs,schedule){
     }
     return total;
   }
+  if(schedule.days&&schedule.days.length&&typeof schedule.days[0]==="object"&&schedule.days[0].dow!==undefined){
+    var total3=0,cur3=startMs;
+    var PHT_OFFSET_MS=8*3600000;
+    while(cur3<endMs){
+      var d3=new Date(cur3);var dow3=d3.getDay();
+      var entry3=schedule.days.find(function(e){return e.dow===dow3;});
+      if(entry3){
+        var startH=entry3.startHalf>24?entry3.startHalf*0.5:entry3.startHalf;
+        var endH=entry3.endHalf>24?entry3.endHalf*0.5:entry3.endHalf;
+        var phtMs3=cur3+PHT_OFFSET_MS;var phtD3=new Date(phtMs3);
+        var phtMidnightUTC3=Date.UTC(phtD3.getUTCFullYear(),phtD3.getUTCMonth(),phtD3.getUTCDate())-PHT_OFFSET_MS;
+        var dayStartUTC3=phtMidnightUTC3+startH*3600000;var dayEndUTC3=phtMidnightUTC3+endH*3600000;
+        var os3=Math.max(cur3,dayStartUTC3);var oe3=Math.min(endMs,dayEndUTC3);
+        if(oe3>os3)total3+=(oe3-os3)/3600000;
+      }
+      cur3=new Date(d3.getFullYear(),d3.getMonth(),d3.getDate()+1,0,0,0,0).getTime();
+    }
+    return total3;
+  }
   if(!schedule.days||!schedule.days.length)return(endMs-startMs)/3600000;
   var total2=0,cur2=startMs;
   while(cur2<endMs){
@@ -1647,22 +1666,18 @@ function PageReports(p){
     var totals={};
     ALL_STATUSES.forEach(function(s){totals[s]=0;});
     active.forEach(function(t){
+      var schedule=schedules&&t.assignedTo?schedules[t.assignedTo]:null;
       (t.statusTimeLog||[]).forEach(function(entry){
-        var mins;
-        if(entry.durationMins!=null){
-          // Already computed when status changed: exitedAt - enteredAt
-          mins=entry.durationMins;
-        } else if(entry.exitedAt===null&&entry.enteredAt){
-          // Ticket is still in this status — measure from enteredAt to now
-          mins=parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2));
-        } else {
-          return;
-        }
-        if(totals[entry.status]!==undefined) totals[entry.status]+=mins;
+        if(!entry.enteredAt)return;
+        var startMs=new Date(entry.enteredAt).getTime();
+        var endMs=entry.exitedAt?new Date(entry.exitedAt).getTime():Date.now();
+        var hrs=calcBusinessHoursElapsed(startMs,endMs,schedule);
+        var mins=hrs*60;
+        if(totals[entry.status]!==undefined)totals[entry.status]+=mins;
       });
     });
     return totals;
-  },[active]);
+  },[active,schedules]);
 
   // ── SLA Breach analysis — also uses statusTimeLog timestamps, not IT timer ──
   var slaBreachAnalysis=useMemo(function(){
@@ -1672,23 +1687,19 @@ function PageReports(p){
     ALL_STATUSES.forEach(function(s){breachCount[s]=0;breachDuration[s]=0;});
 
     active.forEach(function(t){
+      var schedule=schedules&&t.assignedTo?schedules[t.assignedTo]:null;
       (t.statusTimeLog||[]).forEach(function(entry){
         var allowed=cfg[entry.status];
         if(allowed===null||allowed===undefined)return;
+        if(!entry.enteredAt)return;
+        var startMs=new Date(entry.enteredAt).getTime();
+        var endMs=entry.exitedAt?new Date(entry.exitedAt).getTime():Date.now();
+        var businessHrs=calcBusinessHoursElapsed(startMs,endMs,schedule);
+        var businessMins=businessHrs*60;
         var allowedMins=allowed*60;
-
-        var durMins;
-        if(entry.durationMins!=null){
-          durMins=entry.durationMins;
-        } else if(entry.exitedAt===null&&entry.enteredAt){
-          durMins=parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2));
-        } else {
-          return;
-        }
-
-        if(durMins>allowedMins){
+        if(businessMins>allowedMins){
           breachCount[entry.status]=(breachCount[entry.status]||0)+1;
-          breachDuration[entry.status]=(breachDuration[entry.status]||0)+(durMins-allowedMins);
+          breachDuration[entry.status]=(breachDuration[entry.status]||0)+(businessMins-allowedMins);
         }
       });
     });
@@ -1696,7 +1707,7 @@ function PageReports(p){
     var totalBreachMins=Object.values(breachDuration).reduce(function(a,b){return a+b;},0);
     var totalBreachCount=Object.values(breachCount).reduce(function(a,b){return a+b;},0);
     return{breachCount:breachCount,breachDuration:breachDuration,totalBreachMins:totalBreachMins,totalBreachCount:totalBreachCount};
-  },[active,statusSla]);
+  },[active,statusSla,schedules]);
 
   var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:loggedMins(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
   var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:userLoggedMins(t.id,active)};});
