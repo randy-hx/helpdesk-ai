@@ -1,3 +1,7 @@
+// api/ai-insight.js — Google Gemini 2.0 Flash (free tier)
+// Requires GEMINI_API_KEY in Vercel environment variables
+// Get a free key at: https://aistudio.google.com
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -12,48 +16,54 @@ export default async function handler(req, res) {
     const { messages } = req.body;
     if (!messages || !messages.length) return res.status(400).json({ error: "No messages provided" });
 
-    // Extract the user message content (last message in the array)
     const userMessage = messages[messages.length - 1];
     const promptText = typeof userMessage.content === "string"
       ? userMessage.content
       : (userMessage.content?.[0]?.text || "");
 
-    const systemInstruction = "You are an IT helpdesk analyst. When given ticket data, provide concise analysis using bullet points.";
+    const systemInstruction = "You are an IT helpdesk analyst. When given ticket data, provide concise analysis using bullet points. Be direct and actionable.";
 
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemInstruction }]
-          },
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: promptText }]
+    // Try gemini-2.0-flash first, fall back to gemini-1.5-flash
+    const models = ["gemini-2.0-flash", "gemini-1.5-flash"];
+    let lastError = null;
+
+    for (const model of models) {
+      const response = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: systemInstruction }]
+            },
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: promptText }]
+              }
+            ],
+            generationConfig: {
+              maxOutputTokens: 1000,
+              temperature: 0.4
             }
-          ],
-          generationConfig: {
-            maxOutputTokens: 1000,
-            temperature: 0.4
-          }
-        })
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+        return res.status(200).json({ content: [{ type: "text", text }] });
       }
-    );
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      const errMsg = data.error?.message || "Gemini API error";
-      return res.status(response.status).json({ error: errMsg });
+      lastError = data.error?.message || "Gemini API error (status " + response.status + ")";
+      // If it's a 404 (model not found), try next model; otherwise break
+      if (response.status !== 404) break;
     }
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
-
-    // Return in same shape the frontend expects: { content: [{ text }] }
-    return res.status(200).json({ content: [{ type: "text", text }] });
+    return res.status(500).json({ error: lastError || "All models failed" });
 
   } catch (err) {
     return res.status(500).json({ error: err.message });
