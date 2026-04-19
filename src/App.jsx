@@ -211,7 +211,7 @@ async function dbSaveChat(msg){
 
 function loadState(key,fb){try{var s=localStorage.getItem(key);return s?JSON.parse(s):fb;}catch(e){return fb;}}
 function saveState(key,v){try{localStorage.setItem(key,JSON.stringify(v));}catch(e){}}
-function clearAuth(){try{localStorage.removeItem("hd_curUser");localStorage.removeItem("hd_page");}catch(e){}}
+function clearAuth(){try{localStorage.removeItem("hd_curUser");}catch(e){}}
 function mkOpt(v,l){return{value:v,label:l};}
 const OPT_PRIORITY=Object.keys(PRI_META).map(function(k){return mkOpt(k,PRI_META[k].label);});
 const OPT_STATUSES=ALL_STATUSES.map(function(s){return mkOpt(s,s);});
