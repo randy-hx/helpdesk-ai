@@ -211,7 +211,7 @@ async function dbSaveChat(msg){
 
 function loadState(key,fb){try{var s=localStorage.getItem(key);return s?JSON.parse(s):fb;}catch(e){return fb;}}
 function saveState(key,v){try{localStorage.setItem(key,JSON.stringify(v));}catch(e){}}
-function clearAuth(){try{localStorage.removeItem("hd_curUser");localStorage.removeItem("hd_page");}catch(e){}}
+if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
 function mkOpt(v,l){return{value:v,label:l};}
 const OPT_PRIORITY=Object.keys(PRI_META).map(function(k){return mkOpt(k,PRI_META[k].label);});
 const OPT_STATUSES=ALL_STATUSES.map(function(s){return mkOpt(s,s);});
@@ -1103,7 +1103,7 @@ export default function App(){
   var allNonDeleted=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
 
   if(loading)return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#062d6b)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #0ea5e9",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"#7dd3fc",fontSize:14,fontWeight:600}}>Loading Hoptix…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
-  if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
+  if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];if(saved&&safe.includes(saved))setPageR(saved);}}/>;
 
   var NAV=[
     {id:"dashboard",icon:"🏠",label:"Dashboard"},
@@ -1708,7 +1708,8 @@ function PageReports(p){
 
     var totalBreachMins=Object.values(breachDuration).reduce(function(a,b){return a+b;},0);
     var totalBreachCount=Object.values(breachCount).reduce(function(a,b){return a+b;},0);
-    return{breachCount:breachCount,breachDuration:breachDuration,totalBreachMins:totalBreachMins,totalBreachCount:totalBreachCount};
+    var avgBreachMins=totalBreachCount>0?totalBreachMins/totalBreachCount:0;
+    return{breachCount:breachCount,breachDuration:breachDuration,totalBreachMins:totalBreachMins,avgBreachMins:avgBreachMins,totalBreachCount:totalBreachCount};
   },[active,statusSla,schedules]);
 
   var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine),avgClose:calcAvgClose(res),loggedMins:loggedMins(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
@@ -1763,7 +1764,7 @@ function PageReports(p){
         <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1" help="Number of tickets created within the selected time period."/>
         <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual work time" help="Total real work time logged by IT staff using the Start/Stop timer."/>
         <Stat label="Breach Instances" value={slaBreachAnalysis.totalBreachCount} icon="🚨" color="#ef4444" sub="status-level breaches" help="Total number of times a ticket exceeded its SLA time limit while in a given status."/>
-        <Stat label="Total Breach Time" value={fmtDuration(slaBreachAnalysis.totalBreachMins)} icon="⏰" color="#dc2626" sub="time over SLA limit" help="Cumulative time tickets spent beyond their SLA thresholds across all statuses."/>
+        <Stat label="Avg Breach Time" value={fmtDuration(slaBreachAnalysis.avgBreachMins)} icon="⏰" color="#dc2626" sub="avg per breach instance" help="Average time each breach instance exceeded its SLA threshold, based on assigned tech's schedule."/>
       </div>
 
       {/* Tickets by Status pie */}
@@ -1778,13 +1779,13 @@ function PageReports(p){
         <div style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"6px 10px",marginBottom:14}}>
           ℹ️ Average business hours each ticket spent in this status, based on assigned tech's schedule. Excludes off-hours and days off.
         </div>
-        {ALL_STATUSES.map(function(s){
+        {ALL_STATUSES.filter(function(s){return s!=="Closed";}).map(function(s){
           var sm=STATUS_META[s];
           var mins=statusTimeSummary[s]||0;
           var cfg=statusSla||DEFAULT_STATUS_SLA;
           var allowed=cfg[s];
           var allowedMins=allowed!=null?allowed*60:null;
-          var maxMins=Math.max.apply(null,ALL_STATUSES.map(function(sx){return statusTimeSummary[sx]||0;}));
+          var maxMins=Math.max.apply(null,ALL_STATUSES.filter(function(sx){return sx!=="Closed";}).map(function(sx){return statusTimeSummary[sx]||0;}));
           var barPct=maxMins>0?Math.round(mins/maxMins*100):0;
           var isOverSla=allowedMins!=null&&mins>allowedMins;
           var bCount=slaBreachAnalysis.breachCount[s]||0;
@@ -1841,10 +1842,10 @@ function PageReports(p){
           <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Total Breach Instances</div>
           <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>across all statuses</div>
         </div>
-        <div style={{background:slaBreachAnalysis.totalBreachMins===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.totalBreachMins===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}>
-          <div style={{fontSize:28,fontWeight:800,color:slaBreachAnalysis.totalBreachMins===0?"#10b981":"#dc2626"}}>{slaBreachAnalysis.totalBreachMins>0?fmtDuration(slaBreachAnalysis.totalBreachMins):"0"}</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Total Time Over SLA</div>
-          <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>cumulative excess time</div>
+        <div style={{background:slaBreachAnalysis.avgBreachMins===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.avgBreachMins===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}>
+          <div style={{fontSize:28,fontWeight:800,color:slaBreachAnalysis.avgBreachMins===0?"#10b981":"#dc2626"}}>{slaBreachAnalysis.avgBreachMins>0?fmtDuration(slaBreachAnalysis.avgBreachMins):"0"}</div>
+          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Avg Time Over SLA</div>
+          <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>per breach instance</div>
         </div>
       </div>
 
