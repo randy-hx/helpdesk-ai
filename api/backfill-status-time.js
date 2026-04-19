@@ -12,7 +12,7 @@ const supabase = createClient(
 
 // Rebuild statusTimeLog from statusHistory timestamps
 function buildStatusTimeLog(ticket) {
-  var hist = (ticket.statusHistory || []).filter(function(h) {
+  var hist = (ticket.status_history || ticket.statusHistory || []).filter(function(h) {
     return h && h.status && h.timestamp;
   });
 
@@ -90,7 +90,7 @@ export default async function handler(req, res) {
       const ticket = all[i];
 
       // Skip if already has statusTimeLog with real data
-      const existingLog = ticket.statusTimeLog || [];
+      const existingLog = ticket.status_time_log || ticket.statusTimeLog || [];
       const hasData = existingLog.some(function(e) {
         return e && e.enteredAt;
       });
@@ -105,7 +105,7 @@ export default async function handler(req, res) {
 
       const { error: saveErr } = await supabase
         .from("tickets")
-        .update({ statusTimeLog: newLog })
+        .update({ status_time_log: newLog })
         .eq("id", ticket.id);
 
       if (saveErr) {
