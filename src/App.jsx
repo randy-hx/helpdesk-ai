@@ -211,7 +211,7 @@ async function dbSaveChat(msg){
 
 function loadState(key,fb){try{var s=localStorage.getItem(key);return s?JSON.parse(s):fb;}catch(e){return fb;}}
 function saveState(key,v){try{localStorage.setItem(key,JSON.stringify(v));}catch(e){}}
-function clearAuth(){try{localStorage.removeItem("hd_curUser");}catch(e){}}
+function clearAuth(){try{localStorage.removeItem("hd_curUser");localStorage.removeItem("hd_page");}catch(e){}}
 function mkOpt(v,l){return{value:v,label:l};}
 const OPT_PRIORITY=Object.keys(PRI_META).map(function(k){return mkOpt(k,PRI_META[k].label);});
 const OPT_STATUSES=ALL_STATUSES.map(function(s){return mkOpt(s,s);});
@@ -1663,8 +1663,8 @@ function PageReports(p){
   // the ticket spent in that status. durationMins = (exitedAt - enteredAt) in minutes.
   // For the currently-open status entry, we compute live from enteredAt to now.
   var statusTimeSummary=useMemo(function(){
-    var totals={};
-    ALL_STATUSES.forEach(function(s){totals[s]=0;});
+    var totals={};var counts={};
+    ALL_STATUSES.forEach(function(s){totals[s]=0;counts[s]=0;});
     active.forEach(function(t){
       var schedule=schedules&&t.assignedTo?schedules[t.assignedTo]:null;
       (t.statusTimeLog||[]).forEach(function(entry){
@@ -1673,10 +1673,12 @@ function PageReports(p){
         var endMs=entry.exitedAt?new Date(entry.exitedAt).getTime():Date.now();
         var hrs=calcBusinessHoursElapsed(startMs,endMs,schedule);
         var mins=hrs*60;
-        if(totals[entry.status]!==undefined)totals[entry.status]+=mins;
+        if(totals[entry.status]!==undefined){totals[entry.status]+=mins;counts[entry.status]+=1;}
       });
     });
-    return totals;
+    var avgs={};
+    ALL_STATUSES.forEach(function(s){avgs[s]=counts[s]>0?totals[s]/counts[s]:0;});
+    return avgs;
   },[active,schedules]);
 
   // ── SLA Breach analysis — also uses statusTimeLog timestamps, not IT timer ──
@@ -1771,10 +1773,10 @@ function PageReports(p){
       <Card style={{marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:6}}>
           <div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>⏳ Time Per Status</div>
-          <span style={{fontSize:10,color:"#64748b",fontStyle:"italic"}}>Actual elapsed clock time between status transitions</span>
+          <span style={{fontSize:10,color:"#64748b",fontStyle:"italic"}}>Average business hours per ticket in each status</span>
         </div>
         <div style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"6px 10px",marginBottom:14}}>
-          ℹ️ These times measure how long tickets <strong>actually sat in each status</strong> — from when the status was set to when it changed. This is independent of the IT work timer.
+          ℹ️ Average business hours each ticket spent in this status, based on assigned tech's schedule. Excludes off-hours and days off.
         </div>
         {ALL_STATUSES.map(function(s){
           var sm=STATUS_META[s];
@@ -1803,7 +1805,7 @@ function PageReports(p){
             <div style={{height:7,background:"#e2e8f0",borderRadius:4,overflow:"hidden",marginBottom:isOverSla?6:0}}>
               <div style={{height:"100%",width:barPct+"%",background:isOverSla?"#ef4444":sm.color,borderRadius:4,transition:"width .4s"}}/>
             </div>
-            {isOverSla&&allowedMins!=null&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>⚠️ Total time exceeds SLA limit by {fmtDuration(mins-allowedMins)}</div>}
+            {isOverSla&&allowedMins!=null&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>⚠️ Average time exceeds SLA limit by {fmtDuration(mins-allowedMins)}</div>}
           </div>;
         })}
         <div style={{marginTop:4,fontSize:10,color:"#94a3b8",textAlign:"right"}}>
