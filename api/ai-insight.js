@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     const systemInstruction = "You are an IT helpdesk analyst. When given ticket data, provide concise analysis using bullet points. Be direct and actionable.";
 
     // Try gemini-2.0-flash first, fall back to gemini-1.5-flash
-    const models = ["gemini-2.0-flash", "gemini-1.5-flash"];
+    const models = ["gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-2.0-flash"];
     let lastError = null;
 
     for (const model of models) {
