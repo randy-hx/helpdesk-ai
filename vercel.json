@@ -1,10 +1,14 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    { "source": "/api/:path*", "destination": "/api/:path*" }
   ],
   "crons": [
     {
       "path": "/api/daily-report",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/daily-ai-insight",
       "schedule": "0 5 * * *"
     }
   ]
