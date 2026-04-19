@@ -211,7 +211,7 @@ async function dbSaveChat(msg){
 
 function loadState(key,fb){try{var s=localStorage.getItem(key);return s?JSON.parse(s):fb;}catch(e){return fb;}}
 function saveState(key,v){try{localStorage.setItem(key,JSON.stringify(v));}catch(e){}}
-if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
+if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];if(saved&&safe.includes(saved))setPageR(saved);}}/>;
 function mkOpt(v,l){return{value:v,label:l};}
 const OPT_PRIORITY=Object.keys(PRI_META).map(function(k){return mkOpt(k,PRI_META[k].label);});
 const OPT_STATUSES=ALL_STATUSES.map(function(s){return mkOpt(s,s);});
