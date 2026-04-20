@@ -739,6 +739,18 @@ function PageTeamChat(p){
     setDmMsgs(function(prev){return prev.concat([msg]);});
     setDmText("");setDmSending(false);
     await dbSaveDirectChat(msg);
+    // Email notification to recipient — 1-hour cooldown per conversation
+    if(dmTarget.email){
+      var dmConvKey="dm_email_"+[curUser.id,dmTarget.id].sort().join("_");
+      var lastSent=null;try{lastSent=localStorage.getItem(dmConvKey);}catch(e){}
+      var cooldownOk=!lastSent||(Date.now()-parseInt(lastSent))>3600000;
+      if(cooldownOk){
+        var subjDm="💬 New Direct Message from "+curUser.name;
+        var bodyDm=curUser.name+" sent you a direct message on Hoptix.\n\nMessage:\n"+trimmed+"\n\nLog in to Hoptix to reply.";
+        callSendEmail({to:dmTarget.email,subject:subjDm,body:bodyDm});
+        try{localStorage.setItem(dmConvKey,String(Date.now()));}catch(e){}
+      }
+    }
   }
 
   // ── Group chat state ──────────────────────────────────────────────────────────
@@ -796,7 +808,6 @@ function PageTeamChat(p){
     setGroupMsgs(function(prev){return prev.concat([msg]);});setGroupText("");setGroupSending(false);
     await dbSaveTeamChat(msg);
   }
-
  async function createGroup(){
     if(!newGroupName.trim()||newGroupMembers.length===0)return;
     var allMembers=newGroupMembers.includes(curUser.id)?newGroupMembers:[curUser.id].concat(newGroupMembers);
@@ -1010,7 +1021,7 @@ export default function App(){
   var[breaches,setBreaches]=useState([]);var[inboxAlerts,setInboxAlerts]=useState([]);
   var[showProfile,setShowProfile]=useState(false);var[loading,setLoading]=useState(true);
   var[sidebarOpen,setSidebarOpen]=useState(false);
-  var[notifications,setNotifications]=useState([]);
+  var[notifications,setNotifications]=useState([]); var[unreadChatCount,setUnreadChatCount]=useState(0);
   var prevBreachIdsRef=useRef([]);
   var isMobile=useIsMobile();
   useEffect(function(){
@@ -1053,8 +1064,9 @@ export default function App(){
     var parts=[];
     if(breaches.length>0)parts.push("\uD83D\uDEA8"+breaches.length);
     if(unreadCount>0)parts.push("\uD83D\uDD14"+unreadCount);
+    if(unreadChatCount>0)parts.push("\uD83D\uDCAC"+unreadChatCount);
     document.title=parts.length>0?"("+parts.join(" | ")+") Hoptix":"Hoptix";
-  },[unreadCount,breaches]);
+  },[unreadCount,breaches,unreadChatCount]);
 
   var refreshTimeSessions=useCallback(async function(){
     var ts=await dbGetAllTimeSessions();setAllTimeSessions(ts);
@@ -1069,9 +1081,9 @@ export default function App(){
     return function(){supabase.removeChannel(sub);};
   },[]);
 
-  async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
+  useEffect(function(){     if(!curUser)return;     var dmSub=supabase.channel("global-dm-"+curUser.id)       .on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_chats"},function(payload){         var m=payload.new;         if(m.to_id===curUser.id){           setPageR(function(curPage){             if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});             return curPage;           });         }       }).subscribe();     var groupSub=supabase.channel("global-group-"+curUser.id)       .on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats"},function(payload){         var m=payload.new;         if(m.user_id===curUser.id)return;         setPageR(function(curPage){           if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});           return curPage;         });       }).subscribe();     return function(){supabase.removeChannel(dmSub);supabase.removeChannel(groupSub);};   },[curUser?.id]);    async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
   function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
-  function setPage(v){localStorage.setItem("hd_page",v);setPageR(v);setSidebarOpen(false);}
+  function setPage(v){localStorage.setItem("hd_page",v);setPageR(v);setSidebarOpen(false);if(v==="team_chat")setUnreadChatCount(0);}
   var addLog=useCallback(function(action,target,detail,uId){var entry={id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};setLogsR(function(p){return[entry].concat(p).slice(0,500);});dbAddLog(entry);},[curUser]);
   var showToast=useCallback(function(msg,type){setToast({msg,type:type||"ok"});setTimeout(function(){setToast(null);},3500);},[]);
 
@@ -1123,7 +1135,7 @@ export default function App(){
     {id:"tickets",icon:"🎫",label:"Tickets"},
     {id:"new_ticket",icon:"➕",label:"New Ticket"},
     {id:"time_tracking",icon:"⏱️",label:"Time Tracking"},
-    {id:"team_chat",icon:"💬",label:"Team Chat"},
+    {id:"team_chat",icon:"💬",label:"Team Chat",chatBadge:true},
     {id:"reports",icon:"📊",label:"Reports",admin:true},
     {id:"users",icon:"👥",label:"Users",admin:true},
     {id:"companies",icon:"🏢",label:"Companies",superAdmin:true},
@@ -1138,7 +1150,7 @@ export default function App(){
 
   var sidebar=<div style={{width:220,background:"linear-gradient(180deg,#020e1f,#041833,#062d6b)",display:"flex",flexDirection:"column",flexShrink:0,height:"100%"}}>
     <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(56,189,248,.15)"}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#fff 60%,#b3d9ff)",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:18,height:18,borderRadius:"50%",background:"linear-gradient(135deg,#0369a1,#0ea5e9)",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:7,height:7,borderRadius:"50%",background:"#020e1f"}}/></div></div><div><div style={{color:"#fff",fontWeight:800,fontSize:14}}>hoptix</div><div style={{color:"#38bdf8",fontSize:9}}>A.eye technology</div></div></div></div>
-    <div style={{padding:"8px",flex:1,overflowY:"auto"}}>{NAV.map(function(n){return<div key={n.id} className="nv" onClick={function(){setPage(n.id);}} style={{padding:"10px 12px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,marginBottom:2,background:page===n.id?"rgba(14,165,233,.25)":"transparent",color:page===n.id?"#fff":"#93c5fd",fontWeight:page===n.id?700:500,fontSize:12,borderLeft:page===n.id?"3px solid #0ea5e9":"3px solid transparent"}}><span style={{fontSize:15}}>{n.icon}</span>{n.label}{n.id==="tickets"&&breaches.length>0&&<span style={{marginLeft:"auto",background:"#ef4444",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10}}>{breaches.length}</span>}</div>;})}</div>
+    <div style={{padding:"8px",flex:1,overflowY:"auto"}}>{NAV.map(function(n){return<div key={n.id} className="nv" onClick={function(){setPage(n.id);}} style={{padding:"10px 12px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,marginBottom:2,background:page===n.id?"rgba(14,165,233,.25)":"transparent",color:page===n.id?"#fff":"#93c5fd",fontWeight:page===n.id?700:500,fontSize:12,borderLeft:page===n.id?"3px solid #0ea5e9":"3px solid transparent"}}><span style={{fontSize:15}}>{n.icon}</span>{n.label}{n.id==="tickets"&&breaches.length>0&&<span style={{marginLeft:"auto",background:"#ef4444",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10}}>{breaches.length}</span>} {n.id==="team_chat"&&unreadChatCount>0&&<span style={{marginLeft:"auto",background:"#6366f1",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10}}>{unreadChatCount>99?"99+":unreadChatCount}</span>}</div>;})}</div>
     <div style={{padding:"12px 10px",borderTop:"1px solid rgba(56,189,248,.15)"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><Avatar name={curUser.name} id={curUser.id} size={30}/><div style={{flex:1,overflow:"hidden"}}><div style={{color:"#fff",fontSize:11,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{curUser.name}</div><div style={{color:"#7dd3fc",fontSize:10}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div></div><button onClick={function(){try{if(localStorage.getItem("hd_rememberMe")!=="true")localStorage.removeItem("hd_savedCreds");}catch(e){}setCurUser(null);setPageR("dashboard");saveState("hd_page","dashboard");setSelTicket(null);}} style={{width:"100%",padding:"7px",background:"rgba(239,68,68,.2)",color:"#fca5a5",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>🚪 Sign Out</button></div>
   </div>;
 
@@ -1177,7 +1189,7 @@ export default function App(){
           {page==="integrations" &&<PageIntegrations showToast={showToast} addLog={addLog} emailTemplates={emailTemplates} setEmailTemplates={setEmailTemplates} curUser={curUser} isAdmin={isAdmin}/>}
         </div>
         {isMobile&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #e2e8f0",display:"flex",zIndex:8000,boxShadow:"0 -2px 10px rgba(0,0,0,.08)"}}>
-          {bottomNav.map(function(n){var active=page===n.id;return<button key={n.id} onClick={function(){setPage(n.id);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:20}}>{n.icon}</span><span style={{fontSize:9,fontWeight:active?700:500,color:active?"#6366f1":"#94a3b8"}}>{n.label}</span>{active&&<div style={{width:4,height:4,borderRadius:"50%",background:"#6366f1"}}/>}</button>;})}
+          {bottomNav.map(function(n){var active=page===n.id;return<button key={n.id} onClick={function(){setPage(n.id);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative"}}><span style={{fontSize:20}}>{n.icon}</span>{n.id==="team_chat"&&unreadChatCount>0&&<span style={{position:"absolute",top:4,right:"calc(50% - 14px)",background:"#6366f1",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:9,fontWeight:800,lineHeight:"14px",minWidth:16,textAlign:"center"}}>{unreadChatCount>99?"99+":unreadChatCount}</span>}<span style={{fontSize:9,fontWeight:active?700:500,color:active?"#6366f1":"#94a3b8"}}>{n.label}</span>{active&&<div style={{width:4,height:4,borderRadius:"50%",background:"#6366f1"}}/>}</button>;})}
           <button onClick={function(){setSidebarOpen(true);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:20}}>☰</span><span style={{fontSize:9,fontWeight:500,color:"#94a3b8"}}>More</span></button>
         </div>}
       </div>
