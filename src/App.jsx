@@ -1423,7 +1423,7 @@ function PageTeamChat(p){
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setShowNewGroup(false);}}>Cancel</Btn><Btn onClick={createGroup}>Create Group</Btn></div>
     </Modal>}
   </div>;
-}
+
 
 
 // ── Root App ──────────────────────────────────────────────────────────────────
