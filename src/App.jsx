@@ -1098,32 +1098,7 @@ function PageTeamChat(p){
   </div>;
 }
 
-  // ── Presence tracking ────────────────────────────────────────────────────────
-  var[onlineIds,setOnlineIds]=useState([]);
-  var presenceChannelRef=useRef(null);
-  useEffect(function(){
-    var ch=supabase.channel("online-presence",{config:{presence:{key:curUser.id}}});
-    ch.on("presence",{event:"sync"},function(){
-      var state=ch.presenceState();
-      var ids=Object.keys(state);
-      setOnlineIds(ids);
-    });
-    ch.on("presence",{event:"join"},function(p2){
-      setOnlineIds(function(prev){return prev.includes(p2.key)?prev:prev.concat([p2.key]);});
-    });
-    ch.on("presence",{event:"leave"},function(p2){
-      setOnlineIds(function(prev){return prev.filter(function(id){return id!==p2.key;});});
-    });
-    ch.subscribe(async function(status){
-      if(status==="SUBSCRIBED"){
-        await ch.track({user_id:curUser.id,online_at:new Date().toISOString()});
-      }
-    });
-    presenceChannelRef.current=ch;
-    return function(){supabase.removeChannel(ch);};
-  },[curUser.id]);
-
-  // ── Direct chat state ─────────────────────────────────────────────────────────
+    // ── Direct chat state ─────────────────────────────────────────────────────────
   var[dmTarget,setDmTarget]=useState(null); // user object
   var[dmMsgs,setDmMsgs]=useState([]);
   var[dmText,setDmText]=useState("");
