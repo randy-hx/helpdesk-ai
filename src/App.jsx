@@ -1366,41 +1366,7 @@ function PageTeamChat(p){
     </div>;
   }
 
-  // ── Main render ───────────────────────────────────────────────────────────────
-  return<div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 120px)"}}>
-    <div style={{display:"flex",gap:6,padding:"0 0 12px",flexShrink:0}}>
-      <button onClick={function(){setMainTab("direct");}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:mainTab==="direct"?"#6366f1":"#f1f5f9",color:mainTab==="direct"?"#fff":"#475569",fontSize:13,fontWeight:700,cursor:"pointer"}}>💬 Direct Messages</button>
-      <button onClick={function(){setMainTab("groups");}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:mainTab==="groups"?"#6366f1":"#f1f5f9",color:mainTab==="groups"?"#fff":"#475569",fontSize:13,fontWeight:700,cursor:"pointer"}}>👥 Group Chats</button>
-    </div>
-    <div style={{flex:1,background:"#fff",borderRadius:14,border:"1px solid #e2e8f0",overflow:"hidden",display:"flex",minHeight:0}}>
-      {mainTab==="direct"&&<>
-        {(!isMobile||showUserList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}>{OnlineUsersList()}</div>}
-        {(!isMobile||!showUserList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}>{DirectChatArea()}</div>}
-      </>}
-      {mainTab==="groups"&&<>
-        {(!isMobile||showGroupList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}>{GroupList()}</div>}
-        {(!isMobile||!showGroupList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}>{GroupChatArea()}</div>}
-      </>}
-    </div>
-    {showNewGroup&&<Modal title="➕ New Group" onClose={function(){setShowNewGroup(false);}}>
-      <FInput label="Group Name *" value={newGroupName} onChange={function(e){setNewGroupName(e.target.value);}} placeholder="e.g. Project Alpha"/>
-      <div style={{marginBottom:14}}>
-        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:8}}>Members (pick at least 1)</label>
-        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
-          {users.filter(function(u){return u.active&&u.id!==curUser.id;}).map(function(u){var checked=newGroupMembers.includes(u.id);return<label key={u.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:checked?"#eef2ff":"transparent",cursor:"pointer"}}>
-            <input type="checkbox" checked={checked} onChange={function(){setNewGroupMembers(function(prev){return checked?prev.filter(function(id){return id!==u.id;}):prev.concat([u.id]);});}} style={{accentColor:"#6366f1"}}/>
-            <div style={{position:"relative"}}><Avatar name={u.name} id={u.id} size={24}/><div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:onlineIds.includes(u.id)?"#10b981":"#cbd5e1",border:"1.5px solid #fff"}}/></div>
-            <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[u.role]?.label||u.role}</div></div>
-          </label>;})}
-        </div>
-        <div style={{fontSize:11,color:"#64748b",marginTop:6}}>{newGroupMembers.length} member{newGroupMembers.length!==1?"s":""} selected</div>
-      </div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setShowNewGroup(false);}}>Cancel</Btn><Btn onClick={createGroup}>Create Group</Btn></div>
-    </Modal>}
-  </div>;
-
-
-
+  
 // ── Root App ──────────────────────────────────────────────────────────────────
 export default function App(){
   var[users,setUsers]=useState([]);var[companies,setCompanies]=useState([]);var[clients,setClients]=useState([]);
