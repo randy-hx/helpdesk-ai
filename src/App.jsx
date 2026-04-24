@@ -232,6 +232,118 @@ function TicketHistory(p){
   return<div><div style={{fontWeight:700,color:"#1e293b",marginBottom:16}}>📜 Ticket Timeline</div>{events.map(function(ev,i){if(ev.type==="status"){var h=ev.data;return<div key={i} style={{display:"flex",gap:10,marginBottom:12}}><div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}><div style={{width:30,height:30,borderRadius:8,background:(STATUS_META[h.status]?.color||"#6366f1")+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>🔄</div>{i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:12}}/>}</div><div style={{flex:1,background:"#f8fafc",borderRadius:8,padding:10,marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><Badge label={h.status} color={STATUS_META[h.status]?.color||"#6366f1"}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(h.timestamp)}</span></div><div style={{fontSize:11,color:"#64748b"}}>Assigned: <strong>{fu(h.assignedTo)?.name||"Unassigned"}</strong></div><div style={{fontSize:11,color:"#475569"}}>By: {fu(h.changedBy)?.name||"System"}</div>{h.durationMins!=null&&<div style={{fontSize:11,color:"#8b5cf6",marginTop:3}}>⏱ Time in status: <strong>{fmtDuration(h.durationMins)}</strong></div>}{h.note&&<div style={{fontSize:11,color:"#334155",marginTop:4,fontStyle:"italic"}}>{h.note}</div>}</div></div>;}if(ev.type==="email"){var m=ev.data;var isReply=m.isExternal||m.status==="received";var sender=isReply?(m.fromName||m.fromEmail):(fu(m.from)?.name||curUser.name);return<div key={i} style={{display:"flex",gap:10,marginBottom:12}}><div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}><div style={{width:30,height:30,borderRadius:8,background:"#e0f2fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{isReply?"📬":"📧"}</div>{i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:12}}/>}</div><div style={{flex:1,background:isReply?"#f0fdf4":"#f0f9ff",borderRadius:8,padding:10,marginBottom:4,border:"1px solid "+(isReply?"#bbf7d0":"#bae6fd")}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><span style={{fontSize:12,fontWeight:700,color:isReply?"#166534":"#0369a1"}}>{isReply?"📬 Reply":"📧 Sent"}</span><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div><div style={{fontSize:11,color:"#64748b",marginBottom:2}}>From: <strong>{sender}</strong></div>{m.cc&&<div style={{fontSize:11,color:"#64748b",marginBottom:2}}>CC: {m.cc}</div>}<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Subj: {m.subject}</div><div style={{fontSize:12,color:"#334155",background:"rgba(255,255,255,.6)",borderRadius:6,padding:"6px 8px",maxHeight:50,overflow:"hidden"}}>{m.body?.slice(0,100)}{m.body?.length>100?"…":""}</div></div></div>;}if(ev.type==="chat"){var cm=ev.data;var csender=fu(cm.user_id);var isMe=cm.user_id===curUser.id;return<div key={i} style={{display:"flex",gap:10,marginBottom:12}}><div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}><div style={{width:30,height:30,borderRadius:8,background:"#eef2ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>💬</div>{i<events.length-1&&<div style={{width:2,flex:1,background:"#e2e8f0",marginTop:4,minHeight:12}}/>}</div><div style={{flex:1,background:isMe?"#eef2ff":"#f8fafc",borderRadius:8,padding:10,marginBottom:4,border:"1px solid "+(isMe?"#c7d2fe":"#e2e8f0")}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><span style={{fontSize:12,fontWeight:700,color:isMe?"#4338ca":"#334155"}}>💬 {isMe?"You":csender?.name||"Unknown"}</span><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(cm.created_at)}</span></div><div style={{fontSize:13,color:"#334155"}}>{cm.message}</div></div></div>;}return null;})}</div>;
 }
 
+// ── Team Chat sub-components (defined at MODULE level to prevent remount on keystroke) ──
+
+var TC_EMOJIS=["😀","😂","😍","🥰","😎","🤔","😅","🙏","👍","👎","❤️","🔥","✅","⚠️","🎉","🚀","💡","📋","🎫","⏱️","🔧","💻","📧","📞","🤝","👀","💪","🙌","😢","😡","🤣","😴","🥳","🤯","😬","🫡","👏","💯","🆗","❌","⭐","🏆","📌","🔔","💬","📎","🎬","🔗","📊","🛠️","🔒"];
+
+function renderTcMessage(text){
+  if(!text)return null;
+  var urlRegex=/(https?:\/\/[^\s]+)/g;
+  var parts=text.split(urlRegex);
+  return parts.map(function(part,i){
+    if(!part.match(/^https?:\/\//))return<span key={i}>{part}</span>;
+    var isYoutube=part.includes("youtube.com/watch")||part.includes("youtu.be/");
+    var isVideo=part.match(/\.(mp4|webm|mov)(\?.*)?$/i);
+    if(isYoutube){var ym=part.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);if(ym)return<div key={i} style={{marginTop:6,borderRadius:8,overflow:"hidden",maxWidth:280}}><iframe width="280" height="158" src={"https://www.youtube.com/embed/"+ym[1]} frameBorder="0" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowFullScreen style={{display:"block"}}/></div>;}
+    if(isVideo)return<div key={i} style={{marginTop:6}}><video src={part} controls style={{maxWidth:280,borderRadius:8,display:"block"}}/></div>;
+    return<a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:"#6366f1",textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>;
+  });
+}
+
+function TcEmojiPicker(p){
+  return<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:0,background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:10,boxShadow:"0 8px 24px rgba(0,0,0,.15)",zIndex:200,width:280,display:"flex",flexWrap:"wrap",gap:4}}>
+    {TC_EMOJIS.map(function(em){return<button key={em} onClick={function(){p.onPick(em);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:"4px",borderRadius:6,lineHeight:1}}>{em}</button>;})}
+  </div>;
+}
+
+function TcRichInput(p){
+  var text=p.text;var setText=p.setText;var onSend=p.onSend;var placeholder=p.placeholder;var showEmoji=p.showEmoji;var setShowEmoji=p.setShowEmoji;var sending=p.sending;
+  function insertLink(){var url=window.prompt("Paste a URL (web link or YouTube video):");if(!url||!url.trim())return;var trimmed=url.trim();if(!trimmed.startsWith("http"))trimmed="https://"+trimmed;setText(function(prev){return prev+(prev&&!prev.endsWith(" ")?" ":"")+trimmed+" ";});}
+  return<div style={{padding:"10px 16px",borderTop:"1px solid #e2e8f0",display:"flex",gap:8,alignItems:"flex-end",flexShrink:0,position:"relative"}}>
+    {showEmoji&&<TcEmojiPicker onPick={function(em){setText(function(prev){return prev+em;});}}/>}
+    <div style={{flex:1,position:"relative"}}>
+      <textarea value={text} onChange={function(e){setText(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();onSend();}}} placeholder={placeholder} rows={2} style={{width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:10,fontSize:14,outline:"none",resize:"none",background:"#f8fafc",boxSizing:"border-box"}}/>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={function(){setShowEmoji(!showEmoji);}} title="Emoji" style={{background:"#f1f5f9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🙂</button>
+        <button onClick={insertLink} title="Attach link or video" style={{background:"#f1f5f9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔗</button>
+      </div>
+      <button onClick={onSend} disabled={sending||!text.trim()} style={{padding:"8px 14px",background:sending||!text.trim()?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:sending||!text.trim()?"not-allowed":"pointer",minHeight:36}}>Send</button>
+    </div>
+  </div>;
+}
+
+function TcOnlineUsersList(p){
+  var curUser=p.curUser;var users=p.users;var onlineIds=p.onlineIds;var dmTarget=p.dmTarget;var dmUnread=p.dmUnread;var onOpen=p.onOpen;
+  var otherUsers=users.filter(function(u){return u.active&&u.id!==curUser.id;});
+  var online=otherUsers.filter(function(u){return onlineIds.includes(u.id);});
+  var offline=otherUsers.filter(function(u){return !onlineIds.includes(u.id);});
+  return<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+    <div style={{padding:"14px 16px",borderBottom:"1px solid #e2e8f0",flexShrink:0}}><div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:2}}>💬 Direct Messages</div><div style={{fontSize:11,color:"#94a3b8"}}>{onlineIds.filter(function(id){return id!==curUser.id;}).length} online now</div></div>
+    <div style={{flex:1,overflowY:"auto",padding:8}}>
+      {online.length>0&&<div style={{fontSize:10,fontWeight:700,color:"#10b981",textTransform:"uppercase",letterSpacing:0.5,padding:"6px 8px 4px"}}>● Online</div>}
+      {online.map(function(u){var active=dmTarget&&dmTarget.id===u.id;var uc=dmUnread[u.id]||0;return<div key={u.id} onClick={function(){onOpen(u);}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:3}}><div style={{position:"relative",flexShrink:0}}><Avatar name={u.name} id={u.id} size={32}/><div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#10b981",border:"2px solid #fff"}}/></div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:10,color:"#10b981",fontWeight:600}}>Online</div></div>{uc>0&&<span style={{background:"#6366f1",color:"#fff",borderRadius:10,padding:"2px 7px",fontSize:10,fontWeight:800,flexShrink:0}}>{uc>99?"99+":uc}</span>}</div>;})}
+      {offline.length>0&&<div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.5,padding:"8px 8px 4px"}}>○ Offline</div>}
+      {offline.map(function(u){var active=dmTarget&&dmTarget.id===u.id;var uc=dmUnread[u.id]||0;return<div key={u.id} onClick={function(){onOpen(u);}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:3}}><div style={{position:"relative",flexShrink:0}}><Avatar name={u.name} id={u.id} size={32}/><div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#cbd5e1",border:"2px solid #fff"}}/></div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:uc>0?700:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[u.role]?.label||u.role}</div></div>{uc>0&&<span style={{background:"#6366f1",color:"#fff",borderRadius:10,padding:"2px 7px",fontSize:10,fontWeight:800,flexShrink:0}}>{uc>99?"99+":uc}</span>}</div>;})}
+      {otherUsers.length===0&&<div style={{textAlign:"center",padding:"32px 16px",color:"#94a3b8",fontSize:12}}>No other users found.</div>}
+    </div>
+  </div>;
+}
+
+function TcDirectChatArea(p){
+  var curUser=p.curUser;var dmTarget=p.dmTarget;var dmMsgs=p.dmMsgs;var dmText=p.dmText;var setDmText=p.setDmText;var dmSending=p.dmSending;var onSend=p.onSend;var onBack=p.onBack;var isMobile=p.isMobile;var onlineIds=p.onlineIds;var showDmEmoji=p.showDmEmoji;var setShowDmEmoji=p.setShowDmEmoji;
+  var dmBottomRef=useRef(null);
+  useEffect(function(){if(dmBottomRef.current)dmBottomRef.current.scrollIntoView({behavior:"smooth"});},[dmMsgs]);
+  if(!dmTarget)return<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#94a3b8"}}><div style={{fontSize:48}}>💬</div><div style={{fontSize:14,fontWeight:600}}>Select a person to message</div><div style={{fontSize:12}}>Choose from the {isMobile?"list above":"list on the left"}</div></div>;
+  var isOnline=onlineIds.includes(dmTarget.id);
+  return<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}>
+    <div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+      {isMobile&&<button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:0,color:"#64748b"}}>←</button>}
+      <div style={{position:"relative",flexShrink:0}}><Avatar name={dmTarget.name} id={dmTarget.id} size={32}/><div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:isOnline?"#10b981":"#cbd5e1",border:"2px solid #fff"}}/></div>
+      <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:14,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dmTarget.name}</div><div style={{fontSize:10,color:isOnline?"#10b981":"#94a3b8",fontWeight:600}}>{isOnline?"● Online":"○ Offline"}</div></div>
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"12px 16px",WebkitOverflowScrolling:"touch"}}>
+      {dmMsgs.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontSize:13,fontWeight:600}}>No messages yet</div><div style={{fontSize:11,marginTop:4}}>Say hello to {dmTarget.name}!</div></div>}
+      {dmMsgs.map(function(msg,i){var isMe=msg.from_id===curUser.id;var sender=isMe?curUser:dmTarget;var showAvatar=i===0||dmMsgs[i-1].from_id!==msg.from_id;var showDate=i===0||new Date(dmMsgs[i].created_at).toDateString()!==new Date(dmMsgs[i-1].created_at).toDateString();return<div key={msg.id}>{showDate&&<div style={{textAlign:"center",margin:"12px 0 8px"}}><span style={{background:"#f1f5f9",color:"#94a3b8",fontSize:10,fontWeight:600,borderRadius:6,padding:"3px 10px"}}>{new Date(msg.created_at).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span></div>}<div style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:8,marginBottom:showAvatar?10:3,alignItems:"flex-end"}}><div style={{width:28,flexShrink:0}}>{showAvatar&&<Avatar name={sender.name} id={sender.id} size={28}/>}</div><div style={{maxWidth:"70%"}}>{showAvatar&&<div style={{fontSize:10,fontWeight:700,color:"#64748b",marginBottom:3,textAlign:isMe?"right":"left"}}>{isMe?"You":sender.name} · {ago(msg.created_at)}</div>}<div style={{background:isMe?"#6366f1":"#f1f5f9",color:isMe?"#fff":"#1e293b",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.5,wordBreak:"break-word"}}>{renderTcMessage(msg.message)}</div></div></div></div>;})}
+      <div ref={dmBottomRef}/>
+    </div>
+    <TcRichInput text={dmText} setText={setDmText} onSend={onSend} placeholder={"Message "+dmTarget.name+"…"} sending={dmSending} showEmoji={showDmEmoji} setShowEmoji={setShowDmEmoji}/>
+  </div>;
+}
+
+function TcGroupList(p){
+  var visibleGroups=p.visibleGroups;var selGroup=p.selGroup;var groupUnread=p.groupUnread;var isAdmin=p.isAdmin;var onOpen=p.onOpen;var onDelete=p.onDelete;var onNew=p.onNew;
+  return<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+    <div style={{padding:"14px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>👥 Group Chats</div>{isAdmin&&<Btn size="sm" onClick={onNew}>➕</Btn>}</div>
+    <div style={{flex:1,overflowY:"auto",padding:8}}>
+      {visibleGroups.length===0&&<div style={{textAlign:"center",padding:"32px 16px",color:"#94a3b8",fontSize:12}}>{isAdmin?"No groups yet — click ➕ to create one.":"No groups available. Ask an admin."}</div>}
+      {visibleGroups.map(function(g){var active=selGroup&&selGroup.id===g.id;var mc=(g.memberIds||[]).length;var gc=groupUnread[g.id]||0;return<div key={g.id} onClick={function(){onOpen(g);}} style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:4,display:"flex",alignItems:"center",gap:10}}><div style={{width:36,height:36,borderRadius:10,background:active?"#6366f1":avCol(g.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,color:"#fff"}}>👥</div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:gc>0?700:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{mc} member{mc!==1?"s":""}</div></div>{gc>0&&<span style={{background:"#6366f1",color:"#fff",borderRadius:10,padding:"2px 7px",fontSize:10,fontWeight:800,flexShrink:0}}>{gc>99?"99+":gc}</span>}{isAdmin&&<button onClick={function(e){e.stopPropagation();onDelete(g.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:4,flexShrink:0,lineHeight:1}}>🗑</button>}</div>;})}
+    </div>
+  </div>;
+}
+
+function TcGroupChatArea(p){
+  var curUser=p.curUser;var users=p.users;var selGroup=p.selGroup;var groupMsgs=p.groupMsgs;var groupText=p.groupText;var setGroupText=p.setGroupText;var groupSending=p.groupSending;var onSend=p.onSend;var onBack=p.onBack;var isMobile=p.isMobile;var showGrpEmoji=p.showGrpEmoji;var setShowGrpEmoji=p.setShowGrpEmoji;
+  var groupBottomRef=useRef(null);
+  useEffect(function(){if(groupBottomRef.current)groupBottomRef.current.scrollIntoView({behavior:"smooth"});},[groupMsgs]);
+  function fu(id){return users.find(function(u){return u.id===id;});}
+  if(!selGroup)return<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#94a3b8"}}><div style={{fontSize:48}}>👥</div><div style={{fontSize:14,fontWeight:600}}>Select a group to start chatting</div><div style={{fontSize:12}}>Choose from the {isMobile?"list above":"list on the left"}</div></div>;
+  return<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}>
+    <div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+      {isMobile&&<button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:0,color:"#64748b"}}>←</button>}
+      <div style={{width:32,height:32,borderRadius:8,background:avCol(selGroup.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"#fff"}}>👥</div>
+      <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:14,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selGroup.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{(selGroup.memberIds||[]).length} members</div></div>
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"12px 16px",WebkitOverflowScrolling:"touch"}}>
+      {groupMsgs.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>👥</div><div style={{fontSize:13,fontWeight:600}}>No messages yet</div><div style={{fontSize:11,marginTop:4}}>Be the first to say something!</div></div>}
+      {groupMsgs.map(function(msg,i){var sender=fu(msg.user_id);var isMe=msg.user_id===curUser.id;var showAvatar=i===0||groupMsgs[i-1].user_id!==msg.user_id;var showDate=i===0||new Date(groupMsgs[i].created_at).toDateString()!==new Date(groupMsgs[i-1].created_at).toDateString();return<div key={msg.id}>{showDate&&<div style={{textAlign:"center",margin:"12px 0 8px"}}><span style={{background:"#f1f5f9",color:"#94a3b8",fontSize:10,fontWeight:600,borderRadius:6,padding:"3px 10px"}}>{new Date(msg.created_at).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span></div>}<div style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:8,marginBottom:showAvatar?10:3,alignItems:"flex-end"}}><div style={{width:28,flexShrink:0}}>{showAvatar&&<Avatar name={sender?sender.name:"?"} id={msg.user_id} size={28}/>}</div><div style={{maxWidth:"70%"}}>{showAvatar&&<div style={{fontSize:10,fontWeight:700,color:"#64748b",marginBottom:3,textAlign:isMe?"right":"left"}}>{isMe?"You":sender?sender.name:"Unknown"}{sender&&sender.role&&<span style={{color:ROLE_META[sender.role]?.color||"#94a3b8"}}> · {ROLE_META[sender.role]?.label||sender.role}</span>} · {ago(msg.created_at)}</div>}<div style={{background:isMe?"#6366f1":"#f1f5f9",color:isMe?"#fff":"#1e293b",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.5,wordBreak:"break-word"}}>{renderTcMessage(msg.message)}</div></div></div></div>;})}
+      <div ref={groupBottomRef}/>
+    </div>
+    <TcRichInput text={groupText} setText={setGroupText} onSend={onSend} placeholder={"Message "+selGroup.name+"…"} sending={groupSending} showEmoji={showGrpEmoji} setShowEmoji={setShowGrpEmoji}/>
+  </div>;
+}
+
 function LoginPage(p){
   var users=p.users;var setUsers=p.setUsers;var companies=p.companies;var onLogin=p.onLogin;
   var[view,setView]=useState("login");
@@ -343,26 +455,38 @@ function PageTeamChat(p){
   var[groupUnread,setGroupUnread]=useState({});
   var[onlineIds,setOnlineIds]=useState([]);
   var presenceChannelRef=useRef(null);
+
   useEffect(function(){
     var ch=supabase.channel("online-presence",{config:{presence:{key:curUser.id}}});
     ch.on("presence",{event:"sync"},function(){var state=ch.presenceState();setOnlineIds(Object.keys(state));});
-    ch.on("presence",{event:"join"},function(p2){setOnlineIds(function(prev){return prev.includes(p2.key)?prev:prev.concat([p2.key]);});});
-    ch.on("presence",{event:"leave"},function(p2){setOnlineIds(function(prev){return prev.filter(function(id){return id!==p2.key;});});});
+    ch.on("presence",{event:"join"},function(pr){setOnlineIds(function(prev){return prev.includes(pr.key)?prev:prev.concat([pr.key]);});});
+    ch.on("presence",{event:"leave"},function(pr){setOnlineIds(function(prev){return prev.filter(function(id){return id!==pr.key;});});});
     ch.subscribe(async function(status){if(status==="SUBSCRIBED"){await ch.track({user_id:curUser.id,online_at:new Date().toISOString()});}});
     presenceChannelRef.current=ch;
     return function(){supabase.removeChannel(ch);};
   },[curUser.id]);
+
   useEffect(function(){
     var sub=supabase.channel("tc-dm-unread-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_chats"},function(payload){var m=payload.new;if(m.to_id!==curUser.id)return;setDmUnread(function(prev){var cur=Object.assign({},prev);cur[m.from_id]=(cur[m.from_id]||0)+1;return cur;});}).subscribe();
     return function(){supabase.removeChannel(sub);};
   },[curUser.id]);
+
   useEffect(function(){
     var sub=supabase.channel("tc-grp-unread-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats"},function(payload){var m=payload.new;if(m.user_id===curUser.id)return;setGroupUnread(function(prev){var cur=Object.assign({},prev);cur[m.group_id]=(cur[m.group_id]||0)+1;return cur;});}).subscribe();
     return function(){supabase.removeChannel(sub);};
   },[curUser.id]);
-  var[dmTarget,setDmTarget]=useState(null);var[dmMsgs,setDmMsgs]=useState([]);var[dmText,setDmText]=useState("");var[dmSending,setDmSending]=useState(false);var[showUserList,setShowUserList]=useState(true);var[showDmEmoji,setShowDmEmoji]=useState(false);
-  var dmBottomRef=useRef(null);var dmChannelRef=useRef(null);
-  function openDm(u){setDmTarget(u);setDmUnread(function(prev){var n=Object.assign({},prev);delete n[u.id];return n;});if(isMobile)setShowUserList(false);}
+
+  // DM state
+  var[dmTarget,setDmTarget]=useState(null);
+  var[dmMsgs,setDmMsgs]=useState([]);
+  var[dmText,setDmText]=useState("");
+  var[dmSending,setDmSending]=useState(false);
+  var[showUserList,setShowUserList]=useState(true);
+  var[showDmEmoji,setShowDmEmoji]=useState(false);
+  var dmChannelRef=useRef(null);
+
+  function openDm(u){setDmTarget(u);setShowUserList(false);setDmUnread(function(prev){var n=Object.assign({},prev);delete n[u.id];return n;});}
+
   useEffect(function(){
     if(!dmTarget){setDmMsgs([]);return;}
     dbGetDirectChats(curUser.id,dmTarget.id).then(function(data){setDmMsgs(data);});
@@ -372,7 +496,7 @@ function PageTeamChat(p){
     dmChannelRef.current=sub;
     return function(){supabase.removeChannel(sub);};
   },[dmTarget?.id]);
-  useEffect(function(){if(dmBottomRef.current)dmBottomRef.current.scrollIntoView({behavior:"smooth"});},[dmMsgs]);
+
   async function sendDm(){
     var trimmed=dmText.trim();if(!trimmed||dmSending||!dmTarget)return;setDmSending(true);
     var msg={id:uid(),from_id:curUser.id,to_id:dmTarget.id,message:trimmed,created_at:new Date().toISOString()};
@@ -380,27 +504,42 @@ function PageTeamChat(p){
     await dbSaveDirectChat(msg);
     if(dmTarget.email){var dmConvKey="dm_email_"+[curUser.id,dmTarget.id].sort().join("_");var lastSent=null;try{lastSent=localStorage.getItem(dmConvKey);}catch(e){}var cooldownOk=!lastSent||(Date.now()-parseInt(lastSent))>3600000;if(cooldownOk){callSendEmail({to:dmTarget.email,subject:"💬 New Direct Message from "+curUser.name,body:curUser.name+" sent you a direct message on Hoptix.\n\nMessage:\n"+trimmed+"\n\nLog in to Hoptix to reply."});try{localStorage.setItem(dmConvKey,String(Date.now()));}catch(e){}}}
   }
-  var[groups,setGroups]=useState([]);var[selGroup,setSelGroup]=useState(null);var[groupMsgs,setGroupMsgs]=useState([]);var[groupText,setGroupText]=useState("");var[groupSending,setGroupSending]=useState(false);var[showGroupList,setShowGroupList]=useState(true);var[showNewGroup,setShowNewGroup]=useState(false);var[newGroupName,setNewGroupName]=useState("");var[newGroupMembers,setNewGroupMembers]=useState([]);var[showGrpEmoji,setShowGrpEmoji]=useState(false);
-  var groupBottomRef=useRef(null);var groupChannelRef=useRef(null);
-  function openGroup(g){setSelGroup(g);setGroupUnread(function(prev){var n=Object.assign({},prev);delete n[g.id];return n;});if(isMobile)setShowGroupList(false);}
+
+  // Group state
+  var[groups,setGroups]=useState([]);
+  var[selGroup,setSelGroup]=useState(null);
+  var[groupMsgs,setGroupMsgs]=useState([]);
+  var[groupText,setGroupText]=useState("");
+  var[groupSending,setGroupSending]=useState(false);
+  var[showGroupList,setShowGroupList]=useState(true);
+  var[showNewGroup,setShowNewGroup]=useState(false);
+  var[newGroupName,setNewGroupName]=useState("");
+  var[newGroupMembers,setNewGroupMembers]=useState([]);
+  var[showGrpEmoji,setShowGrpEmoji]=useState(false);
+  var groupChannelRef=useRef(null);
+
+  function openGroup(g){setSelGroup(g);setShowGroupList(false);setGroupUnread(function(prev){var n=Object.assign({},prev);delete n[g.id];return n;});}
+
   useEffect(function(){dbGetTeamGroups().then(async function(data){setGroups(data||[]);for(var i=0;i<(data||[]).length;i++){var g=data[i];if(g.createdBy===curUser.id&&!(g.memberIds||[]).includes(curUser.id)){var repaired=Object.assign({},g,{memberIds:[curUser.id].concat(g.memberIds||[])});await dbSaveTeamGroup(repaired);setGroups(function(prev){return prev.map(function(x){return x.id===repaired.id?repaired:x;});});}}});},[]);
+
   function isGroupMember(group){if(curUser.role==="admin")return true;if(group.createdBy===curUser.id)return true;return(group.memberIds||[]).includes(curUser.id);}
   var visibleGroups=groups.filter(function(g){return isGroupMember(g);});
-  useEffect(function(){if(!selGroup){setGroupMsgs([]);return;}dbGetTeamChats(selGroup.id).then(function(data){setGroupMsgs(data);});if(groupChannelRef.current)supabase.removeChannel(groupChannelRef.current);var sub=supabase.channel("team-chat-"+selGroup.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats",filter:"group_id=eq."+selGroup.id},function(payload){setGroupMsgs(function(prev){if(prev.find(function(m){return m.id===payload.new.id;}))return prev;return prev.concat([payload.new]);});}).subscribe();groupChannelRef.current=sub;return function(){supabase.removeChannel(sub);};},[selGroup?.id]);
-  useEffect(function(){if(groupBottomRef.current)groupBottomRef.current.scrollIntoView({behavior:"smooth"});},[groupMsgs]);
+
+  useEffect(function(){
+    if(!selGroup){setGroupMsgs([]);return;}
+    dbGetTeamChats(selGroup.id).then(function(data){setGroupMsgs(data);});
+    if(groupChannelRef.current)supabase.removeChannel(groupChannelRef.current);
+    var sub=supabase.channel("team-chat-"+selGroup.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats",filter:"group_id=eq."+selGroup.id},function(payload){setGroupMsgs(function(prev){if(prev.find(function(m){return m.id===payload.new.id;}))return prev;return prev.concat([payload.new]);});}).subscribe();
+    groupChannelRef.current=sub;
+    return function(){supabase.removeChannel(sub);};
+  },[selGroup?.id]);
+
   async function sendGroupMsg(){var trimmed=groupText.trim();if(!trimmed||groupSending||!selGroup)return;setGroupSending(true);var msg={id:uid(),group_id:selGroup.id,user_id:curUser.id,message:trimmed,created_at:new Date().toISOString()};setGroupMsgs(function(prev){return prev.concat([msg]);});setGroupText("");setGroupSending(false);setShowGrpEmoji(false);await dbSaveTeamChat(msg);}
+
   async function createGroup(){if(!newGroupName.trim()||newGroupMembers.length===0)return;var allMembers=newGroupMembers.includes(curUser.id)?newGroupMembers:[curUser.id].concat(newGroupMembers);var g={id:uid(),name:newGroupName.trim(),type:"custom",roleFilter:null,memberIds:allMembers,createdBy:curUser.id,created_at:new Date().toISOString()};await dbSaveTeamGroup(g);setGroups(function(prev){return prev.concat([g]);});setNewGroupName("");setNewGroupMembers([]);setShowNewGroup(false);}
+
   async function deleteGroup(gid){await dbDeleteTeamGroup(gid);setGroups(function(prev){return prev.filter(function(g){return g.id!==gid;});});if(selGroup&&selGroup.id===gid)setSelGroup(null);}
-  function fu(id){return users.find(function(u){return u.id===id;});}
-  var EMOJIS=["😀","😂","😍","🥰","😎","🤔","😅","🙏","👍","👎","❤️","🔥","✅","⚠️","🎉","🚀","💡","📋","🎫","⏱️","🔧","💻","📧","📞","🤝","👀","💪","🙌","😢","😡","🤣","😴","🥳","🤯","😬","🫡","👏","💯","🆗","❌","⭐","🏆","📌","🔔","💬","📎","🎬","🔗","📊","🛠️","🔒"];
-  function EmojiPicker(ep){return<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:0,background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:10,boxShadow:"0 8px 24px rgba(0,0,0,.15)",zIndex:200,width:280,display:"flex",flexWrap:"wrap",gap:4}}>{EMOJIS.map(function(em){return<button key={em} onClick={function(){ep.onPick(em);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:"4px",borderRadius:6,lineHeight:1}}>{em}</button>;})}</div>;}
-  function insertLink(setText){var url=window.prompt("Paste a URL (web link or YouTube video):");if(!url||!url.trim())return;var trimmed=url.trim();if(!trimmed.startsWith("http"))trimmed="https://"+trimmed;setText(function(prev){return prev+(prev&&!prev.endsWith(" ")?" ":"")+trimmed+" ";});}
-  function renderMessage(text){if(!text)return null;var urlRegex=/(https?:\/\/[^\s]+)/g;var parts=text.split(urlRegex);return parts.map(function(part,i){if(part.match(/^https?:\/\//)){var isYoutube=part.includes("youtube.com/watch")||part.includes("youtu.be/");var isVideo=part.match(/\.(mp4|webm|mov)(\?.*)?$/i);if(isYoutube){var videoId=null;var ym=part.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);if(ym)videoId=ym[1];if(videoId)return<div key={i} style={{marginTop:6,borderRadius:8,overflow:"hidden",maxWidth:280}}><iframe width="280" height="158" src={"https://www.youtube.com/embed/"+videoId} frameBorder="0" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowFullScreen style={{display:"block"}}/></div>;}if(isVideo)return<div key={i} style={{marginTop:6}}><video src={part} controls style={{maxWidth:280,borderRadius:8,display:"block"}}/></div>;return<a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{color:"#6366f1",textDecoration:"underline",wordBreak:"break-all"}}>{part}</a>;}return<span key={i}>{part}</span>;});}
-  function RichInput(rp){var text=rp.text;var setText=rp.setText;var onSend=rp.onSend;var placeholder=rp.placeholder;var showEmoji=rp.showEmoji;var setShowEmoji=rp.setShowEmoji;var sending=rp.sending;return<div style={{padding:"10px 16px",borderTop:"1px solid #e2e8f0",display:"flex",gap:8,alignItems:"flex-end",flexShrink:0,position:"relative"}}>{showEmoji&&<EmojiPicker onPick={function(em){setText(function(prev){return prev+em;});}}/>}<div style={{flex:1,position:"relative"}}><textarea value={text} onChange={function(e){setText(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();onSend();}}} placeholder={placeholder} rows={2} style={{width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:10,fontSize:14,outline:"none",resize:"none",background:"#f8fafc",boxSizing:"border-box"}}/></div><div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}><div style={{display:"flex",gap:4}}><button onClick={function(){setShowEmoji(!showEmoji);}} title="Emoji" style={{background:"#f1f5f9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🙂</button><button onClick={function(){insertLink(setText);}} title="Attach link or video" style={{background:"#f1f5f9",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>🔗</button></div><button onClick={onSend} disabled={sending||!text.trim()} style={{padding:"8px 14px",background:sending||!text.trim()?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:10,fontWeight:700,fontSize:13,cursor:sending||!text.trim()?"not-allowed":"pointer",minHeight:36}}>Send</button></div></div>;}
-  function OnlineUsersList(){var otherUsers=users.filter(function(u){return u.active&&u.id!==curUser.id;});var online=otherUsers.filter(function(u){return onlineIds.includes(u.id);});var offline=otherUsers.filter(function(u){return !onlineIds.includes(u.id);});return<div style={{display:"flex",flexDirection:"column",height:"100%"}}><div style={{padding:"14px 16px",borderBottom:"1px solid #e2e8f0",flexShrink:0}}><div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:2}}>💬 Direct Messages</div><div style={{fontSize:11,color:"#94a3b8"}}>{onlineIds.filter(function(id){return id!==curUser.id;}).length} online now</div></div><div style={{flex:1,overflowY:"auto",padding:8}}>{online.length>0&&<div style={{fontSize:10,fontWeight:700,color:"#10b981",textTransform:"uppercase",letterSpacing:0.5,padding:"6px 8px 4px"}}>● Online</div>}{online.map(function(u){var active=dmTarget&&dmTarget.id===u.id;var uc=dmUnread[u.id]||0;return<div key={u.id} onClick={function(){openDm(u);}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:3}}><div style={{position:"relative",flexShrink:0}}><Avatar name={u.name} id={u.id} size={32}/><div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#10b981",border:"2px solid #fff"}}/></div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:10,color:"#10b981",fontWeight:600}}>Online</div></div>{uc>0&&<span style={{background:"#6366f1",color:"#fff",borderRadius:10,padding:"2px 7px",fontSize:10,fontWeight:800,flexShrink:0}}>{uc>99?"99+":uc}</span>}</div>;})}  {offline.length>0&&<div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:0.5,padding:"8px 8px 4px"}}>○ Offline</div>}{offline.map(function(u){var active=dmTarget&&dmTarget.id===u.id;var uc=dmUnread[u.id]||0;return<div key={u.id} onClick={function(){openDm(u);}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:3}}><div style={{position:"relative",flexShrink:0}}><Avatar name={u.name} id={u.id} size={32}/><div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:"#cbd5e1",border:"2px solid #fff"}}/></div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:uc>0?700:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[u.role]?.label||u.role}</div></div>{uc>0&&<span style={{background:"#6366f1",color:"#fff",borderRadius:10,padding:"2px 7px",fontSize:10,fontWeight:800,flexShrink:0}}>{uc>99?"99+":uc}</span>}</div>;})}  {otherUsers.length===0&&<div style={{textAlign:"center",padding:"32px 16px",color:"#94a3b8",fontSize:12}}>No other users found.</div>}</div></div>;}
-  function DirectChatArea(){if(!dmTarget)return<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#94a3b8"}}><div style={{fontSize:48}}>💬</div><div style={{fontSize:14,fontWeight:600}}>Select a person to message</div><div style={{fontSize:12}}>Choose from the {isMobile?"list above":"list on the left"}</div></div>;var isOnline=onlineIds.includes(dmTarget.id);return<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minHeight:0}}><div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>{isMobile&&<button onClick={function(){setShowUserList(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:0,color:"#64748b"}}>←</button>}<div style={{position:"relative",flexShrink:0}}><Avatar name={dmTarget.name} id={dmTarget.id} size={32}/><div style={{position:"absolute",bottom:0,right:0,width:10,height:10,borderRadius:"50%",background:isOnline?"#10b981":"#cbd5e1",border:"2px solid #fff"}}/></div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:14,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dmTarget.name}</div><div style={{fontSize:10,color:isOnline?"#10b981":"#94a3b8",fontWeight:600}}>{isOnline?"● Online":"○ Offline"}</div></div></div><div style={{flex:1,overflowY:"auto",padding:"12px 16px",WebkitOverflowScrolling:"touch"}}>{dmMsgs.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>💬</div><div style={{fontSize:13,fontWeight:600}}>No messages yet</div><div style={{fontSize:11,marginTop:4}}>Say hello to {dmTarget.name}!</div></div>}{dmMsgs.map(function(msg,i){var isMe=msg.from_id===curUser.id;var sender=isMe?curUser:dmTarget;var showAvatar=i===0||dmMsgs[i-1].from_id!==msg.from_id;var showDate=i===0||new Date(dmMsgs[i].created_at).toDateString()!==new Date(dmMsgs[i-1].created_at).toDateString();return<div key={msg.id}>{showDate&&<div style={{textAlign:"center",margin:"12px 0 8px"}}><span style={{background:"#f1f5f9",color:"#94a3b8",fontSize:10,fontWeight:600,borderRadius:6,padding:"3px 10px"}}>{new Date(msg.created_at).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span></div>}<div style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:8,marginBottom:showAvatar?10:3,alignItems:"flex-end"}}><div style={{width:28,flexShrink:0}}>{showAvatar&&<Avatar name={sender.name} id={sender.id} size={28}/>}</div><div style={{maxWidth:"70%"}}>{showAvatar&&<div style={{fontSize:10,fontWeight:700,color:"#64748b",marginBottom:3,textAlign:isMe?"right":"left"}}>{isMe?"You":sender.name} · {ago(msg.created_at)}</div>}<div style={{background:isMe?"#6366f1":"#f1f5f9",color:isMe?"#fff":"#1e293b",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.5,wordBreak:"break-word"}}>{renderMessage(msg.message)}</div></div></div></div>;})} <div ref={dmBottomRef}/></div><RichInput text={dmText} setText={setDmText} onSend={sendDm} placeholder={"Message "+dmTarget.name+"…"} sending={dmSending} showEmoji={showDmEmoji} setShowEmoji={setShowDmEmoji}/></div>;}
-  function GroupList(){return<div style={{display:"flex",flexDirection:"column",height:"100%"}}><div style={{padding:"14px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>👥 Group Chats</div>{isAdmin&&<Btn size="sm" onClick={function(){setShowNewGroup(true);}}>➕</Btn>}</div><div style={{flex:1,overflowY:"auto",padding:8}}>{visibleGroups.length===0&&<div style={{textAlign:"center",padding:"32px 16px",color:"#94a3b8",fontSize:12}}>{isAdmin?"No groups yet — click ➕ to create one.":"No groups available. Ask an admin."}</div>}{visibleGroups.map(function(g){var active=selGroup&&selGroup.id===g.id;var mc=(g.memberIds||[]).length;var gc=groupUnread[g.id]||0;return<div key={g.id} onClick={function(){openGroup(g);}} style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",background:active?"#eef2ff":"transparent",border:"1px solid "+(active?"#c7d2fe":"transparent"),marginBottom:4,display:"flex",alignItems:"center",gap:10}}><div style={{width:36,height:36,borderRadius:10,background:active?"#6366f1":avCol(g.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0,color:"#fff"}}>👥</div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:gc>0?700:600,fontSize:13,color:active?"#4338ca":"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{mc} member{mc!==1?"s":""}</div></div>{gc>0&&<span style={{background:"#6366f1",color:"#fff",borderRadius:10,padding:"2px 7px",fontSize:10,fontWeight:800,flexShrink:0}}>{gc>99?"99+":gc}</span>}{isAdmin&&<button onClick={function(e){e.stopPropagation();deleteGroup(g.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:4,flexShrink:0,lineHeight:1}}>🗑</button>}</div>;})} </div></div>;}
-  function GroupChatArea(){if(!selGroup)return<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#94a3b8"}}><div style={{fontSize:48}}>👥</div><div style={{fontSize:14,fontWeight:600}}>Select a group to start chatting</div><div style={{fontSize:12}}>Choose from the {isMobile?"list above":"list on the left"}</div></div>;return<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minHeight:0}}><div style={{padding:"12px 16px",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>{isMobile&&<button onClick={function(){setShowGroupList(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:0,color:"#64748b"}}>←</button>}<div style={{width:32,height:32,borderRadius:8,background:avCol(selGroup.id),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:"#fff"}}>👥</div><div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:14,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selGroup.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{(selGroup.memberIds||[]).length} members</div></div></div><div style={{flex:1,overflowY:"auto",padding:"12px 16px",WebkitOverflowScrolling:"touch"}}>{groupMsgs.length===0&&<div style={{textAlign:"center",padding:"40px 0",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>👥</div><div style={{fontSize:13,fontWeight:600}}>No messages yet</div><div style={{fontSize:11,marginTop:4}}>Be the first to say something!</div></div>}{groupMsgs.map(function(msg,i){var sender=fu(msg.user_id);var isMe=msg.user_id===curUser.id;var showAvatar=i===0||groupMsgs[i-1].user_id!==msg.user_id;var showDate=i===0||new Date(groupMsgs[i].created_at).toDateString()!==new Date(groupMsgs[i-1].created_at).toDateString();return<div key={msg.id}>{showDate&&<div style={{textAlign:"center",margin:"12px 0 8px"}}><span style={{background:"#f1f5f9",color:"#94a3b8",fontSize:10,fontWeight:600,borderRadius:6,padding:"3px 10px"}}>{new Date(msg.created_at).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span></div>}<div style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:8,marginBottom:showAvatar?10:3,alignItems:"flex-end"}}><div style={{width:28,flexShrink:0}}>{showAvatar&&<Avatar name={sender?sender.name:"?"} id={msg.user_id} size={28}/>}</div><div style={{maxWidth:"70%"}}>{showAvatar&&<div style={{fontSize:10,fontWeight:700,color:"#64748b",marginBottom:3,textAlign:isMe?"right":"left"}}>{isMe?"You":sender?sender.name:"Unknown"}{sender&&sender.role&&<span style={{color:ROLE_META[sender.role]?.color||"#94a3b8"}}> · {ROLE_META[sender.role]?.label||sender.role}</span>} · {ago(msg.created_at)}</div>}<div style={{background:isMe?"#6366f1":"#f1f5f9",color:isMe?"#fff":"#1e293b",borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"10px 14px",fontSize:13,lineHeight:1.5,wordBreak:"break-word"}}>{renderMessage(msg.message)}</div></div></div></div>;})} <div ref={groupBottomRef}/></div><RichInput text={groupText} setText={setGroupText} onSend={sendGroupMsg} placeholder={"Message "+selGroup.name+"…"} sending={groupSending} showEmoji={showGrpEmoji} setShowEmoji={setShowGrpEmoji}/></div>;}
+
   return<div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 120px)"}}>
     <div style={{display:"flex",gap:6,padding:"0 0 12px",flexShrink:0}}>
       <button onClick={function(){setMainTab("direct");}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:mainTab==="direct"?"#6366f1":"#f1f5f9",color:mainTab==="direct"?"#fff":"#475569",fontSize:13,fontWeight:700,cursor:"pointer"}}>💬 Direct Messages</button>
@@ -408,12 +547,20 @@ function PageTeamChat(p){
     </div>
     <div style={{flex:1,background:"#fff",borderRadius:14,border:"1px solid #e2e8f0",overflow:"hidden",display:"flex",minHeight:0}}>
       {mainTab==="direct"&&<>
-        {(!isMobile||showUserList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}>{OnlineUsersList()}</div>}
-        {(!isMobile||!showUserList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}>{DirectChatArea()}</div>}
+        {(!isMobile||showUserList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}>
+          <TcOnlineUsersList curUser={curUser} users={users} onlineIds={onlineIds} dmTarget={dmTarget} dmUnread={dmUnread} onOpen={openDm}/>
+        </div>}
+        {(!isMobile||!showUserList)&&
+          <TcDirectChatArea curUser={curUser} dmTarget={dmTarget} dmMsgs={dmMsgs} dmText={dmText} setDmText={setDmText} dmSending={dmSending} onSend={sendDm} onBack={function(){setShowUserList(true);}} isMobile={isMobile} onlineIds={onlineIds} showDmEmoji={showDmEmoji} setShowDmEmoji={setShowDmEmoji}/>
+        }
       </>}
       {mainTab==="groups"&&<>
-        {(!isMobile||showGroupList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}>{GroupList()}</div>}
-        {(!isMobile||!showGroupList)&&<div style={{flex:1,display:"flex",flexDirection:"column",height:"100%",minWidth:0}}>{GroupChatArea()}</div>}
+        {(!isMobile||showGroupList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}>
+          <TcGroupList visibleGroups={visibleGroups} selGroup={selGroup} groupUnread={groupUnread} isAdmin={isAdmin} onOpen={openGroup} onDelete={deleteGroup} onNew={function(){setShowNewGroup(true);}}/>
+        </div>}
+        {(!isMobile||!showGroupList)&&
+          <TcGroupChatArea curUser={curUser} users={users} selGroup={selGroup} groupMsgs={groupMsgs} groupText={groupText} setGroupText={setGroupText} groupSending={groupSending} onSend={sendGroupMsg} onBack={function(){setShowGroupList(true);}} isMobile={isMobile} showGrpEmoji={showGrpEmoji} setShowGrpEmoji={setShowGrpEmoji}/>
+        }
       </>}
     </div>
     {showNewGroup&&<Modal title="➕ New Group" onClose={function(){setShowNewGroup(false);}}>
@@ -520,7 +667,8 @@ export default function App(){
       {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} schedules={schedules} setSchedules={setSchedulesR} dbSaveSchedule={dbSaveSchedule} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
-}// ── Dashboard ─────────────────────────────────────────────────────────────────
+}
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 function PageDashboard(p){
   var tickets=p.tickets;var allTickets=p.allTickets||p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var setPage=p.setPage;var setSelTicket=p.setSelTicket;var breaches=p.breaches||[];var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
   var byStatus=ALL_STATUSES.map(function(s){return{name:s,value:tickets.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
