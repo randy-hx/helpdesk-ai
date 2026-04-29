@@ -451,20 +451,22 @@ function ProfileModal(p){
 function PageTeamChat(p){
   var curUser=p.curUser;var users=p.users;var isAdmin=p.isAdmin;var isMobile=p.isMobile;
   var[mainTab,setMainTab]=useState("direct");
-  var[dmUnread,setDmUnread]=useState(function(){try{var s=localStorage.getItem("hd_dmLastSeen_"+curUser.id);return s?JSON.parse(s):{};  }catch(e){return{};}});
+  var[dmUnread,setDmUnread]=useState({});
   var[groupUnread,setGroupUnread]=useState({});
   var[onlineIds,setOnlineIds]=useState([]);
   var presenceChannelRef=useRef(null);
   useEffect(function(){
     async function loadInitialUnread(){
       try{
+        var lastSeen={};try{var s=localStorage.getItem("hd_dmLastSeen_"+curUser.id);if(s)lastSeen=JSON.parse(s);}catch(e){}
         var{data}=await supabase.from("direct_chats").select("from_id,created_at").eq("to_id",curUser.id);
         if(!data)return;
-        var lastSeen={};try{var s=localStorage.getItem("hd_dmLastSeen_"+curUser.id);if(s)lastSeen=JSON.parse(s);}catch(e){}
         var counts={};
         data.forEach(function(m){
-          var ls=lastSeen[m.from_id];
-          if(!ls||new Date(m.created_at)>new Date(ls)){counts[m.from_id]=(counts[m.from_id]||0)+1;}
+          var seenTs=lastSeen[m.from_id];
+          if(!seenTs||new Date(m.created_at).getTime()>new Date(seenTs).getTime()){
+            counts[m.from_id]=(counts[m.from_id]||0)+1;
+          }
         });
         setDmUnread(counts);
       }catch(e){}
@@ -500,7 +502,15 @@ function PageTeamChat(p){
   var[showDmEmoji,setShowDmEmoji]=useState(false);
   var dmChannelRef=useRef(null);
 
-  function openDm(u){setDmTarget(u);setShowUserList(false);setDmUnread(function(prev){var n=Object.assign({},prev);delete n[u.id];try{localStorage.setItem("hd_dmLastSeen_"+curUser.id,JSON.stringify(n));}catch(e){}return n;});}
+  function openDm(u){
+  setDmTarget(u);setShowUserList(false);
+  setDmUnread(function(prev){var n=Object.assign({},prev);delete n[u.id];return n;});
+  try{
+    var lastSeen={};var s=localStorage.getItem("hd_dmLastSeen_"+curUser.id);if(s)lastSeen=JSON.parse(s);
+    lastSeen[u.id]=new Date().toISOString();
+    localStorage.setItem("hd_dmLastSeen_"+curUser.id,JSON.stringify(lastSeen));
+  }catch(e){}
+}
 
   useEffect(function(){
     if(!dmTarget){setDmMsgs([]);return;}
