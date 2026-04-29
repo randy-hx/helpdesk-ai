@@ -58,7 +58,7 @@ function isCurrentlyOnShift(schedule){
   var now=new Date();var dow=now.getDay();var h=now.getHours()+(now.getMinutes()/60);
   return schedule.days.includes(dow)&&h>=schedule.startHour&&h<schedule.endHour;
 }
-function calcSlaRate(arr,statusSla,schedules){ if(!arr||!arr.length)return 100; var cfg=statusSla||loadStatusSla(); var sch=schedules||{}; var breached=arr.filter(function(t){if(t.status==="Closed")return false;var s=getStatusSla(t,cfg,sch);return s&&s.breached;}).length; return Math.round((1-(breached/arr.length))*100); }
+function calcSlaRate(arr,statusSla,schedules){ if(!arr||!arr.length)return 100; var cfg=statusSla||loadStatusSla(); var breached=arr.filter(function(t){ return (t.statusTimeLog||[]).some(function(entry){ var allowed=cfg[entry.status]; if(allowed===null||allowed===undefined)return false; var allowedMins=allowed*60; var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null); return durMins!=null&&durMins>allowedMins; }); }).length; return Math.round((1-(breached/arr.length))*100); }
 function calcAvgClose(arr){ return arr.length?Math.round(arr.reduce(function(a,t){return a+(new Date(t.closedAt||t.updatedAt)-new Date(t.createdAt))/3600000;},0)/arr.length):0; }
 function calcClosed(arr){ return arr.filter(function(t){return t.status==="Closed";}); }
 function loadStatusSla(){ try{var s=localStorage.getItem("hd_statusSla");return s?JSON.parse(s):DEFAULT_STATUS_SLA;}catch(e){return DEFAULT_STATUS_SLA;} }
