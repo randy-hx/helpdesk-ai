@@ -234,6 +234,427 @@ function TicketHistory(p){
 
 // ── Team Chat sub-components (defined at MODULE level to prevent remount on keystroke) ──
 
+// ════════════════════════════════════════════════════════════════════
+// CHANGE 1 — Add to NAV array
+// Find this line in the NAV array:
+//   {id:"team_chat",icon:"💬",label:"Team Chat"},
+// Add this line RIGHT AFTER it:
+//   {id:"user_guide",icon:"📖",label:"User Guide"},
+// ════════════════════════════════════════════════════════════════════
+
+
+// ════════════════════════════════════════════════════════════════════
+// CHANGE 2 — Add page routing
+// Find: if(page==="team_chat")return<PageTeamChat
+// Add this BEFORE that line:
+//   if(page==="user_guide")return<PageUserGuide curUser={curUser}/>;
+// ════════════════════════════════════════════════════════════════════
+
+
+// ════════════════════════════════════════════════════════════════════
+// CHANGE 3 — Add the PageUserGuide component
+// Find the comment: // ── TeamChat ───
+// Paste the ENTIRE block below BEFORE that comment
+// ════════════════════════════════════════════════════════════════════
+
+// ── UserGuide ───
+function PageUserGuide({curUser}){
+  var[slide,setSlide]=useState(0);
+  var[visited,setVisited]=useState([0]);
+
+  var role=curUser&&curUser.role;
+
+  var SLIDES=[
+    // 0 — Welcome
+    {
+      chip:"A.eye Technology",chipColor:"#f6c90e",
+      title:"Welcome to Hoptix",
+      sub:"Your IT Support Platform",
+      content:function(){return(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,textAlign:"center"}}>
+          <p style={{color:"#94a3b8",fontSize:15,maxWidth:480,lineHeight:1.7}}>Hoptix is your company's central hub for submitting, tracking, and resolving IT issues — fast, organized, and transparent.</p>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",marginTop:4}}>
+            {["5-min guide","All Roles Covered","Step-by-Step"].map(function(t){return(<span key={t} style={{fontSize:11,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,background:"rgba(99,179,237,0.1)",color:"#63b3ed",border:"1px solid rgba(99,179,237,0.25)"}}>{t}</span>);})}
+          </div>
+        </div>
+      );}
+    },
+    // 1 — What is it
+    {
+      chip:"Overview",chipColor:"#63b3ed",
+      title:"What is Hoptix?",
+      content:function(){
+        var items=[
+          {icon:"🎫",title:"Ticket Tracking",desc:"Every IT request gets a unique ID and is tracked from start to finish."},
+          {icon:"⏱️",title:"SLA Monitoring",desc:"Automatic timers ensure issues are resolved within agreed timeframes."},
+          {icon:"📊",title:"Reports & Insights",desc:"Managers get real-time dashboards and AI-powered analytics."},
+          {icon:"🔒",title:"Role-Based Access",desc:"Each user only sees what their role allows — secure and focused."},
+        ];
+        return(
+          <div style={{width:"100%"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12,marginBottom:14}}>
+              {items.map(function(it){return(
+                <div key={it.title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(99,179,237,0.12)",borderRadius:14,padding:16}}>
+                  <div style={{fontSize:24,marginBottom:8}}>{it.icon}</div>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#e2e8f0"}}>{it.title}</div>
+                  <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>{it.desc}</div>
+                </div>
+              );})}
+            </div>
+            <GuideNote icon="💡" text="Hoptix works on any device — phone, tablet, or desktop. No app download needed. Just open it in your browser."/>
+          </div>
+        );
+      }
+    },
+    // 2 — Roles
+    {
+      chip:"Roles",chipColor:"#4fd1c7",
+      title:"Who Uses Hoptix?",
+      content:function(){
+        var roles=[
+          {icon:"👤",title:"End User",color:"#63b3ed",desc:"Submits IT requests and tracks their own tickets. Most employees are End Users."},
+          {icon:"🔧",title:"IT Technician",color:"#4fd1c7",desc:"Handles tickets — assigns priority, works on issues, updates statuses, and communicates with users."},
+          {icon:"📋",title:"IT Manager",color:"#f6c90e",desc:"Oversees the team queue, handles escalations, reviews reports, and monitors SLA compliance."},
+          {icon:"⚙️",title:"Administrator",color:"#f6ad55",desc:"Configures the entire platform — users, settings, categories, SLAs, and more."},
+        ];
+        return(
+          <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%"}}>
+            {roles.map(function(r){return(
+              <div key={r.title} style={{display:"flex",gap:14,alignItems:"center",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:12,padding:"14px 16px"}}>
+                <span style={{fontSize:26,flexShrink:0}}>{r.icon}</span>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,color:r.color,marginBottom:2}}>{r.title}</div>
+                  <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.55}}>{r.desc}</div>
+                </div>
+              </div>
+            );})}
+          </div>
+        );
+      }
+    },
+    // 3 — Log In
+    {
+      chip:"Getting Started",chipColor:"#63b3ed",
+      title:"How to Log In",
+      content:function(){
+        var steps=[
+          {n:1,text:"Open your browser on any device — phone, tablet, or computer."},
+          {n:2,text:"Go to the Hoptix link provided by your IT team and bookmark it."},
+          {n:3,text:"Enter your email and password — given to you by your Administrator."},
+          {n:4,text:"Click Sign In. You'll land on your Dashboard tailored to your role."},
+        ];
+        return(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
+            {steps.map(function(s){return(
+              <div key={s.n} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(99,179,237,0.05)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:10,padding:"12px 14px"}}>
+                <div style={{width:28,height:28,borderRadius:"50%",background:"#63b3ed",color:"#080c14",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{s.n}</div>
+                <div style={{fontSize:14,color:"#cbd5e1",lineHeight:1.6,paddingTop:2}}>{s.text}</div>
+              </div>
+            );})}
+          </div>
+        );
+      }
+    },
+    // 4 — Create Ticket
+    {
+      chip:"End User",chipColor:"#68d391",
+      title:"Creating a New Ticket",
+      content:function(){
+        var steps=[
+          "From your Dashboard, tap the + New Ticket button.",
+          "Enter a clear title — e.g., \"Laptop won't connect to WiFi\".",
+          "Choose a Category: Hardware, Software, Network, Access, or Other.",
+          "Set a Priority (optional — your IT team can adjust this).",
+          "Write your description — what happened, when it started, what you've tried.",
+          "Tap Submit. You'll receive a Ticket ID — save it!",
+        ];
+        return(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
+            {steps.map(function(s,i){return(
+              <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(104,211,145,0.05)",border:"1px solid rgba(104,211,145,0.12)",borderRadius:10,padding:"11px 14px"}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:"#68d391",color:"#080c14",fontWeight:800,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+                <div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6,paddingTop:2}}>{s}</div>
+              </div>
+            );})}
+            <GuideNote icon="💡" text="Good title example: 'VPN not connecting after Windows update' is far better than 'IT problem'"/>
+          </div>
+        );
+      }
+    },
+    // 5 — Ticket Statuses
+    {
+      chip:"Ticket Lifecycle",chipColor:"#63b3ed",
+      title:"Ticket Statuses",
+      content:function(){
+        var statuses=[
+          {label:"Open",color:"#63b3ed",bg:"rgba(99,179,237,0.1)",desc:"Ticket received — waiting for an agent to pick it up."},
+          {label:"In Progress",color:"#f6c90e",bg:"rgba(246,201,14,0.1)",desc:"An agent is actively working on your issue."},
+          {label:"Pending",color:"#f6ad55",bg:"rgba(246,173,85,0.1)",desc:"Agent needs more info from you — reply quickly!"},
+          {label:"Escalated",color:"#fc8181",bg:"rgba(252,129,129,0.1)",desc:"Passed to a senior agent or specialist for complex issues."},
+          {label:"Closed",color:"#68d391",bg:"rgba(104,211,145,0.1)",desc:"Issue resolved and confirmed. Ticket is archived."},
+        ];
+        return(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
+            {statuses.map(function(s){return(
+              <div key={s.label} style={{display:"flex",gap:12,alignItems:"center",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:10,padding:"10px 14px"}}>
+                <span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"3px 10px",borderRadius:20,background:s.bg,color:s.color,fontSize:12,fontWeight:700,minWidth:90,justifyContent:"center",flexShrink:0}}>● {s.label}</span>
+                <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.5}}>{s.desc}</div>
+              </div>
+            );})}
+            <GuideNote icon="⚡" text="Pending means YOU need to act! Check your notifications and reply to the agent as soon as possible."/>
+          </div>
+        );
+      }
+    },
+    // 6 — Priorities
+    {
+      chip:"Priority Levels",chipColor:"#f6ad55",
+      title:"Setting the Right Priority",
+      content:function(){
+        var pris=[
+          {label:"LOW",color:"#68d391",bg:"rgba(104,211,145,0.12)",time:"3 business days",eg:"Minor issues, no impact. E.g., software install."},
+          {label:"MEDIUM",color:"#63b3ed",bg:"rgba(99,179,237,0.12)",time:"1 business day",eg:"Affecting work but have a workaround. E.g., printer."},
+          {label:"HIGH",color:"#f6ad55",bg:"rgba(246,173,85,0.12)",time:"4 business hours",eg:"Blocking a team. E.g., shared server is down."},
+          {label:"CRITICAL",color:"#fc8181",bg:"rgba(252,129,129,0.12)",time:"1 business hour",eg:"Full outage or security incident. Also call IT Manager!"},
+        ];
+        return(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
+            {pris.map(function(p){return(
+              <div key={p.label} style={{display:"flex",gap:12,alignItems:"center",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:10,padding:"10px 14px"}}>
+                <span style={{background:p.bg,color:p.color,fontSize:11,fontWeight:700,letterSpacing:"0.05em",padding:"4px 10px",borderRadius:6,minWidth:72,textAlign:"center",flexShrink:0}}>{p.label}</span>
+                <div>
+                  <div style={{fontWeight:600,fontSize:13,color:"#e2e8f0"}}>{p.time}</div>
+                  <div style={{fontSize:12,color:"#94a3b8",marginTop:1}}>{p.eg}</div>
+                </div>
+              </div>
+            );})}
+            <GuideNote icon="⚠️" text="Critical + no response in 30 min? Contact your IT Manager directly by phone and give them the Ticket ID."/>
+          </div>
+        );
+      }
+    },
+    // 7 — Technician
+    {
+      chip:"IT Technician",chipColor:"#4fd1c7",
+      title:"Managing Tickets",
+      content:function(){
+        var steps=[
+          "Check the Open Queue daily. Pick up unassigned tickets or self-assign ones.",
+          "Triage the ticket — verify the priority, refine the category, assign it.",
+          "Update the status to 'In Progress' once you start working on it.",
+          "Add replies or notes — Public replies go to the user; Internal Notes are staff-only.",
+          "Close the ticket once resolved and add a brief resolution summary.",
+        ];
+        return(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
+            {steps.map(function(s,i){return(
+              <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(79,209,199,0.05)",border:"1px solid rgba(79,209,199,0.12)",borderRadius:10,padding:"11px 14px"}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:"#4fd1c7",color:"#080c14",fontWeight:800,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+                <div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6,paddingTop:2}}>{s}</div>
+              </div>
+            );})}
+            <GuideNote icon="📝" text="Update every 24 hours. Even a brief note like 'still investigating' keeps users informed and prevents follow-ups."/>
+          </div>
+        );
+      }
+    },
+    // 8 — Manager
+    {
+      chip:"IT Manager",chipColor:"#f6c90e",
+      title:"Dashboard & Reports",
+      content:function(){
+        var items=[
+          {icon:"📊",title:"Live Dashboard",desc:"Open, in-progress, pending, and overdue SLAs — all at a glance."},
+          {icon:"📈",title:"Trend Charts",desc:"Ticket volume over time, peak categories, and resolution speed."},
+          {icon:"🤖",title:"AI Insights",desc:"Gemini AI analyzes patterns and surfaces actionable recommendations."},
+          {icon:"✅",title:"SLA Compliance",desc:"Track how many tickets are resolved within their agreed target times."},
+        ];
+        return(
+          <div style={{width:"100%"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:14}}>
+              {items.map(function(it){return(
+                <div key={it.title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(246,201,14,0.15)",borderRadius:14,padding:16}}>
+                  <div style={{fontSize:22,marginBottom:8}}>{it.icon}</div>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#e2e8f0"}}>{it.title}</div>
+                  <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>{it.desc}</div>
+                </div>
+              );})}
+            </div>
+            <GuideNote icon="📅" text="Daily + Weekly habit: Review the dashboard every morning. Share formal weekly reports with management every Monday."/>
+          </div>
+        );
+      }
+    },
+    // 9 — Escalation
+    {
+      chip:"Escalation",chipColor:"#fc8181",
+      title:"When to Escalate",
+      content:function(){
+        var reasons=[
+          {icon:"⏰",text:"Not resolved within the SLA response target for its priority level."},
+          {icon:"🔬",text:"The issue requires specialist skills or elevated system access."},
+          {icon:"🔁",text:"The ticket has been reopened more than once by the same user."},
+          {icon:"🚨",text:"A Critical or High ticket is unacknowledged for more than 30 minutes."},
+        ];
+        return(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
+            {reasons.map(function(r,i){return(
+              <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(252,129,129,0.05)",border:"1px solid rgba(252,129,129,0.15)",borderRadius:10,padding:"12px 14px"}}>
+                <span style={{fontSize:18,flexShrink:0}}>{r.icon}</span>
+                <div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6}}>{r.text}</div>
+              </div>
+            );})}
+            <div style={{background:"rgba(252,129,129,0.07)",border:"1px solid rgba(252,129,129,0.2)",borderRadius:12,padding:"14px 16px",marginTop:4}}>
+              <div style={{fontWeight:700,color:"#fc8181",fontSize:13,marginBottom:4}}>How to escalate:</div>
+              <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>Change the ticket status to <strong style={{color:"#e2e8f0"}}>Escalated</strong> in the system. The IT Manager is notified automatically and the requester is informed.</div>
+            </div>
+          </div>
+        );
+      }
+    },
+    // 10 — Admin
+    {
+      chip:"Administrator",chipColor:"#f6ad55",
+      title:"Platform Configuration",
+      content:function(){
+        var items=[
+          {icon:"👥",text:"User Management — Add new staff, assign roles, deactivate accounts when someone leaves."},
+          {icon:"🏷️",text:"Categories & Priorities — Keep them aligned with your organization. Review every 6 months."},
+          {icon:"⏱️",text:"SLA Thresholds — Set warning and breach alerts. Configure SLA pause rules for Pending tickets."},
+          {icon:"🔔",text:"Notification Rules — Who gets notified at each ticket event (new ticket, status change, SLA breach)."},
+          {icon:"🔍",text:"Audit Logs — Review access logs monthly for unusual activity or security anomalies."},
+        ];
+        return(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
+            {items.map(function(it,i){return(
+              <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(246,173,85,0.05)",border:"1px solid rgba(246,173,85,0.12)",borderRadius:10,padding:"11px 14px"}}>
+                <span style={{fontSize:18,flexShrink:0}}>{it.icon}</span>
+                <div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6}}>{it.text}</div>
+              </div>
+            );})}
+            <GuideNote icon="⚠️" color="#f6ad55" text="Never delete accounts. Always deactivate instead — this preserves the full ticket history attached to that user."/>
+          </div>
+        );
+      }
+    },
+    // 11 — Tips
+    {
+      chip:"Best Practices",chipColor:"#68d391",
+      title:"Tips for Everyone",
+      content:function(){
+        var tips=[
+          {icon:"🚫",title:"No Duplicate Tickets",desc:"Don't submit the same issue twice. Check your existing tickets first."},
+          {icon:"🔐",title:"No Passwords in Tickets",desc:"Never enter passwords or sensitive data into any ticket field."},
+          {icon:"📬",title:"Check Notifications",desc:"Respond quickly when Pending — delays slow everything down."},
+          {icon:"🔖",title:"Save Your Ticket ID",desc:"Note your Ticket ID for fast follow-up with any staff member."},
+          {icon:"📚",title:"Check Knowledge Base",desc:"Before submitting — your issue might already have a solution."},
+          {icon:"🔄",title:"Reopen, Don't Resubmit",desc:"If a closed issue returns, reopen the original ticket instead."},
+        ];
+        return(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,width:"100%"}}>
+            {tips.map(function(t){return(
+              <div key={t.title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(104,211,145,0.12)",borderRadius:14,padding:16}}>
+                <div style={{fontSize:22,marginBottom:8}}>{t.icon}</div>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:4,color:"#e2e8f0"}}>{t.title}</div>
+                <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55}}>{t.desc}</div>
+              </div>
+            );})}
+          </div>
+        );
+      }
+    },
+    // 12 — Done
+    {
+      chip:"You're Ready!",chipColor:"#68d391",
+      title:"You now know Hoptix.",
+      content:function(){
+        return(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,textAlign:"center"}}>
+            <div style={{fontSize:52}}>✅</div>
+            <p style={{color:"#94a3b8",fontSize:15,maxWidth:440,lineHeight:1.7}}>From submitting your first ticket to managing the full platform — you have everything you need to get started.</p>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
+              {["Submit Tickets","Track Progress","Resolve Faster","Stay Informed"].map(function(t,i){
+                var cols=["#63b3ed","#4fd1c7","#68d391","#f6c90e"];
+                return(<span key={t} style={{fontSize:11,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.06)",color:cols[i],border:"1px solid rgba(255,255,255,0.1)"}}>{t}</span>);
+              })}
+            </div>
+            <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(99,179,237,0.15)",borderRadius:12,padding:"14px 20px",maxWidth:360}}>
+              <div style={{fontSize:13,color:"#94a3b8"}}>Questions? Contact your <strong style={{color:"#63b3ed"}}>IT Helpdesk Administrator</strong> or open a ticket in the system.</div>
+            </div>
+          </div>
+        );
+      }
+    },
+  ];
+
+  var TOTAL=SLIDES.length;
+  var s=SLIDES[slide];
+
+  function goTo(n){
+    if(n<0||n>=TOTAL)return;
+    setSlide(n);
+    setVisited(function(prev){return prev.includes(n)?prev:[...prev,n];});
+  }
+
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#041833)",display:"flex",flexDirection:"column",color:"#e2e8f0",fontFamily:"system-ui,sans-serif",position:"relative",overflow:"hidden"}}>
+      {/* grid bg */}
+      <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(99,179,237,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(99,179,237,0.04) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none"}}/>
+
+      {/* Header */}
+      <div style={{padding:"16px 20px 0",display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative",zIndex:2}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#63b3ed",marginBottom:2}}>📖 User Guide</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#e2e8f0",letterSpacing:"-0.02em"}}>Hoptix</div>
+        </div>
+        <div style={{fontSize:12,color:"#64748b",fontWeight:600}}>{slide+1} / {TOTAL}</div>
+      </div>
+
+      {/* Slide Content */}
+      <div style={{flex:1,overflowY:"auto",padding:"20px 20px 100px",position:"relative",zIndex:2,WebkitOverflowScrolling:"touch"}}>
+        {/* Chip */}
+        <div style={{marginBottom:10}}>
+          <span style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.06)",color:s.chipColor,border:"1px solid rgba(255,255,255,0.1)"}}>{s.chip}</span>
+        </div>
+        {/* Title */}
+        <h2 style={{fontSize:"clamp(20px,5vw,30px)",fontWeight:800,lineHeight:1.1,letterSpacing:"-0.02em",marginBottom:6,color:"#f1f5f9"}}>{s.title}</h2>
+        {s.sub&&<div style={{fontSize:13,color:"#64748b",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:16}}>{s.sub}</div>}
+        {/* Divider */}
+        <div style={{width:50,height:3,borderRadius:2,background:"linear-gradient(90deg,#63b3ed,#4fd1c7)",marginBottom:20}}/>
+        {/* Content */}
+        {s.content()}
+      </div>
+
+      {/* Nav */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:10,background:"linear-gradient(0deg,rgba(2,14,31,0.98) 60%,transparent)",padding:"12px 20px 20px"}}>
+        {/* Dots */}
+        <div style={{display:"flex",gap:5,justifyContent:"center",marginBottom:10,flexWrap:"wrap"}}>
+          {SLIDES.map(function(_,i){
+            var isActive=i===slide;
+            var isVisited=visited.includes(i);
+            return(
+              <div key={i} onClick={function(){goTo(i);}} style={{height:6,borderRadius:4,cursor:"pointer",transition:"all 0.3s",width:isActive?20:6,background:isActive?"#63b3ed":isVisited?"rgba(99,179,237,0.5)":"rgba(99,179,237,0.2)"}}/>
+            );
+          })}
+        </div>
+        {/* Buttons */}
+        <div style={{display:"flex",gap:12,justifyContent:"space-between"}}>
+          <button onClick={function(){goTo(slide-1);}} disabled={slide===0} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(99,179,237,0.2)",color:"#e2e8f0",fontWeight:600,fontSize:14,padding:"10px 22px",borderRadius:40,cursor:slide===0?"default":"pointer",opacity:slide===0?0.3:1,transition:"all 0.2s"}}>← Back</button>
+          <button onClick={function(){goTo(slide+1);}} disabled={slide===TOTAL-1} style={{background:slide===TOTAL-1?"rgba(104,211,145,0.2)":"#63b3ed",border:"none",color:slide===TOTAL-1?"#68d391":"#020e1f",fontWeight:700,fontSize:14,padding:"10px 24px",borderRadius:40,cursor:slide===TOTAL-1?"default":"pointer",opacity:slide===TOTAL-1?0.6:1,transition:"all 0.2s"}}>{slide===TOTAL-1?"✓ Done":"Next →"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GuideNote({icon,text,color}){
+  return(
+    <div style={{background:"rgba(246,201,14,0.07)",border:"1px solid rgba(246,201,14,0.2)",borderRadius:12,padding:"12px 16px",display:"flex",gap:10,alignItems:"flex-start",marginTop:12}}>
+      <span style={{fontSize:16,flexShrink:0}}>{icon}</span>
+      <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>{text}</div>
+    </div>
+  );
+}
 var TC_EMOJIS=["😀","😂","😍","🥰","😎","🤔","😅","🙏","👍","👎","❤️","🔥","✅","⚠️","🎉","🚀","💡","📋","🎫","⏱️","🔧","💻","📧","📞","🤝","👀","💪","🙌","😢","😡","🤣","😴","🥳","🤯","😬","🫡","👏","💯","🆗","❌","⭐","🏆","📌","🔔","💬","📎","🎬","🔗","📊","🛠️","🔒"];
 
 function renderTcMessage(text){
@@ -610,7 +1031,7 @@ export default function App(){
   var[logs,setLogsR]=useState([]);var[emailTemplates,setEmailTemplates]=useState([]);
   var[allTimeSessions,setAllTimeSessions]=useState([]);
   var[curUser,setCurUserR]=useState(function(){return loadState("hd_curUser",null);});
-  var[page,setPageR]=useState(function(){try{var raw=localStorage.getItem("hd_page");var s=raw?raw.replace(/^"|"$/g,""):null;var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
+  var[page,setPageR]=useState(function(){try{var raw=localStorage.getItem("hd_page");var s=raw?raw.replace(/^"|"$/g,""):null;var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","user_guide"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
   var[selTicket,setSelTicket]=useState(null);var[toast,setToast]=useState(null);
   var[breaches,setBreaches]=useState([]);var[inboxAlerts,setInboxAlerts]=useState([]);
   var[showProfile,setShowProfile]=useState(false);var[loading,setLoading]=useState(true);
@@ -618,8 +1039,8 @@ export default function App(){
   var[notifications,setNotifications]=useState([]);var[unreadChatCount,setUnreadChatCount]=useState(0);
   var prevBreachIdsRef=useRef([]);
   var isMobile=useIsMobile();
-  useEffect(function(){if(!loading&&curUser){var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];if(saved&&safe.includes(saved)&&saved!==page){setPageR(saved);}};},[loading,curUser?.id]);
-  useEffect(function(){async function loadAll(){setLoading(true);var[u,co,cl,tt,tkt,lg,sch,et,ts]=await Promise.all([dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),dbGetTickets(),dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates(),dbGetAllTimeSessions()]);setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);setAllTimeSessions(ts);var savedPage=localStorage.getItem("hd_page");var safePages=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat"];if(savedPage&&safePages.includes(savedPage))setPageR(savedPage);setLoading(false);}loadAll();},[]);
+  useEffect(function(){if(!loading&&curUser){var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide"];if(saved&&safe.includes(saved)&&saved!==page){setPageR(saved);}};},[loading,curUser?.id]);
+  useEffect(function(){async function loadAll(){setLoading(true);var[u,co,cl,tt,tkt,lg,sch,et,ts]=await Promise.all([dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),dbGetTickets(),dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates(),dbGetAllTimeSessions()]);setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);setAllTimeSessions(ts);var savedPage=localStorage.getItem("hd_page");var safePages=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide"];if(savedPage&&safePages.includes(savedPage))setPageR(savedPage);setLoading(false);}loadAll();},[]);
   useEffect(function(){if(!curUser)return;dbGetNotifications(curUser.id).then(function(data){setNotifications(data);});var sub=supabase.channel("notifs-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"app_notifications",filter:"user_id=eq."+curUser.id},function(payload){setNotifications(function(prev){if(prev.find(function(n){return n.id===payload.new.id;}))return prev;return[payload.new].concat(prev);});}).subscribe();return function(){supabase.removeChannel(sub);};},[curUser?.id]);
   var unreadCount=useMemo(function(){return notifications.filter(function(n){return !n.read;}).length;},[notifications]);
   useEffect(function(){var parts=[];if(breaches.length>0)parts.push("\uD83D\uDEA8"+breaches.length);if(unreadCount>0)parts.push("\uD83D\uDD14"+unreadCount);if(unreadChatCount>0)parts.push("\uD83D\uDCAC"+unreadChatCount);document.title=parts.length>0?"("+parts.join(" | ")+") Hoptix":"Hoptix";},[unreadCount,breaches,unreadChatCount]);
@@ -641,7 +1062,7 @@ export default function App(){
   var allNonDeleted=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
   if(loading)return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#062d6b)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #0ea5e9",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"#7dd3fc",fontSize:14,fontWeight:600}}>Loading Hoptix…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
   if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
-  var NAV=[{id:"dashboard",icon:"🏠",label:"Dashboard"},{id:"tickets",icon:"🎫",label:"Tickets"},{id:"new_ticket",icon:"➕",label:"New Ticket"},{id:"time_tracking",icon:"⏱️",label:"Time Tracking"},{id:"team_chat",icon:"💬",label:"Team Chat",chatBadge:true},{id:"reports",icon:"📊",label:"Reports",admin:true},{id:"users",icon:"👥",label:"Users",admin:true},{id:"companies",icon:"🏢",label:"Companies",superAdmin:true},{id:"clients",icon:"🤝",label:"Clients",superAdmin:true},{id:"ticket_types",icon:"🏷️",label:"Ticket Types",superAdmin:true},{id:"activity_log",icon:"📋",label:"Activity Log",superAdmin:true},{id:"integrations",icon:"🔌",label:"Integrations",superAdmin:true}].filter(function(n){if(n.superAdmin)return curUser.role==="admin";if(n.admin)return isAdmin;return true;});
+  var NAV=[{id:"dashboard",icon:"🏠",label:"Dashboard"},{id:"tickets",icon:"🎫",label:"Tickets"},{id:"new_ticket",icon:"➕",label:"New Ticket"},{id:"time_tracking",icon:"⏱️",label:"Time Tracking"},{id:"team_chat",icon:"💬",label:"Team Chat",chatBadge:true},{id:"user_guide",icon:"📖",label:"User Guide"},{id:"reports",icon:"📊",label:"Reports",admin:true},{id:"users",icon:"👥",label:"Users",admin:true},{id:"companies",icon:"🏢",label:"Companies",superAdmin:true},{id:"clients",icon:"🤝",label:"Clients",superAdmin:true},{id:"ticket_types",icon:"🏷️",label:"Ticket Types",superAdmin:true},{id:"activity_log",icon:"📋",label:"Activity Log",superAdmin:true},{id:"integrations",icon:"🔌",label:"Integrations",superAdmin:true}].filter(function(n){if(n.superAdmin)return curUser.role==="admin";if(n.admin)return isAdmin;return true;});
   var bottomNav=NAV.slice(0,4);
   var curNav=NAV.find(function(n){return n.id===page;})||{icon:"",label:"—"};
   var sidebar=<div style={{width:220,background:"linear-gradient(180deg,#020e1f,#041833,#062d6b)",display:"flex",flexDirection:"column",flexShrink:0,height:"100%"}}>
@@ -674,7 +1095,7 @@ export default function App(){
           {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile}/>}
           {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage} setSelTicket={setSelTicket} allTimeSessions={allTimeSessions}/>}
           {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
-          {page==="team_chat"    &&<PageTeamChat    curUser={curUser} users={users} isAdmin={isAdmin} isMobile={isMobile}/>}
+          {page==="team_chat"    &&<PageTeamChat    curUser={curUser} users={users} isAdmin={isAdmin} isMobile={isMobile}/>} {page==="user_guide"   &&<PageUserGuide  curUser={curUser}/>}
           {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules} allTimeSessions={allTimeSessions}/>}
           {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
           {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast} dbSaveCompany={dbSaveCompany} dbDeleteCompany={dbDeleteCompany}/>}
