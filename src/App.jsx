@@ -156,8 +156,11 @@ function TicketTimer(p){
   var completedSessions=sessions.filter(function(s){return s.ended_at;});var totalMins=completedSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
   if(loading)return<div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>Loading timer…</div>;
   return<div>
+    <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e",lineHeight:1.6}}>
+      ⚡ <strong>Auto-tracked:</strong> Timer starts when status → <strong>In Progress</strong> and stops when status changes away. Use the manual controls below only for corrections.
+    </div>
     <div style={{background:activeSession?"linear-gradient(135deg,#064e3b,#065f46)":"linear-gradient(135deg,#1e1b4b,#312e81)",borderRadius:16,padding:24,textAlign:"center",marginBottom:16}}>
-      <div style={{fontSize:11,fontWeight:700,color:activeSession?"#6ee7b7":"#a5b4fc",textTransform:"uppercase",letterSpacing:2,marginBottom:8}}>{activeSession?"⏱ Timer Running":"⏸ Timer Stopped"}</div>
+      <div style={{fontSize:11,fontWeight:700,color:activeSession?"#6ee7b7":"#a5b4fc",textTransform:"uppercase",letterSpacing:2,marginBottom:8}}>{activeSession?"⏱ Timer Running — In Progress":"⏸ Timer Stopped"}</div>
       <div style={{fontSize:48,fontWeight:800,color:"#fff",fontVariantNumeric:"tabular-nums",letterSpacing:2,marginBottom:16,fontFamily:"'Courier New',monospace"}}>{fmtElapsed(elapsed)}</div>
       {!activeSession&&<div style={{marginBottom:12}}><input value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What are you working on? (optional)" style={{width:"100%",padding:"10px 14px",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,fontSize:13,outline:"none",background:"rgba(255,255,255,.1)",color:"#fff",boxSizing:"border-box"}}/></div>}
       {activeSession?<button onClick={stopTimer} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>⏹ Stop &amp; Save</button>:<button onClick={startTimer} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>▶ Start Timer</button>}
@@ -1327,10 +1330,10 @@ function TicketDetail(p){
   var[asgn,setAsgn]=useState(ticket.assignedTo||"");
   var[note,setNote]=useState("");
   var[typeId,setTypeId]=useState(ticket.typeId||"");
-  var[showTimerBanner,setShowTimerBanner]=useState(false);
+  var[showTimerBanner,setShowTimerBanner]=useState("");
   var forceStopRef=useRef(null);
 
-  var shouldAutoStart=isTech&&ticket.status!=="Closed";
+  var shouldAutoStart=false;
 
   function handleAutoStarted(){
     setShowTimerBanner(true);
@@ -1371,9 +1374,30 @@ function TicketDetail(p){
       showToast("A Resolution Note is required before closing this ticket.","error");return;
     }
 
-    if(status==="Closed"&&forceStopRef.current){
+    // Auto-stop timer if moving AWAY from In Progress (or closing)
+    var wasInProgress=ticket.status==="In Progress";
+    var movingAwayFromInProgress=statusChanged&&wasInProgress&&status!=="In Progress";
+    if(movingAwayFromInProgress&&forceStopRef.current){
       await forceStopRef.current();
       refreshTimeSessions();
+      setShowTimerBanner("stopped");
+      setTimeout(function(){setShowTimerBanner("");},8000);
+    }
+
+    // Auto-stop timer on close regardless of previous status
+    if(status==="Closed"&&!movingAwayFromInProgress&&forceStopRef.current){
+      await forceStopRef.current();
+      refreshTimeSessions();
+    }
+
+    // Auto-start timer if moving TO In Progress
+    var movingToInProgress=statusChanged&&status==="In Progress";
+    if(movingToInProgress){
+      var newSession={id:uid(),ticket_id:ticket.id,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:"Auto-started: status changed to In Progress",created_at:now};
+      await dbSaveTimeSession(newSession);
+      refreshTimeSessions();
+      setShowTimerBanner("started");
+      setTimeout(function(){setShowTimerBanner("");},8000);
     }
 
     var prevLog=ticket.statusTimeLog||[];
@@ -1461,13 +1485,13 @@ function TicketDetail(p){
   return<Modal title={ticket.title} onClose={onClose} wide>
     {showTimerBanner&&<div style={{background:"linear-gradient(135deg,#064e3b,#065f46)",borderRadius:10,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:18}}>⏱</span>
-      <div style={{flex:1}}><div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Timer automatically started</div><div style={{fontSize:11,color:"#a7f3d0",marginTop:2}}>Remember to stop the timer when you are done working on this ticket.</div></div>
-      <button onClick={function(){setShowTimerBanner(false);setTab("timer");}} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>View Timer</button>
+      <div style={{flex:1}}><div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Timer {showTimerBanner==="started"?"started":"stopped"} automatically</div><div style={{fontSize:11,color:"#a7f3d0",marginTop:2}}>{showTimerBanner==="started"?"Status changed to In Progress — your work time is now being tracked.":"Status changed — your work time has been saved."}</div></div>
+      <button onClick={function(){setShowTimerBanner("");setTab("timer");}} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>View Timer</button>
     </div>}
     {ticket.status==="Closed"&&!hasLoggedTime&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:16}}>⚠️</span>
-      <div style={{flex:1}}><div style={{fontWeight:700,color:"#92400e",fontSize:13}}>No time was logged for this ticket</div><div style={{fontSize:11,color:"#b45309",marginTop:2}}>This ticket was closed without any IT work time being recorded.</div></div>
-      <button onClick={function(){setTab("timer");}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>Add Time</button>
+      <div style={{flex:1}}><div style={{fontWeight:700,color:"#92400e",fontSize:13}}>No IT work time was recorded</div><div style={{fontSize:11,color:"#b45309",marginTop:2}}>This ticket was closed without ever being set to In Progress, or the timer was not running.</div></div>
+      <button onClick={function(){setTab("timer");}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>Add Manually</button>
     </div>}
     {liveTicket.hasUnreadReply&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:16}}>📬</span><div style={{flex:1}}><div style={{fontWeight:700,color:"#166534",fontSize:13}}>New reply received</div></div>
