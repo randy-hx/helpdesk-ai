@@ -239,7 +239,7 @@ function TicketHistory(p){
 // Find this line in the NAV array:
 //   {id:"team_chat",icon:"💬",label:"Team Chat"},
 // Add this line RIGHT AFTER it:
-//   {id:"user_guide",icon:"📖",label:"User Guide"},
+//   {id:"user_guide",icon:"📖",label:"User Guide"},{id:"knowledge_base",icon:"📚",label:"Knowledge Base"},
 // ════════════════════════════════════════════════════════════════════
 
 
@@ -1022,7 +1022,84 @@ function PageTeamChat(p){
     </Modal>}
   </div>;
 }
+// ── Knowledge Base ────────────────────────────────────────────────────────────
+function PageKnowledgeBase(p){
+  var tickets=p.tickets||[];var ticketTypes=p.ticketTypes||[];var users=p.users||[];var isMobile=p.isMobile;
+  var kbTickets=tickets.filter(function(t){return !t.deleted&&t.resolutionNote&&t.resolutionNote.trim();});
+  var[search,setSearch]=useState("");
+  var[filterType,setFilterType]=useState("");
+  var[expanded,setExpanded]=useState({});
+  var filtered=kbTickets.filter(function(t){
+    var q=search.toLowerCase();
+    var matchQ=!q||t.title.toLowerCase().includes(q)||t.resolutionNote.toLowerCase().includes(q)||t.description.toLowerCase().includes(q);
+    var matchType=!filterType||t.typeId===filterType;
+    return matchQ&&matchType;
+  });
+  function toggleExpand(id){setExpanded(function(prev){return Object.assign({},prev,{[id]:!prev[id]});});}
+  function fu(id){return users.find(function(u){return u.id===id;});}
+  var byType=ticketTypes.map(function(tt){return{id:tt.id,name:tt.name,color:tt.color,count:kbTickets.filter(function(t){return t.typeId===tt.id;}).length};}).filter(function(x){return x.count>0;}).sort(function(a,b){return b.count-a.count;});
+  return<div>
+    <div style={{background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"1px solid #bbf7d0",borderRadius:14,padding:"18px 20px",marginBottom:18,display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
+      <span style={{fontSize:36}}>📚</span>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:800,fontSize:16,color:"#166534",marginBottom:2}}>Team Knowledge Base</div>
+        <div style={{fontSize:12,color:"#16a34a",lineHeight:1.6}}>{kbTickets.length} resolved issue{kbTickets.length!==1?"s":""} documented · Built automatically from technician Resolution Notes</div>
+      </div>
+      <div style={{background:"#fff",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 16px",textAlign:"center",flexShrink:0}}>
+        <div style={{fontSize:24,fontWeight:800,color:"#10b981"}}>{kbTickets.length}</div>
+        <div style={{fontSize:10,color:"#16a34a",fontWeight:700,textTransform:"uppercase"}}>Articles</div>
+      </div>
+    </div>
 
+    {byType.length>0&&<div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
+      <button onClick={function(){setFilterType("");}} style={{padding:"6px 14px",borderRadius:20,border:"1px solid "+(filterType===""?"#10b981":"#e2e8f0"),background:filterType===""?"#f0fdf4":"#fff",color:filterType===""?"#166534":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>All ({kbTickets.length})</button>
+      {byType.map(function(tt){return<button key={tt.id} onClick={function(){setFilterType(tt.id);}} style={{padding:"6px 14px",borderRadius:20,border:"1px solid "+(filterType===tt.id?tt.color||"#6366f1":"#e2e8f0"),background:filterType===tt.id?(tt.color||"#6366f1")+"11":"#fff",color:filterType===tt.id?(tt.color||"#6366f1"):"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>{tt.name} ({tt.count})</button>;})}
+    </div>}
+
+    <div style={{display:"flex",gap:8,marginBottom:16}}>
+      <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search issues, symptoms, keywords, or fixes…" style={{flex:1,padding:"10px 14px",border:"1px solid #e2e8f0",borderRadius:10,fontSize:13,outline:"none",background:"#f8fafc"}}/>
+      {search&&<button onClick={function(){setSearch("");}} style={{padding:"10px 14px",border:"1px solid #e2e8f0",borderRadius:10,background:"#f8fafc",fontSize:13,cursor:"pointer",color:"#64748b",fontWeight:700}}>✕</button>}
+    </div>
+
+    {filtered.length===0&&<Card><div style={{textAlign:"center",padding:48,color:"#94a3b8"}}><div style={{fontSize:40,marginBottom:10}}>📭</div><div style={{fontWeight:700,fontSize:14,marginBottom:6,color:"#475569"}}>{kbTickets.length===0?"No Knowledge Base articles yet":"No results found"}</div><div style={{fontSize:12,lineHeight:1.7}}>{kbTickets.length===0?"When IT staff close a ticket they fill in a Resolution Note.\nThose notes appear here automatically as searchable articles.":"Try different keywords or clear the filter."}</div></div></Card>}
+
+    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>{filtered.length} article{filtered.length!==1?"s":""} {search&&<span>matching "<strong style={{color:"#334155"}}>{search}</strong>"</span>}</div>
+
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {filtered.map(function(t){
+        var tt=ticketTypes.find(function(x){return x.id===t.typeId;});
+        var asgn=fu(t.assignedTo);
+        var pri=PRI_META[t.priority]||PRI_META.medium;
+        var isOpen=expanded[t.id];
+        return<div key={t.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",borderLeft:"4px solid #10b981",boxShadow:"0 1px 4px rgba(0,0,0,.04)",overflow:"hidden"}}>
+          <div onClick={function(){toggleExpand(t.id);}} style={{padding:"14px 16px",cursor:"pointer",display:"flex",alignItems:"flex-start",gap:10}}>
+            <span style={{fontSize:18,flexShrink:0,marginTop:1}}>{isOpen?"📖":"📄"}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,color:"#1e293b",fontSize:14,marginBottom:6,lineHeight:1.4}}>{t.title}</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                {tt&&<Badge label={tt.name} color={tt.color||"#6366f1"}/>}
+                <Badge label={pri.label} color={pri.color} bg={pri.bg}/>
+                {asgn&&<span style={{fontSize:11,color:"#64748b",display:"flex",alignItems:"center",gap:4}}><Avatar name={asgn.name} id={asgn.id} size={14}/>{asgn.name}</span>}
+                <span style={{fontSize:10,color:"#94a3b8"}}>Closed {fdt(t.closedAt||t.updatedAt)}</span>
+              </div>
+            </div>
+            <span style={{color:"#94a3b8",fontSize:16,flexShrink:0,marginTop:2}}>{isOpen?"▲":"▼"}</span>
+          </div>
+          {isOpen&&<div style={{padding:"0 16px 16px",borderTop:"1px solid #f1f5f9"}}>
+            <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 14px",marginBottom:10,marginTop:12}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>🎫 Original Issue Reported</div>
+              <div style={{fontSize:13,color:"#475569",lineHeight:1.6}}>{t.description}</div>
+            </div>
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"12px 14px"}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#166534",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>✅ Resolution</div>
+              <div style={{fontSize:13,color:"#14532d",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{t.resolutionNote}</div>
+            </div>
+          </div>}
+        </div>;
+      })}
+    </div>
+  </div>;
+}
 // ── Root App ──────────────────────────────────────────────────────────────────
 export default function App(){
   var[users,setUsers]=useState([]);var[companies,setCompanies]=useState([]);var[clients,setClients]=useState([]);
@@ -1039,7 +1116,7 @@ export default function App(){
   var[notifications,setNotifications]=useState([]);var[unreadChatCount,setUnreadChatCount]=useState(0);
   var prevBreachIdsRef=useRef([]);
   var isMobile=useIsMobile();
-  useEffect(function(){if(!loading&&curUser){var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide"];if(saved&&safe.includes(saved)&&saved!==page){setPageR(saved);}};},[loading,curUser?.id]);
+  useEffect(function(){if(!loading&&curUser){var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];if(saved&&safe.includes(saved)&&saved!==page){setPageR(saved);}};},[loading,curUser?.id]);
   useEffect(function(){async function loadAll(){setLoading(true);var[u,co,cl,tt,tkt,lg,sch,et,ts]=await Promise.all([dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),dbGetTickets(),dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates(),dbGetAllTimeSessions()]);setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);setAllTimeSessions(ts);var savedPage=localStorage.getItem("hd_page");var safePages=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide"];if(savedPage&&safePages.includes(savedPage))setPageR(savedPage);setLoading(false);}loadAll();},[]);
   useEffect(function(){if(!curUser)return;dbGetNotifications(curUser.id).then(function(data){setNotifications(data);});var sub=supabase.channel("notifs-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"app_notifications",filter:"user_id=eq."+curUser.id},function(payload){setNotifications(function(prev){if(prev.find(function(n){return n.id===payload.new.id;}))return prev;return[payload.new].concat(prev);});}).subscribe();return function(){supabase.removeChannel(sub);};},[curUser?.id]);
   var unreadCount=useMemo(function(){return notifications.filter(function(n){return !n.read;}).length;},[notifications]);
@@ -1095,7 +1172,7 @@ export default function App(){
           {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile}/>}
           {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage} setSelTicket={setSelTicket} allTimeSessions={allTimeSessions}/>}
           {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
-          {page==="team_chat"    &&<PageTeamChat    curUser={curUser} users={users} isAdmin={isAdmin} isMobile={isMobile}/>} {page==="user_guide"   &&<PageUserGuide  curUser={curUser}/>}
+          {page==="team_chat"    &&<PageTeamChat    curUser={curUser} users={users} isAdmin={isAdmin} isMobile={isMobile}/>} {page==="user_guide"   &&<PageUserGuide  curUser={curUser}/>}           {page==="knowledge_base"&&<PageKnowledgeBase tickets={allNonDeleted} ticketTypes={ticketTypes} users={users} isMobile={isMobile}/>}
           {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules} allTimeSessions={allTimeSessions}/>}
           {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
           {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast} dbSaveCompany={dbSaveCompany} dbDeleteCompany={dbDeleteCompany}/>}
@@ -1290,6 +1367,10 @@ function TicketDetail(p){
     var statusChanged=status!==ticket.status;
     var now=new Date().toISOString();
 
+    if(status==="Closed"&&!(ticket._resolutionNote&&ticket._resolutionNote.trim())){
+      showToast("A Resolution Note is required before closing this ticket.","error");return;
+    }
+
     if(status==="Closed"&&forceStopRef.current){
       await forceStopRef.current();
       refreshTimeSessions();
@@ -1322,7 +1403,9 @@ function TicketDetail(p){
     var newPriority=typeChanged&&newTT?newTT.priority:ticket.priority;
     if(typeChanged)hist.note=(note||"")+(note?" | ":"")+"Type changed to: "+newTT.name;
 
-    setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;var newHist=statusChanged?(t.statusHistory||[]).concat([hist]):(t.statusHistory||[]).concat([Object.assign({},hist,{_noSlaReset:true})]);return Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:now,slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",closedAt:status==="Closed"&&!t.closedAt?now:t.closedAt,statusHistory:newHist,statusTimeLog:newLog});});});
+    var resNote=(status==="Closed"&&ticket._resolutionNote)?ticket._resolutionNote.trim():null;
+    setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;var newHist=statusChanged?(t.statusHistory||[]).concat([hist]):(t.statusHistory||[]).concat([Object.assign({},hist,{_noSlaReset:true})]);return Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:now,slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",closedAt:status==="Closed"&&!t.closedAt?now:t.closedAt,statusHistory:newHist,statusTimeLog:newLog,resolutionNote:resNote||t.resolutionNote,_resolutionNote:undefined});});});
+    if(resNote){addLog("TICKET_RESOLVED",ticket.id,"Resolution note saved for: \""+ticket.title+"\"");}
 
     addLog("TICKET_STATUS",ticket.id,(statusChanged?"Status → "+status:"Details updated")+". Assigned: "+(fu(asgn)?.name||"nobody"));
 
@@ -1422,7 +1505,7 @@ function TicketDetail(p){
           </div>;})}
         </div>
       </div>}
-      {ticket.attachments&&ticket.attachments.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>📎 Attachments ({ticket.attachments.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>{ticket.attachments.map(function(a){var isImg=a.type.startsWith("image/");return<div key={a.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){var w=window.open();w.document.write(isImg?'<img src="'+a.dataUrl+'" style="max-width:100%;"/>':'<video src="'+a.dataUrl+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:80,objectFit:"cover",display:"block"}}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:28}}>▶️</span></div>}</div>;})}</div></div>}
+      {ticket.resolutionNote&&<div style={{marginTop:12,background:"#f0fdf4",border:"2px solid #10b981",borderRadius:10,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:16}}>📝</span><div style={{fontWeight:700,color:"#166534",fontSize:13}}>Resolution Note</div><span style={{fontSize:10,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 8px",fontWeight:700}}>Knowledge Base</span></div><div style={{fontSize:13,color:"#14532d",lineHeight:1.7,whiteSpace:"pre-wrap",background:"#fff",borderRadius:8,padding:"10px 14px",border:"1px solid #bbf7d0"}}>{ticket.resolutionNote}</div><div style={{fontSize:10,color:"#16a34a",marginTop:6}}>💡 Saved to team knowledge base — reference this when the same issue arises.</div></div>}       {ticket.attachments&&ticket.attachments.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>📎 Attachments ({ticket.attachments.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>{ticket.attachments.map(function(a){var isImg=a.type.startsWith("image/");return<div key={a.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){var w=window.open();w.document.write(isImg?'<img src="'+a.dataUrl+'" style="max-width:100%;"/>':'<video src="'+a.dataUrl+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:80,objectFit:"cover",display:"block"}}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:28}}>▶️</span></div>}</div>;})}</div></div>}
     </div>}
     {tab==="status"&&isTech&&<div>
       <FSelect label="Update Status" value={status} onChange={function(e){setStatus(e.target.value);}} options={OPT_STATUSES}/>
@@ -1431,6 +1514,11 @@ function TicketDetail(p){
       <FSelect label="Ticket Type" value={typeId} onChange={function(e){setTypeId(e.target.value);}} options={ticketTypes.map(function(t){return mkOpt(t.id,t.name+" — "+t.slaHours+"h SLA");})}/>
       {typeId!==ticket.typeId&&<div style={{fontSize:11,color:"#f59e0b",marginBottom:14}}>⚠️ Changing type will update priority and SLA deadline.</div>}
       <FTextarea label="Note" value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What was done or why?" rows={3}/>
+      {status==="Closed"&&<div style={{marginBottom:14}}>
+        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#166534",marginBottom:4}}>📝 Resolution Note <span style={{color:"#ef4444"}}>*</span> <span style={{fontWeight:400,color:"#94a3b8"}}>(required to close)</span></label>
+        <textarea value={ticket._resolutionNote||""} onChange={function(e){setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{_resolutionNote:e.target.value}):t;});});}} placeholder={"Describe the root cause and exact steps taken to fix this issue. This will be added to the team Knowledge Base.\n\nExample:\nRoot Cause: DNS server misconfiguration after router firmware update.\nFix: Reset DNS to 8.8.8.8 via Network Settings → Advanced → DNS. Restarted the network adapter."} rows={6} style={{width:"100%",padding:"10px 12px",border:"2px solid #10b981",borderRadius:8,fontSize:13,outline:"none",background:"#f0fdf4",resize:"vertical",boxSizing:"border-box",lineHeight:1.6}}/>
+        <div style={{fontSize:11,color:"#166534",marginTop:4}}>💡 Be specific — future IT staff will use this to resolve the same issue faster.</div>
+      </div>}
       <Btn onClick={saveStatus} style={{width:"100%"}}>💾 Save Changes</Btn>
     </div>}
     {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions} autoStart={shouldAutoStart} onAutoStarted={handleAutoStarted} forceStopRef={forceStopRef}/>}
@@ -1976,7 +2064,7 @@ function PageReports(p){
       })}
     </div>}
 
-    {/* ── PER USER VIEW ── */}
+        {/* ── PER USER VIEW ── */}
     {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
       {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
       {byUser.map(function(t){
@@ -2219,7 +2307,7 @@ function PageTicketTypes(p){
 }
 
 // ── Activity Log ──────────────────────────────────────────────────────────────
-const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_REINSTATED:{icon:"♻️",color:"#10b981",label:"Ticket Reinstated"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
+const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_RESOLVED:{icon:"📝",color:"#10b981",label:"Resolution Note Added"},TICKET_REINSTATED:{icon:"♻️",color:"#10b981",label:"Ticket Reinstated"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
 function PageActivityLog(p){
   var logs=p.logs;var users=p.users;var tickets=p.tickets||[];var setTickets=p.setTickets||function(){};var isAdmin=p.isAdmin||false;var addLog=p.addLog||function(){};var showToast=p.showToast||function(){};
   var[filter,setFilter]=useState("");
