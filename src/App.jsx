@@ -2403,7 +2403,9 @@ function PageIntegrations(p){
       <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>💡 <strong>{"{{client_name}}"}</strong> and <strong>{"{{agent_name}}"}</strong> auto-fill on tickets. The Default CC will pre-fill the CC field when this template is selected.</div>
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setTmplModal(false);}}>Cancel</Btn><Btn onClick={saveTmpl}>{tmplEdit?"Save Changes":"Create Template"}</Btn></div>
     </Modal>}
-    // ── Knowledge Base ────────────────────────────────────────────────────────────
+  </div>;
+}
+// ── Knowledge Base ──
 function PageKnowledgeBase(p){
   var tickets=p.tickets||[];var ticketTypes=p.ticketTypes||[];var users=p.users||[];var isMobile=p.isMobile;
   var kbTickets=tickets.filter(function(t){return !t.deleted&&t.resolutionNote&&t.resolutionNote.trim();});
