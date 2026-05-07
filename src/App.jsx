@@ -2405,7 +2405,7 @@ function PageIntegrations(p){
     </Modal>}
   </div>;
 }
-// ── Knowledge Base ──
+// ── Knowledge Base ────────────────────────────────────────────────────────────
 function PageKnowledgeBase(p){
   var tickets=p.tickets||[];var ticketTypes=p.ticketTypes||[];var users=p.users||[];var isMobile=p.isMobile;
   var kbTickets=tickets.filter(function(t){return !t.deleted&&t.resolutionNote&&t.resolutionNote.trim();});
@@ -2476,7 +2476,5 @@ function PageKnowledgeBase(p){
         </div>;
       })}
     </div>
-  </div>;
-}
   </div>;
 }
