@@ -2469,7 +2469,7 @@ function PageKnowledgeBase(p){
               <div style={{fontSize:13,color:"#475569",lineHeight:1.6}}>{t.description}</div>
             </div>
             <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"12px 14px"}}>
-              <div style={{fontSize:10,fontWeight:700,color:"#166534",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>✅ Resolution</div>
+              <div style={{fontSize:10,fontWeight:700,color:"#166634",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>✅ Resolution</div>
               <div style={{fontSize:13,color:"#14532d",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{t.resolutionNote}</div>
             </div>
           </div>}
