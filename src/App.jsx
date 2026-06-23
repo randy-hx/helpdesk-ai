@@ -237,410 +237,45 @@ function TicketHistory(p){
 
 // ── Team Chat sub-components (defined at MODULE level to prevent remount on keystroke) ──
 
-// ════════════════════════════════════════════════════════════════════
-// CHANGE 1 — Add to NAV array
-// Find this line in the NAV array:
-//   {id:"team_chat",icon:"💬",label:"Team Chat"},
-// Add this line RIGHT AFTER it:
-//   {id:"user_guide",icon:"📖",label:"User Guide"},{id:"knowledge_base",icon:"📚",label:"Knowledge Base"},
-// ════════════════════════════════════════════════════════════════════
-
-
-// ════════════════════════════════════════════════════════════════════
-// CHANGE 2 — Add page routing
-// Find: if(page==="team_chat")return<PageTeamChat
-// Add this BEFORE that line:
-//   if(page==="user_guide")return<PageUserGuide curUser={curUser}/>;
-// ════════════════════════════════════════════════════════════════════
-
-
-// ════════════════════════════════════════════════════════════════════
-// CHANGE 3 — Add the PageUserGuide component
-// Find the comment: // ── TeamChat ───
-// Paste the ENTIRE block below BEFORE that comment
-// ════════════════════════════════════════════════════════════════════
-
 // ── UserGuide ───
 function PageUserGuide({curUser}){
   var[slide,setSlide]=useState(0);
   var[visited,setVisited]=useState([0]);
-
   var role=curUser&&curUser.role;
-
   var SLIDES=[
-    // 0 — Welcome
-    {
-      chip:"A.eye Technology",chipColor:"#f6c90e",
-      title:"Welcome to Hoptix",
-      sub:"Your IT Support Platform",
-      content:function(){return(
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,textAlign:"center"}}>
-          <p style={{color:"#94a3b8",fontSize:15,maxWidth:480,lineHeight:1.7}}>Hoptix is your company's central hub for submitting, tracking, and resolving IT issues — fast, organized, and transparent.</p>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",marginTop:4}}>
-            {["5-min guide","All Roles Covered","Step-by-Step"].map(function(t){return(<span key={t} style={{fontSize:11,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,background:"rgba(99,179,237,0.1)",color:"#63b3ed",border:"1px solid rgba(99,179,237,0.25)"}}>{t}</span>);})}
-          </div>
-        </div>
-      );}
-    },
-    // 1 — What is it
-    {
-      chip:"Overview",chipColor:"#63b3ed",
-      title:"What is Hoptix?",
-      content:function(){
-        var items=[
-          {icon:"🎫",title:"Ticket Tracking",desc:"Every IT request gets a unique ID and is tracked from start to finish."},
-          {icon:"⏱️",title:"SLA Monitoring",desc:"Automatic timers ensure issues are resolved within agreed timeframes."},
-          {icon:"📊",title:"Reports & Insights",desc:"Managers get real-time dashboards and AI-powered analytics."},
-          {icon:"🔒",title:"Role-Based Access",desc:"Each user only sees what their role allows — secure and focused."},
-        ];
-        return(
-          <div style={{width:"100%"}}>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12,marginBottom:14}}>
-              {items.map(function(it){return(
-                <div key={it.title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(99,179,237,0.12)",borderRadius:14,padding:16}}>
-                  <div style={{fontSize:24,marginBottom:8}}>{it.icon}</div>
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#e2e8f0"}}>{it.title}</div>
-                  <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>{it.desc}</div>
-                </div>
-              );})}
-            </div>
-            <GuideNote icon="💡" text="Hoptix works on any device — phone, tablet, or desktop. No app download needed. Just open it in your browser."/>
-          </div>
-        );
-      }
-    },
-    // 2 — Roles
-    {
-      chip:"Roles",chipColor:"#4fd1c7",
-      title:"Who Uses Hoptix?",
-      content:function(){
-        var roles=[
-          {icon:"👤",title:"End User",color:"#63b3ed",desc:"Submits IT requests and tracks their own tickets. Most employees are End Users."},
-          {icon:"🔧",title:"IT Technician",color:"#4fd1c7",desc:"Handles tickets — assigns priority, works on issues, updates statuses, and communicates with users."},
-          {icon:"📋",title:"IT Manager",color:"#f6c90e",desc:"Oversees the team queue, handles escalations, reviews reports, and monitors SLA compliance."},
-          {icon:"⚙️",title:"Administrator",color:"#f6ad55",desc:"Configures the entire platform — users, settings, categories, SLAs, and more."},
-        ];
-        return(
-          <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%"}}>
-            {roles.map(function(r){return(
-              <div key={r.title} style={{display:"flex",gap:14,alignItems:"center",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:12,padding:"14px 16px"}}>
-                <span style={{fontSize:26,flexShrink:0}}>{r.icon}</span>
-                <div>
-                  <div style={{fontWeight:700,fontSize:14,color:r.color,marginBottom:2}}>{r.title}</div>
-                  <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.55}}>{r.desc}</div>
-                </div>
-              </div>
-            );})}
-          </div>
-        );
-      }
-    },
-    // 3 — Log In
-    {
-      chip:"Getting Started",chipColor:"#63b3ed",
-      title:"How to Log In",
-      content:function(){
-        var steps=[
-          {n:1,text:"Open your browser on any device — phone, tablet, or computer."},
-          {n:2,text:"Go to the Hoptix link provided by your IT team and bookmark it."},
-          {n:3,text:"Enter your email and password — given to you by your Administrator."},
-          {n:4,text:"Click Sign In. You'll land on your Dashboard tailored to your role."},
-        ];
-        return(
-          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
-            {steps.map(function(s){return(
-              <div key={s.n} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(99,179,237,0.05)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:10,padding:"12px 14px"}}>
-                <div style={{width:28,height:28,borderRadius:"50%",background:"#63b3ed",color:"#080c14",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{s.n}</div>
-                <div style={{fontSize:14,color:"#cbd5e1",lineHeight:1.6,paddingTop:2}}>{s.text}</div>
-              </div>
-            );})}
-          </div>
-        );
-      }
-    },
-    // 4 — Create Ticket
-    {
-      chip:"End User",chipColor:"#68d391",
-      title:"Creating a New Ticket",
-      content:function(){
-        var steps=[
-          "From your Dashboard, tap the + New Ticket button.",
-          "Enter a clear title — e.g., \"Laptop won't connect to WiFi\".",
-          "Choose a Category: Hardware, Software, Network, Access, or Other.",
-          "Set a Priority (optional — your IT team can adjust this).",
-          "Write your description — what happened, when it started, what you've tried.",
-          "Tap Submit. You'll receive a Ticket ID — save it!",
-        ];
-        return(
-          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
-            {steps.map(function(s,i){return(
-              <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(104,211,145,0.05)",border:"1px solid rgba(104,211,145,0.12)",borderRadius:10,padding:"11px 14px"}}>
-                <div style={{width:26,height:26,borderRadius:"50%",background:"#68d391",color:"#080c14",fontWeight:800,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
-                <div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6,paddingTop:2}}>{s}</div>
-              </div>
-            );})}
-            <GuideNote icon="💡" text="Good title example: 'VPN not connecting after Windows update' is far better than 'IT problem'"/>
-          </div>
-        );
-      }
-    },
-    // 5 — Ticket Statuses
-    {
-      chip:"Ticket Lifecycle",chipColor:"#63b3ed",
-      title:"Ticket Statuses",
-      content:function(){
-        var statuses=[
-          {label:"Open",color:"#63b3ed",bg:"rgba(99,179,237,0.1)",desc:"Ticket received — waiting for an agent to pick it up."},
-          {label:"In Progress",color:"#f6c90e",bg:"rgba(246,201,14,0.1)",desc:"An agent is actively working on your issue."},
-          {label:"Pending",color:"#f6ad55",bg:"rgba(246,173,85,0.1)",desc:"Agent needs more info from you — reply quickly!"},
-          {label:"Escalated",color:"#fc8181",bg:"rgba(252,129,129,0.1)",desc:"Passed to a senior agent or specialist for complex issues."},
-          {label:"Closed",color:"#68d391",bg:"rgba(104,211,145,0.1)",desc:"Issue resolved and confirmed. Ticket is archived."},
-        ];
-        return(
-          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
-            {statuses.map(function(s){return(
-              <div key={s.label} style={{display:"flex",gap:12,alignItems:"center",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:10,padding:"10px 14px"}}>
-                <span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"3px 10px",borderRadius:20,background:s.bg,color:s.color,fontSize:12,fontWeight:700,minWidth:90,justifyContent:"center",flexShrink:0}}>● {s.label}</span>
-                <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.5}}>{s.desc}</div>
-              </div>
-            );})}
-            <GuideNote icon="⚡" text="Pending means YOU need to act! Check your notifications and reply to the agent as soon as possible."/>
-          </div>
-        );
-      }
-    },
-    // 6 — Priorities
-    {
-      chip:"Priority Levels",chipColor:"#f6ad55",
-      title:"Setting the Right Priority",
-      content:function(){
-        var pris=[
-          {label:"LOW",color:"#68d391",bg:"rgba(104,211,145,0.12)",time:"3 business days",eg:"Minor issues, no impact. E.g., software install."},
-          {label:"MEDIUM",color:"#63b3ed",bg:"rgba(99,179,237,0.12)",time:"1 business day",eg:"Affecting work but have a workaround. E.g., printer."},
-          {label:"HIGH",color:"#f6ad55",bg:"rgba(246,173,85,0.12)",time:"4 business hours",eg:"Blocking a team. E.g., shared server is down."},
-          {label:"CRITICAL",color:"#fc8181",bg:"rgba(252,129,129,0.12)",time:"1 business hour",eg:"Full outage or security incident. Also call IT Manager!"},
-        ];
-        return(
-          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
-            {pris.map(function(p){return(
-              <div key={p.label} style={{display:"flex",gap:12,alignItems:"center",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:10,padding:"10px 14px"}}>
-                <span style={{background:p.bg,color:p.color,fontSize:11,fontWeight:700,letterSpacing:"0.05em",padding:"4px 10px",borderRadius:6,minWidth:72,textAlign:"center",flexShrink:0}}>{p.label}</span>
-                <div>
-                  <div style={{fontWeight:600,fontSize:13,color:"#e2e8f0"}}>{p.time}</div>
-                  <div style={{fontSize:12,color:"#94a3b8",marginTop:1}}>{p.eg}</div>
-                </div>
-              </div>
-            );})}
-            <GuideNote icon="⚠️" text="Critical + no response in 30 min? Contact your IT Manager directly by phone and give them the Ticket ID."/>
-          </div>
-        );
-      }
-    },
-    // 7 — Technician
-    {
-      chip:"IT Technician",chipColor:"#4fd1c7",
-      title:"Managing Tickets",
-      content:function(){
-        var steps=[
-          "Check the Open Queue daily. Pick up unassigned tickets or self-assign ones.",
-          "Triage the ticket — verify the priority, refine the category, assign it.",
-          "Update the status to 'In Progress' once you start working on it.",
-          "Add replies or notes — Public replies go to the user; Internal Notes are staff-only.",
-          "Close the ticket once resolved and add a brief resolution summary.",
-        ];
-        return(
-          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
-            {steps.map(function(s,i){return(
-              <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(79,209,199,0.05)",border:"1px solid rgba(79,209,199,0.12)",borderRadius:10,padding:"11px 14px"}}>
-                <div style={{width:26,height:26,borderRadius:"50%",background:"#4fd1c7",color:"#080c14",fontWeight:800,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
-                <div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6,paddingTop:2}}>{s}</div>
-              </div>
-            );})}
-            <GuideNote icon="📝" text="Update every 24 hours. Even a brief note like 'still investigating' keeps users informed and prevents follow-ups."/>
-          </div>
-        );
-      }
-    },
-    // 8 — Manager
-    {
-      chip:"IT Manager",chipColor:"#f6c90e",
-      title:"Dashboard & Reports",
-      content:function(){
-        var items=[
-          {icon:"📊",title:"Live Dashboard",desc:"Open, in-progress, pending, and overdue SLAs — all at a glance."},
-          {icon:"📈",title:"Trend Charts",desc:"Ticket volume over time, peak categories, and resolution speed."},
-          {icon:"🤖",title:"AI Insights",desc:"Gemini AI analyzes patterns and surfaces actionable recommendations."},
-          {icon:"✅",title:"SLA Compliance",desc:"Track how many tickets are resolved within their agreed target times."},
-        ];
-        return(
-          <div style={{width:"100%"}}>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:14}}>
-              {items.map(function(it){return(
-                <div key={it.title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(246,201,14,0.15)",borderRadius:14,padding:16}}>
-                  <div style={{fontSize:22,marginBottom:8}}>{it.icon}</div>
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#e2e8f0"}}>{it.title}</div>
-                  <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>{it.desc}</div>
-                </div>
-              );})}
-            </div>
-            <GuideNote icon="📅" text="Daily + Weekly habit: Review the dashboard every morning. Share formal weekly reports with management every Monday."/>
-          </div>
-        );
-      }
-    },
-    // 9 — Escalation
-    {
-      chip:"Escalation",chipColor:"#fc8181",
-      title:"When to Escalate",
-      content:function(){
-        var reasons=[
-          {icon:"⏰",text:"Not resolved within the SLA response target for its priority level."},
-          {icon:"🔬",text:"The issue requires specialist skills or elevated system access."},
-          {icon:"🔁",text:"The ticket has been reopened more than once by the same user."},
-          {icon:"🚨",text:"A Critical or High ticket is unacknowledged for more than 30 minutes."},
-        ];
-        return(
-          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
-            {reasons.map(function(r,i){return(
-              <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(252,129,129,0.05)",border:"1px solid rgba(252,129,129,0.15)",borderRadius:10,padding:"12px 14px"}}>
-                <span style={{fontSize:18,flexShrink:0}}>{r.icon}</span>
-                <div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6}}>{r.text}</div>
-              </div>
-            );})}
-            <div style={{background:"rgba(252,129,129,0.07)",border:"1px solid rgba(252,129,129,0.2)",borderRadius:12,padding:"14px 16px",marginTop:4}}>
-              <div style={{fontWeight:700,color:"#fc8181",fontSize:13,marginBottom:4}}>How to escalate:</div>
-              <div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>Change the ticket status to <strong style={{color:"#e2e8f0"}}>Escalated</strong> in the system. The IT Manager is notified automatically and the requester is informed.</div>
-            </div>
-          </div>
-        );
-      }
-    },
-    // 10 — Admin
-    {
-      chip:"Administrator",chipColor:"#f6ad55",
-      title:"Platform Configuration",
-      content:function(){
-        var items=[
-          {icon:"👥",text:"User Management — Add new staff, assign roles, deactivate accounts when someone leaves."},
-          {icon:"🏷️",text:"Categories & Priorities — Keep them aligned with your organization. Review every 6 months."},
-          {icon:"⏱️",text:"SLA Thresholds — Set warning and breach alerts. Configure SLA pause rules for Pending tickets."},
-          {icon:"🔔",text:"Notification Rules — Who gets notified at each ticket event (new ticket, status change, SLA breach)."},
-          {icon:"🔍",text:"Audit Logs — Review access logs monthly for unusual activity or security anomalies."},
-        ];
-        return(
-          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
-            {items.map(function(it,i){return(
-              <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(246,173,85,0.05)",border:"1px solid rgba(246,173,85,0.12)",borderRadius:10,padding:"11px 14px"}}>
-                <span style={{fontSize:18,flexShrink:0}}>{it.icon}</span>
-                <div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6}}>{it.text}</div>
-              </div>
-            );})}
-            <GuideNote icon="⚠️" color="#f6ad55" text="Never delete accounts. Always deactivate instead — this preserves the full ticket history attached to that user."/>
-          </div>
-        );
-      }
-    },
-    // 11 — Tips
-    {
-      chip:"Best Practices",chipColor:"#68d391",
-      title:"Tips for Everyone",
-      content:function(){
-        var tips=[
-          {icon:"🚫",title:"No Duplicate Tickets",desc:"Don't submit the same issue twice. Check your existing tickets first."},
-          {icon:"🔐",title:"No Passwords in Tickets",desc:"Never enter passwords or sensitive data into any ticket field."},
-          {icon:"📬",title:"Check Notifications",desc:"Respond quickly when Pending — delays slow everything down."},
-          {icon:"🔖",title:"Save Your Ticket ID",desc:"Note your Ticket ID for fast follow-up with any staff member."},
-          {icon:"📚",title:"Check Knowledge Base",desc:"Before submitting — your issue might already have a solution."},
-          {icon:"🔄",title:"Reopen, Don't Resubmit",desc:"If a closed issue returns, reopen the original ticket instead."},
-        ];
-        return(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,width:"100%"}}>
-            {tips.map(function(t){return(
-              <div key={t.title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(104,211,145,0.12)",borderRadius:14,padding:16}}>
-                <div style={{fontSize:22,marginBottom:8}}>{t.icon}</div>
-                <div style={{fontWeight:700,fontSize:13,marginBottom:4,color:"#e2e8f0"}}>{t.title}</div>
-                <div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55}}>{t.desc}</div>
-              </div>
-            );})}
-          </div>
-        );
-      }
-    },
-    // 12 — Done
-    {
-      chip:"You're Ready!",chipColor:"#68d391",
-      title:"You now know Hoptix.",
-      content:function(){
-        return(
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,textAlign:"center"}}>
-            <div style={{fontSize:52}}>✅</div>
-            <p style={{color:"#94a3b8",fontSize:15,maxWidth:440,lineHeight:1.7}}>From submitting your first ticket to managing the full platform — you have everything you need to get started.</p>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-              {["Submit Tickets","Track Progress","Resolve Faster","Stay Informed"].map(function(t,i){
-                var cols=["#63b3ed","#4fd1c7","#68d391","#f6c90e"];
-                return(<span key={t} style={{fontSize:11,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.06)",color:cols[i],border:"1px solid rgba(255,255,255,0.1)"}}>{t}</span>);
-              })}
-            </div>
-            <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(99,179,237,0.15)",borderRadius:12,padding:"14px 20px",maxWidth:360}}>
-              <div style={{fontSize:13,color:"#94a3b8"}}>Questions? Contact your <strong style={{color:"#63b3ed"}}>IT Helpdesk Administrator</strong> or open a ticket in the system.</div>
-            </div>
-          </div>
-        );
-      }
-    },
+    {chip:"A.eye Technology",chipColor:"#f6c90e",title:"Welcome to Hoptix",sub:"Your IT Support Platform",content:function(){return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,textAlign:"center"}}><p style={{color:"#94a3b8",fontSize:15,maxWidth:480,lineHeight:1.7}}>Hoptix is your company's central hub for submitting, tracking, and resolving IT issues — fast, organized, and transparent.</p><div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",marginTop:4}}>{["5-min guide","All Roles Covered","Step-by-Step"].map(function(t){return(<span key={t} style={{fontSize:11,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,background:"rgba(99,179,237,0.1)",color:"#63b3ed",border:"1px solid rgba(99,179,237,0.25)"}}>{t}</span>);})}</div></div>);}},
+    {chip:"Overview",chipColor:"#63b3ed",title:"What is Hoptix?",content:function(){var items=[{icon:"🎫",title:"Ticket Tracking",desc:"Every IT request gets a unique ID and is tracked from start to finish."},{icon:"⏱️",title:"SLA Monitoring",desc:"Automatic timers ensure issues are resolved within agreed timeframes."},{icon:"📊",title:"Reports & Insights",desc:"Managers get real-time dashboards and AI-powered analytics."},{icon:"🔒",title:"Role-Based Access",desc:"Each user only sees what their role allows — secure and focused."}];return(<div style={{width:"100%"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12,marginBottom:14}}>{items.map(function(it){return(<div key={it.title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(99,179,237,0.12)",borderRadius:14,padding:16}}><div style={{fontSize:24,marginBottom:8}}>{it.icon}</div><div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#e2e8f0"}}>{it.title}</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>{it.desc}</div></div>);})}</div><GuideNote icon="💡" text="Hoptix works on any device — phone, tablet, or desktop. No app download needed. Just open it in your browser."/></div>);}},
+    {chip:"Roles",chipColor:"#4fd1c7",title:"Who Uses Hoptix?",content:function(){var roles=[{icon:"👤",title:"End User",color:"#63b3ed",desc:"Submits IT requests and tracks their own tickets. Most employees are End Users."},{icon:"🔧",title:"IT Technician",color:"#4fd1c7",desc:"Handles tickets — assigns priority, works on issues, updates statuses, and communicates with users."},{icon:"📋",title:"IT Manager",color:"#f6c90e",desc:"Oversees the team queue, handles escalations, reviews reports, and monitors SLA compliance."},{icon:"⚙️",title:"Administrator",color:"#f6ad55",desc:"Configures the entire platform — users, settings, categories, SLAs, and more."}];return(<div style={{display:"flex",flexDirection:"column",gap:10,width:"100%"}}>{roles.map(function(r){return(<div key={r.title} style={{display:"flex",gap:14,alignItems:"center",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:12,padding:"14px 16px"}}><span style={{fontSize:26,flexShrink:0}}>{r.icon}</span><div><div style={{fontWeight:700,fontSize:14,color:r.color,marginBottom:2}}>{r.title}</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.55}}>{r.desc}</div></div></div>);})}</div>);}},
+    {chip:"Getting Started",chipColor:"#63b3ed",title:"How to Log In",content:function(){var steps=[{n:1,text:"Open your browser on any device — phone, tablet, or computer."},{n:2,text:"Go to the Hoptix link provided by your IT team and bookmark it."},{n:3,text:"Enter your email and password — given to you by your Administrator."},{n:4,text:"Click Sign In. You'll land on your Dashboard tailored to your role."}];return(<div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>{steps.map(function(s){return(<div key={s.n} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(99,179,237,0.05)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:10,padding:"12px 14px"}}><div style={{width:28,height:28,borderRadius:"50%",background:"#63b3ed",color:"#080c14",fontWeight:800,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{s.n}</div><div style={{fontSize:14,color:"#cbd5e1",lineHeight:1.6,paddingTop:2}}>{s.text}</div></div>);})}</div>);}},
+    {chip:"End User",chipColor:"#68d391",title:"Creating a New Ticket",content:function(){var steps=["From your Dashboard, tap the + New Ticket button.","Enter a clear title — e.g., \"Laptop won't connect to WiFi\".","Choose a Category: Hardware, Software, Network, Access, or Other.","Set a Priority (optional — your IT team can adjust this).","Write your description — what happened, when it started, what you've tried.","Tap Submit. You'll receive a Ticket ID — save it!"];return(<div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>{steps.map(function(s,i){return(<div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(104,211,145,0.05)",border:"1px solid rgba(104,211,145,0.12)",borderRadius:10,padding:"11px 14px"}}><div style={{width:26,height:26,borderRadius:"50%",background:"#68d391",color:"#080c14",fontWeight:800,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div><div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6,paddingTop:2}}>{s}</div></div>);})}<GuideNote icon="💡" text="Good title example: 'VPN not connecting after Windows update' is far better than 'IT problem'"/></div>);}},
+    {chip:"Ticket Lifecycle",chipColor:"#63b3ed",title:"Ticket Statuses",content:function(){var statuses=[{label:"Open",color:"#63b3ed",bg:"rgba(99,179,237,0.1)",desc:"Ticket received — waiting for an agent to pick it up."},{label:"In Progress",color:"#f6c90e",bg:"rgba(246,201,14,0.1)",desc:"An agent is actively working on your issue."},{label:"Pending",color:"#f6ad55",bg:"rgba(246,173,85,0.1)",desc:"Agent needs more info from you — reply quickly!"},{label:"Escalated",color:"#fc8181",bg:"rgba(252,129,129,0.1)",desc:"Passed to a senior agent or specialist for complex issues."},{label:"Closed",color:"#68d391",bg:"rgba(104,211,145,0.1)",desc:"Issue resolved and confirmed. Ticket is archived."}];return(<div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>{statuses.map(function(s){return(<div key={s.label} style={{display:"flex",gap:12,alignItems:"center",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:10,padding:"10px 14px"}}><span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"3px 10px",borderRadius:20,background:s.bg,color:s.color,fontSize:12,fontWeight:700,minWidth:90,justifyContent:"center",flexShrink:0}}>● {s.label}</span><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.5}}>{s.desc}</div></div>);})}<GuideNote icon="⚡" text="Pending means YOU need to act! Check your notifications and reply to the agent as soon as possible."/></div>);}},
+    {chip:"Priority Levels",chipColor:"#f6ad55",title:"Setting the Right Priority",content:function(){var pris=[{label:"LOW",color:"#68d391",bg:"rgba(104,211,145,0.12)",time:"3 business days",eg:"Minor issues, no impact. E.g., software install."},{label:"MEDIUM",color:"#63b3ed",bg:"rgba(99,179,237,0.12)",time:"1 business day",eg:"Affecting work but have a workaround. E.g., printer."},{label:"HIGH",color:"#f6ad55",bg:"rgba(246,173,85,0.12)",time:"4 business hours",eg:"Blocking a team. E.g., shared server is down."},{label:"CRITICAL",color:"#fc8181",bg:"rgba(252,129,129,0.12)",time:"1 business hour",eg:"Full outage or security incident. Also call IT Manager!"}];return(<div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>{pris.map(function(p){return(<div key={p.label} style={{display:"flex",gap:12,alignItems:"center",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(99,179,237,0.1)",borderRadius:10,padding:"10px 14px"}}><span style={{background:p.bg,color:p.color,fontSize:11,fontWeight:700,letterSpacing:"0.05em",padding:"4px 10px",borderRadius:6,minWidth:72,textAlign:"center",flexShrink:0}}>{p.label}</span><div><div style={{fontWeight:600,fontSize:13,color:"#e2e8f0"}}>{p.time}</div><div style={{fontSize:12,color:"#94a3b8",marginTop:1}}>{p.eg}</div></div></div>);})}<GuideNote icon="⚠️" text="Critical + no response in 30 min? Contact your IT Manager directly by phone and give them the Ticket ID."/></div>);}},
+    {chip:"IT Technician",chipColor:"#4fd1c7",title:"Managing Tickets",content:function(){var steps=["Check the Open Queue daily. Pick up unassigned tickets or self-assign ones.","Triage the ticket — verify the priority, refine the category, assign it.","Update the status to 'In Progress' once you start working on it.","Add replies or notes — Public replies go to the user; Internal Notes are staff-only.","Close the ticket once resolved and add a brief resolution summary."];return(<div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>{steps.map(function(s,i){return(<div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(79,209,199,0.05)",border:"1px solid rgba(79,209,199,0.12)",borderRadius:10,padding:"11px 14px"}}><div style={{width:26,height:26,borderRadius:"50%",background:"#4fd1c7",color:"#080c14",fontWeight:800,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div><div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6,paddingTop:2}}>{s}</div></div>);})}<GuideNote icon="📝" text="Update every 24 hours. Even a brief note like 'still investigating' keeps users informed and prevents follow-ups."/></div>);}},
+    {chip:"IT Manager",chipColor:"#f6c90e",title:"Dashboard & Reports",content:function(){var items=[{icon:"📊",title:"Live Dashboard",desc:"Open, in-progress, pending, and overdue SLAs — all at a glance."},{icon:"📈",title:"Trend Charts",desc:"Ticket volume over time, peak categories, and resolution speed."},{icon:"🤖",title:"AI Insights",desc:"Gemini AI analyzes patterns and surfaces actionable recommendations."},{icon:"✅",title:"SLA Compliance",desc:"Track how many tickets are resolved within their agreed target times."}];return(<div style={{width:"100%"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:14}}>{items.map(function(it){return(<div key={it.title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(246,201,14,0.15)",borderRadius:14,padding:16}}><div style={{fontSize:22,marginBottom:8}}>{it.icon}</div><div style={{fontWeight:700,fontSize:14,marginBottom:4,color:"#e2e8f0"}}>{it.title}</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>{it.desc}</div></div>);})}</div><GuideNote icon="📅" text="Daily + Weekly habit: Review the dashboard every morning. Share formal weekly reports with management every Monday."/></div>);}},
+    {chip:"Escalation",chipColor:"#fc8181",title:"When to Escalate",content:function(){var reasons=[{icon:"⏰",text:"Not resolved within the SLA response target for its priority level."},{icon:"🔬",text:"The issue requires specialist skills or elevated system access."},{icon:"🔁",text:"The ticket has been reopened more than once by the same user."},{icon:"🚨",text:"A Critical or High ticket is unacknowledged for more than 30 minutes."}];return(<div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>{reasons.map(function(r,i){return(<div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(252,129,129,0.05)",border:"1px solid rgba(252,129,129,0.15)",borderRadius:10,padding:"12px 14px"}}><span style={{fontSize:18,flexShrink:0}}>{r.icon}</span><div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6}}>{r.text}</div></div>);})} <div style={{background:"rgba(252,129,129,0.07)",border:"1px solid rgba(252,129,129,0.2)",borderRadius:12,padding:"14px 16px",marginTop:4}}><div style={{fontWeight:700,color:"#fc8181",fontSize:13,marginBottom:4}}>How to escalate:</div><div style={{fontSize:13,color:"#94a3b8",lineHeight:1.6}}>Change the ticket status to <strong style={{color:"#e2e8f0"}}>Escalated</strong> in the system. The IT Manager is notified automatically and the requester is informed.</div></div></div>);}},
+    {chip:"Administrator",chipColor:"#f6ad55",title:"Platform Configuration",content:function(){var items=[{icon:"👥",text:"User Management — Add new staff, assign roles, deactivate accounts when someone leaves."},{icon:"🏷️",text:"Categories & Priorities — Keep them aligned with your organization. Review every 6 months."},{icon:"⏱️",text:"SLA Thresholds — Set warning and breach alerts. Configure SLA pause rules for Pending tickets."},{icon:"🔔",text:"Notification Rules — Who gets notified at each ticket event (new ticket, status change, SLA breach)."},{icon:"🔍",text:"Audit Logs — Review access logs monthly for unusual activity or security anomalies."}];return(<div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>{items.map(function(it,i){return(<div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",background:"rgba(246,173,85,0.05)",border:"1px solid rgba(246,173,85,0.12)",borderRadius:10,padding:"11px 14px"}}><span style={{fontSize:18,flexShrink:0}}>{it.icon}</span><div style={{fontSize:13,color:"#cbd5e1",lineHeight:1.6}}>{it.text}</div></div>);})}<GuideNote icon="⚠️" color="#f6ad55" text="Never delete accounts. Always deactivate instead — this preserves the full ticket history attached to that user."/></div>);}},
+    {chip:"Best Practices",chipColor:"#68d391",title:"Tips for Everyone",content:function(){var tips=[{icon:"🚫",title:"No Duplicate Tickets",desc:"Don't submit the same issue twice. Check your existing tickets first."},{icon:"🔐",title:"No Passwords in Tickets",desc:"Never enter passwords or sensitive data into any ticket field."},{icon:"📬",title:"Check Notifications",desc:"Respond quickly when Pending — delays slow everything down."},{icon:"🔖",title:"Save Your Ticket ID",desc:"Note your Ticket ID for fast follow-up with any staff member."},{icon:"📚",title:"Check Knowledge Base",desc:"Before submitting — your issue might already have a solution."},{icon:"🔄",title:"Reopen, Don't Resubmit",desc:"If a closed issue returns, reopen the original ticket instead."}];return(<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,width:"100%"}}>{tips.map(function(t){return(<div key={t.title} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(104,211,145,0.12)",borderRadius:14,padding:16}}><div style={{fontSize:22,marginBottom:8}}>{t.icon}</div><div style={{fontWeight:700,fontSize:13,marginBottom:4,color:"#e2e8f0"}}>{t.title}</div><div style={{fontSize:12,color:"#94a3b8",lineHeight:1.55}}>{t.desc}</div></div>);})}</div>);}},
+    {chip:"You're Ready!",chipColor:"#68d391",title:"You now know Hoptix.",content:function(){return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,textAlign:"center"}}><div style={{fontSize:52}}>✅</div><p style={{color:"#94a3b8",fontSize:15,maxWidth:440,lineHeight:1.7}}>From submitting your first ticket to managing the full platform — you have everything you need to get started.</p><div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>{["Submit Tickets","Track Progress","Resolve Faster","Stay Informed"].map(function(t,i){var cols=["#63b3ed","#4fd1c7","#68d391","#f6c90e"];return(<span key={t} style={{fontSize:11,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.06)",color:cols[i],border:"1px solid rgba(255,255,255,0.1)"}}>{t}</span>);})}</div><div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(99,179,237,0.15)",borderRadius:12,padding:"14px 20px",maxWidth:360}}><div style={{fontSize:13,color:"#94a3b8"}}>Questions? Contact your <strong style={{color:"#63b3ed"}}>IT Helpdesk Administrator</strong> or open a ticket in the system.</div></div></div>);}},
   ];
-
   var TOTAL=SLIDES.length;
   var s=SLIDES[slide];
-
-  function goTo(n){
-    if(n<0||n>=TOTAL)return;
-    setSlide(n);
-    setVisited(function(prev){return prev.includes(n)?prev:[...prev,n];});
-  }
-
+  function goTo(n){if(n<0||n>=TOTAL)return;setSlide(n);setVisited(function(prev){return prev.includes(n)?prev:[...prev,n];});}
   return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#041833)",display:"flex",flexDirection:"column",color:"#e2e8f0",fontFamily:"system-ui,sans-serif",position:"relative",overflow:"hidden"}}>
-      {/* grid bg */}
       <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(99,179,237,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(99,179,237,0.04) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none"}}/>
-
-      {/* Header */}
       <div style={{padding:"16px 20px 0",display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative",zIndex:2}}>
-        <div>
-          <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#63b3ed",marginBottom:2}}>📖 User Guide</div>
-          <div style={{fontSize:20,fontWeight:800,color:"#e2e8f0",letterSpacing:"-0.02em"}}>Hoptix</div>
-        </div>
+        <div><div style={{fontSize:11,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",color:"#63b3ed",marginBottom:2}}>📖 User Guide</div><div style={{fontSize:20,fontWeight:800,color:"#e2e8f0",letterSpacing:"-0.02em"}}>Hoptix</div></div>
         <div style={{fontSize:12,color:"#64748b",fontWeight:600}}>{slide+1} / {TOTAL}</div>
       </div>
-
-      {/* Slide Content */}
       <div style={{flex:1,overflowY:"auto",padding:"20px 20px 100px",position:"relative",zIndex:2,WebkitOverflowScrolling:"touch"}}>
-        {/* Chip */}
-        <div style={{marginBottom:10}}>
-          <span style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.06)",color:s.chipColor,border:"1px solid rgba(255,255,255,0.1)"}}>{s.chip}</span>
-        </div>
-        {/* Title */}
+        <div style={{marginBottom:10}}><span style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.06)",color:s.chipColor,border:"1px solid rgba(255,255,255,0.1)"}}>{s.chip}</span></div>
         <h2 style={{fontSize:"clamp(20px,5vw,30px)",fontWeight:800,lineHeight:1.1,letterSpacing:"-0.02em",marginBottom:6,color:"#f1f5f9"}}>{s.title}</h2>
         {s.sub&&<div style={{fontSize:13,color:"#64748b",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:16}}>{s.sub}</div>}
-        {/* Divider */}
         <div style={{width:50,height:3,borderRadius:2,background:"linear-gradient(90deg,#63b3ed,#4fd1c7)",marginBottom:20}}/>
-        {/* Content */}
         {s.content()}
       </div>
-
-      {/* Nav */}
       <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:10,background:"linear-gradient(0deg,rgba(2,14,31,0.98) 60%,transparent)",padding:"12px 20px 20px"}}>
-        {/* Dots */}
-        <div style={{display:"flex",gap:5,justifyContent:"center",marginBottom:10,flexWrap:"wrap"}}>
-          {SLIDES.map(function(_,i){
-            var isActive=i===slide;
-            var isVisited=visited.includes(i);
-            return(
-              <div key={i} onClick={function(){goTo(i);}} style={{height:6,borderRadius:4,cursor:"pointer",transition:"all 0.3s",width:isActive?20:6,background:isActive?"#63b3ed":isVisited?"rgba(99,179,237,0.5)":"rgba(99,179,237,0.2)"}}/>
-            );
-          })}
-        </div>
-        {/* Buttons */}
+        <div style={{display:"flex",gap:5,justifyContent:"center",marginBottom:10,flexWrap:"wrap"}}>{SLIDES.map(function(_,i){var isActive=i===slide;var isVisited=visited.includes(i);return(<div key={i} onClick={function(){goTo(i);}} style={{height:6,borderRadius:4,cursor:"pointer",transition:"all 0.3s",width:isActive?20:6,background:isActive?"#63b3ed":isVisited?"rgba(99,179,237,0.5)":"rgba(99,179,237,0.2)"}}/>);})}</div>
         <div style={{display:"flex",gap:12,justifyContent:"space-between"}}>
           <button onClick={function(){goTo(slide-1);}} disabled={slide===0} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(99,179,237,0.2)",color:"#e2e8f0",fontWeight:600,fontSize:14,padding:"10px 22px",borderRadius:40,cursor:slide===0?"default":"pointer",opacity:slide===0?0.3:1,transition:"all 0.2s"}}>← Back</button>
           <button onClick={function(){goTo(slide+1);}} disabled={slide===TOTAL-1} style={{background:slide===TOTAL-1?"rgba(104,211,145,0.2)":"#63b3ed",border:"none",color:slide===TOTAL-1?"#68d391":"#020e1f",fontWeight:700,fontSize:14,padding:"10px 24px",borderRadius:40,cursor:slide===TOTAL-1?"default":"pointer",opacity:slide===TOTAL-1?0.6:1,transition:"all 0.2s"}}>{slide===TOTAL-1?"✓ Done":"Next →"}</button>
@@ -658,6 +293,7 @@ function GuideNote({icon,text,color}){
     </div>
   );
 }
+
 var TC_EMOJIS=["😀","😂","😍","🥰","😎","🤔","😅","🙏","👍","👎","❤️","🔥","✅","⚠️","🎉","🚀","💡","📋","🎫","⏱️","🔧","💻","📧","📞","🤝","👀","💪","🙌","😢","😡","🤣","😴","🥳","🤯","😬","🫡","👏","💯","🆗","❌","⭐","🏆","📌","🔔","💬","📎","🎬","🔗","📊","🛠️","🔒"];
 
 function renderTcMessage(text){
@@ -906,18 +542,14 @@ function PageTeamChat(p){
     presenceChannelRef.current=ch;
     return function(){supabase.removeChannel(ch);};
   },[curUser.id]);
-
   useEffect(function(){
     var sub=supabase.channel("tc-dm-unread-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_chats"},function(payload){var m=payload.new;if(m.to_id!==curUser.id)return;setDmUnread(function(prev){var cur=Object.assign({},prev);cur[m.from_id]=(cur[m.from_id]||0)+1;return cur;});}).subscribe();
     return function(){supabase.removeChannel(sub);};
   },[curUser.id]);
-
   useEffect(function(){
     var sub=supabase.channel("tc-grp-unread-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats"},function(payload){var m=payload.new;if(m.user_id===curUser.id)return;setGroupUnread(function(prev){var cur=Object.assign({},prev);cur[m.group_id]=(cur[m.group_id]||0)+1;return cur;});}).subscribe();
     return function(){supabase.removeChannel(sub);};
   },[curUser.id]);
-
-  // DM state
   var[dmTarget,setDmTarget]=useState(null);
   var[dmMsgs,setDmMsgs]=useState([]);
   var[dmText,setDmText]=useState("");
@@ -925,17 +557,15 @@ function PageTeamChat(p){
   var[showUserList,setShowUserList]=useState(true);
   var[showDmEmoji,setShowDmEmoji]=useState(false);
   var dmChannelRef=useRef(null);
-
   function openDm(u){
-  setDmTarget(u);setShowUserList(false);
-  setDmUnread(function(prev){var n=Object.assign({},prev);delete n[u.id];return n;});
-  try{
-    var lastSeen={};var s=localStorage.getItem("hd_dmLastSeen_"+curUser.id);if(s)lastSeen=JSON.parse(s);
-    lastSeen[u.id]=new Date().toISOString();
-    localStorage.setItem("hd_dmLastSeen_"+curUser.id,JSON.stringify(lastSeen));
-  }catch(e){}
-}
-
+    setDmTarget(u);setShowUserList(false);
+    setDmUnread(function(prev){var n=Object.assign({},prev);delete n[u.id];return n;});
+    try{
+      var lastSeen={};var s=localStorage.getItem("hd_dmLastSeen_"+curUser.id);if(s)lastSeen=JSON.parse(s);
+      lastSeen[u.id]=new Date().toISOString();
+      localStorage.setItem("hd_dmLastSeen_"+curUser.id,JSON.stringify(lastSeen));
+    }catch(e){}
+  }
   useEffect(function(){
     if(!dmTarget){setDmMsgs([]);return;}
     dbGetDirectChats(curUser.id,dmTarget.id).then(function(data){setDmMsgs(data);});
@@ -945,7 +575,6 @@ function PageTeamChat(p){
     dmChannelRef.current=sub;
     return function(){supabase.removeChannel(sub);};
   },[dmTarget?.id]);
-
   async function sendDm(){
     var trimmed=dmText.trim();if(!trimmed||dmSending||!dmTarget)return;setDmSending(true);
     var msg={id:uid(),from_id:curUser.id,to_id:dmTarget.id,message:trimmed,created_at:new Date().toISOString()};
@@ -953,8 +582,6 @@ function PageTeamChat(p){
     await dbSaveDirectChat(msg);
     if(dmTarget.email){var dmConvKey="dm_email_"+[curUser.id,dmTarget.id].sort().join("_");var lastSent=null;try{lastSent=localStorage.getItem(dmConvKey);}catch(e){}var cooldownOk=!lastSent||(Date.now()-parseInt(lastSent))>3600000;if(cooldownOk){callSendEmail({to:dmTarget.email,subject:"💬 New Direct Message from "+curUser.name,body:curUser.name+" sent you a direct message on Hoptix.\n\nMessage:\n"+trimmed+"\n\nLog in to Hoptix to reply."});try{localStorage.setItem(dmConvKey,String(Date.now()));}catch(e){}}}
   }
-
-  // Group state
   var[groups,setGroups]=useState([]);
   var[selGroup,setSelGroup]=useState(null);
   var[groupMsgs,setGroupMsgs]=useState([]);
@@ -966,14 +593,10 @@ function PageTeamChat(p){
   var[newGroupMembers,setNewGroupMembers]=useState([]);
   var[showGrpEmoji,setShowGrpEmoji]=useState(false);
   var groupChannelRef=useRef(null);
-
   function openGroup(g){setSelGroup(g);setShowGroupList(false);setGroupUnread(function(prev){var n=Object.assign({},prev);delete n[g.id];return n;});}
-
   useEffect(function(){dbGetTeamGroups().then(async function(data){setGroups(data||[]);for(var i=0;i<(data||[]).length;i++){var g=data[i];if(g.createdBy===curUser.id&&!(g.memberIds||[]).includes(curUser.id)){var repaired=Object.assign({},g,{memberIds:[curUser.id].concat(g.memberIds||[])});await dbSaveTeamGroup(repaired);setGroups(function(prev){return prev.map(function(x){return x.id===repaired.id?repaired:x;});});}}});},[]);
-
   function isGroupMember(group){if(curUser.role==="admin")return true;if(group.createdBy===curUser.id)return true;return(group.memberIds||[]).includes(curUser.id);}
   var visibleGroups=groups.filter(function(g){return isGroupMember(g);});
-
   useEffect(function(){
     if(!selGroup){setGroupMsgs([]);return;}
     dbGetTeamChats(selGroup.id).then(function(data){setGroupMsgs(data);});
@@ -982,13 +605,9 @@ function PageTeamChat(p){
     groupChannelRef.current=sub;
     return function(){supabase.removeChannel(sub);};
   },[selGroup?.id]);
-
   async function sendGroupMsg(){var trimmed=groupText.trim();if(!trimmed||groupSending||!selGroup)return;setGroupSending(true);var msg={id:uid(),group_id:selGroup.id,user_id:curUser.id,message:trimmed,created_at:new Date().toISOString()};setGroupMsgs(function(prev){return prev.concat([msg]);});setGroupText("");setGroupSending(false);setShowGrpEmoji(false);await dbSaveTeamChat(msg);}
-
   async function createGroup(){if(!newGroupName.trim()||newGroupMembers.length===0)return;var allMembers=newGroupMembers.includes(curUser.id)?newGroupMembers:[curUser.id].concat(newGroupMembers);var g={id:uid(),name:newGroupName.trim(),type:"custom",roleFilter:null,memberIds:allMembers,createdBy:curUser.id,created_at:new Date().toISOString()};await dbSaveTeamGroup(g);setGroups(function(prev){return prev.concat([g]);});setNewGroupName("");setNewGroupMembers([]);setShowNewGroup(false);}
-
   async function deleteGroup(gid){await dbDeleteTeamGroup(gid);setGroups(function(prev){return prev.filter(function(g){return g.id!==gid;});});if(selGroup&&selGroup.id===gid)setSelGroup(null);}
-
   return<div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 120px)"}}>
     <div style={{display:"flex",gap:6,padding:"0 0 12px",flexShrink:0}}>
       <button onClick={function(){setMainTab("direct");}} style={{padding:"9px 20px",borderRadius:10,border:"none",background:mainTab==="direct"?"#6366f1":"#f1f5f9",color:mainTab==="direct"?"#fff":"#475569",fontSize:13,fontWeight:700,cursor:"pointer"}}>💬 Direct Messages</button>
@@ -1006,1406 +625,43 @@ function PageTeamChat(p){
       {mainTab==="groups"&&<>
         {(!isMobile||showGroupList)&&<div style={{width:isMobile?"100%":260,borderRight:isMobile?"none":"1px solid #e2e8f0",flexShrink:0,display:"flex",flexDirection:"column",height:"100%"}}>
           <TcGroupList visibleGroups={visibleGroups} selGroup={selGroup} groupUnread={groupUnread} isAdmin={isAdmin} onOpen={openGroup} onDelete={deleteGroup} onNew={function(){setShowNewGroup(true);}}/>
-        </div>}
-        {(!isMobile||!showGroupList)&&
-          <TcGroupChatArea curUser={curUser} users={users} selGroup={selGroup} groupMsgs={groupMsgs} groupText={groupText} setGroupText={setGroupText} groupSending={groupSending} onSend={sendGroupMsg} onBack={function(){setShowGroupList(true);}} isMobile={isMobile} showGrpEmoji={showGrpEmoji} setShowGrpEmoji={setShowGrpEmoji}/>
-        }
-      </>}
-    </div>
-    {showNewGroup&&<Modal title="➕ New Group" onClose={function(){setShowNewGroup(false);}}>
-      <FInput label="Group Name *" value={newGroupName} onChange={function(e){setNewGroupName(e.target.value);}} placeholder="e.g. Project Alpha"/>
-      <div style={{marginBottom:14}}>
-        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:8}}>Members (pick at least 1)</label>
-        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
-          {users.filter(function(u){return u.active&&u.id!==curUser.id;}).map(function(u){var checked=newGroupMembers.includes(u.id);return<label key={u.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:checked?"#eef2ff":"transparent",cursor:"pointer"}}><input type="checkbox" checked={checked} onChange={function(){setNewGroupMembers(function(prev){return checked?prev.filter(function(id){return id!==u.id;}):prev.concat([u.id]);});}} style={{accentColor:"#6366f1"}}/><div style={{position:"relative"}}><Avatar name={u.name} id={u.id} size={24}/><div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:onlineIds.includes(u.id)?"#10b981":"#cbd5e1",border:"1.5px solid #fff"}}/></div><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[u.role]?.label||u.role}</div></div></label>;})}
-        </div>
-        <div style={{fontSize:11,color:"#64748b",marginTop:6}}>{newGroupMembers.length} member{newGroupMembers.length!==1?"s":""} selected</div>
-      </div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setShowNewGroup(false);}}>Cancel</Btn><Btn onClick={createGroup}>Create Group</Btn></div>
-    </Modal>}
+
+</div>}
+
+{(!isMobile||!showGroupList)&&
+
+<TcGroupChatArea curUser={curUser} users={users} selGroup={selGroup} groupMsgs={groupMsgs} groupText={groupText} setGroupText={setGroupText} groupSending={groupSending} onSend={sendGroupMsg} onBack={function(){setShowGroupList(true);}} isMobile={isMobile} showGrpEmoji={showGrpEmoji} setShowGrpEmoji={setShowGrpEmoji}/>
+
+}
+
+</>}
+
+</div>
+
+{showNewGroup&&<Modal title="➕ New Group" onClose={function(){setShowNewGroup(false);}}>
+
+<FInput label="Group Name *" value={newGroupName} onChange={function(e){setNewGroupName(e.target.value);}} placeholder="e.g. Project Alpha"/>
+
+<div style={{marginBottom:14}}>
+
+<label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:8}}>Members (pick at least 1)</label>
+
+<div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
+
+{users.filter(function(u){return u.active&&u.id!==curUser.id;}).map(function(u){var checked=newGroupMembers.includes(u.id);return<label key={u.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:checked?"#eef2ff":"transparent",cursor:"pointer"}}><input type="checkbox" checked={checked} onChange={function(){setNewGroupMembers(function(prev){return checked?prev.filter(function(id){return id!==u.id;}):prev.concat([u.id]);});}} style={{accentColor:"#6366f1"}}/><div style={{position:"relative"}}><Avatar name={u.name} id={u.id} size={24}/><div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:onlineIds.includes(u.id)?"#10b981":"#cbd5e1",border:"1.5px solid #fff"}}/></div><div style={{flex:1}}><div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{u.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[u.role]?.label||u.role}</div></div></label>;})}
+
+</div>
+
+<div style={{fontSize:11,color:"#64748b",marginTop:6}}>{newGroupMembers.length} member{newGroupMembers.length!==1?"s":""} selected</div>
+
+</div>
+
+<div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setShowNewGroup(false);}}>Cancel</Btn><Btn onClick={createGroup}>Create Group</Btn></div>
+
+</Modal>}
   </div>;
 }
-// ── Knowledge Base ────────────────────────────────────────────────────────────
-function PageKnowledgeBase(p){
-  var tickets=p.tickets||[];var ticketTypes=p.ticketTypes||[];var users=p.users||[];var isMobile=p.isMobile;
-  var kbTickets=tickets.filter(function(t){return !t.deleted&&t.resolutionNote&&t.resolutionNote.trim();});
-  var[search,setSearch]=useState("");
-  var[filterType,setFilterType]=useState("");
-  var[expanded,setExpanded]=useState({});
-  var filtered=kbTickets.filter(function(t){
-    var q=search.toLowerCase();
-    var matchQ=!q||t.title.toLowerCase().includes(q)||t.resolutionNote.toLowerCase().includes(q)||t.description.toLowerCase().includes(q);
-    var matchType=!filterType||t.typeId===filterType;
-    return matchQ&&matchType;
-  });
-  function toggleExpand(id){setExpanded(function(prev){return Object.assign({},prev,{[id]:!prev[id]});});}
-  function fu(id){return users.find(function(u){return u.id===id;});}
-  var byType=ticketTypes.map(function(tt){return{id:tt.id,name:tt.name,color:tt.color,count:kbTickets.filter(function(t){return t.typeId===tt.id;}).length};}).filter(function(x){return x.count>0;}).sort(function(a,b){return b.count-a.count;});
-  return<div>
-    <div style={{background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"1px solid #bbf7d0",borderRadius:14,padding:"18px 20px",marginBottom:18,display:"flex",gap:14,alignItems:"center",flexWrap:"wrap"}}>
-      <span style={{fontSize:36}}>📚</span>
-      <div style={{flex:1}}>
-        <div style={{fontWeight:800,fontSize:16,color:"#166534",marginBottom:2}}>Team Knowledge Base</div>
-        <div style={{fontSize:12,color:"#16a34a",lineHeight:1.6}}>{kbTickets.length} resolved issue{kbTickets.length!==1?"s":""} documented · Built automatically from technician Resolution Notes</div>
-      </div>
-      <div style={{background:"#fff",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 16px",textAlign:"center",flexShrink:0}}>
-        <div style={{fontSize:24,fontWeight:800,color:"#10b981"}}>{kbTickets.length}</div>
-        <div style={{fontSize:10,color:"#16a34a",fontWeight:700,textTransform:"uppercase"}}>Articles</div>
-      </div>
-    </div>
-
-    {byType.length>0&&<div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}}>
-      <button onClick={function(){setFilterType("");}} style={{padding:"6px 14px",borderRadius:20,border:"1px solid "+(filterType===""?"#10b981":"#e2e8f0"),background:filterType===""?"#f0fdf4":"#fff",color:filterType===""?"#166534":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>All ({kbTickets.length})</button>
-      {byType.map(function(tt){return<button key={tt.id} onClick={function(){setFilterType(tt.id);}} style={{padding:"6px 14px",borderRadius:20,border:"1px solid "+(filterType===tt.id?tt.color||"#6366f1":"#e2e8f0"),background:filterType===tt.id?(tt.color||"#6366f1")+"11":"#fff",color:filterType===tt.id?(tt.color||"#6366f1"):"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>{tt.name} ({tt.count})</button>;})}
-    </div>}
-
-    <div style={{display:"flex",gap:8,marginBottom:16}}>
-      <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search issues, symptoms, keywords, or fixes…" style={{flex:1,padding:"10px 14px",border:"1px solid #e2e8f0",borderRadius:10,fontSize:13,outline:"none",background:"#f8fafc"}}/>
-      {search&&<button onClick={function(){setSearch("");}} style={{padding:"10px 14px",border:"1px solid #e2e8f0",borderRadius:10,background:"#f8fafc",fontSize:13,cursor:"pointer",color:"#64748b",fontWeight:700}}>✕</button>}
-    </div>
-
-    {filtered.length===0&&<Card><div style={{textAlign:"center",padding:48,color:"#94a3b8"}}><div style={{fontSize:40,marginBottom:10}}>📭</div><div style={{fontWeight:700,fontSize:14,marginBottom:6,color:"#475569"}}>{kbTickets.length===0?"No Knowledge Base articles yet":"No results found"}</div><div style={{fontSize:12,lineHeight:1.7}}>{kbTickets.length===0?"When IT staff close a ticket they fill in a Resolution Note.\nThose notes appear here automatically as searchable articles.":"Try different keywords or clear the filter."}</div></div></Card>}
-
-    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>{filtered.length} article{filtered.length!==1?"s":""} {search&&<span>matching "<strong style={{color:"#334155"}}>{search}</strong>"</span>}</div>
-
-    <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {filtered.map(function(t){
-        var tt=ticketTypes.find(function(x){return x.id===t.typeId;});
-        var asgn=fu(t.assignedTo);
-        var pri=PRI_META[t.priority]||PRI_META.medium;
-        var isOpen=expanded[t.id];
-        return<div key={t.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",borderLeft:"4px solid #10b981",boxShadow:"0 1px 4px rgba(0,0,0,.04)",overflow:"hidden"}}>
-          <div onClick={function(){toggleExpand(t.id);}} style={{padding:"14px 16px",cursor:"pointer",display:"flex",alignItems:"flex-start",gap:10}}>
-            <span style={{fontSize:18,flexShrink:0,marginTop:1}}>{isOpen?"📖":"📄"}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,color:"#1e293b",fontSize:14,marginBottom:6,lineHeight:1.4}}>{t.title}</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                {tt&&<Badge label={tt.name} color={tt.color||"#6366f1"}/>}
-                <Badge label={pri.label} color={pri.color} bg={pri.bg}/>
-                {asgn&&<span style={{fontSize:11,color:"#64748b",display:"flex",alignItems:"center",gap:4}}><Avatar name={asgn.name} id={asgn.id} size={14}/>{asgn.name}</span>}
-                <span style={{fontSize:10,color:"#94a3b8"}}>Closed {fdt(t.closedAt||t.updatedAt)}</span>
-              </div>
-            </div>
-            <span style={{color:"#94a3b8",fontSize:16,flexShrink:0,marginTop:2}}>{isOpen?"▲":"▼"}</span>
-          </div>
-          {isOpen&&<div style={{padding:"0 16px 16px",borderTop:"1px solid #f1f5f9"}}>
-            <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 14px",marginBottom:10,marginTop:12}}>
-              <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>🎫 Original Issue Reported</div>
-              <div style={{fontSize:13,color:"#475569",lineHeight:1.6}}>{t.description}</div>
-            </div>
-            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"12px 14px"}}>
-              <div style={{fontSize:10,fontWeight:700,color:"#166534",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>✅ Resolution</div>
-              <div style={{fontSize:13,color:"#14532d",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{t.resolutionNote}</div>
-            </div>
-          </div>}
-        </div>;
-      })}
-    </div>
-  </div>;
-}
-// ── Root App ──────────────────────────────────────────────────────────────────
-export default function App(){
-  var[users,setUsers]=useState([]);var[companies,setCompanies]=useState([]);var[clients,setClients]=useState([]);
-  var[tickets,setTicketsR]=useState([]);var[ticketTypes,setTTR]=useState([]);
-  var[statusSla,setStatusSlaR]=useState(DEFAULT_STATUS_SLA);var[schedules,setSchedulesR]=useState({});
-  var[logs,setLogsR]=useState([]);var[emailTemplates,setEmailTemplates]=useState([]);
-  var[allTimeSessions,setAllTimeSessions]=useState([]);
-  var[curUser,setCurUserR]=useState(function(){return loadState("hd_curUser",null);});
-  var[page,setPageR]=useState(function(){try{var raw=localStorage.getItem("hd_page");var s=raw?raw.replace(/^"|"$/g,""):null;var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","user_guide"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
-  var[selTicket,setSelTicket]=useState(null);var[toast,setToast]=useState(null);
-  var[breaches,setBreaches]=useState([]);var[inboxAlerts,setInboxAlerts]=useState([]);
-  var[showProfile,setShowProfile]=useState(false);var[loading,setLoading]=useState(true);
-  var[sidebarOpen,setSidebarOpen]=useState(false);
-  var[notifications,setNotifications]=useState([]);var[unreadChatCount,setUnreadChatCount]=useState(0);
-  var prevBreachIdsRef=useRef([]);
-  var isMobile=useIsMobile();
-  useEffect(function(){if(!loading&&curUser){var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];if(saved&&safe.includes(saved)&&saved!==page){setPageR(saved);}};},[loading,curUser?.id]);
-  useEffect(function(){async function loadAll(){     // ── Step 1: restore from cache instantly so screen shows in <100ms ──     try{       var cached=localStorage.getItem("hd_appCache");       if(cached){         var c=JSON.parse(cached);         if(c.users)setUsers(c.users);         if(c.companies)setCompanies(c.companies);         if(c.clients)setClients(c.clients);         if(c.ticketTypes)setTTR(c.ticketTypes);         if(c.tickets)setTicketsR(c.tickets);         if(c.logs)setLogsR(c.logs);         if(c.schedules)setSchedulesR(c.schedules);         if(c.emailTemplates)setEmailTemplates(c.emailTemplates);         if(c.allTimeSessions)setAllTimeSessions(c.allTimeSessions);         var savedPage=localStorage.getItem("hd_page");         var safePages=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];         if(savedPage&&safePages.includes(savedPage))setPageR(savedPage);         setLoading(false); // show app immediately from cache       }     }catch(e){}      // ── Step 2: fetch fresh data from Supabase in background ──     try{       // Load critical data first (users + tickets), show app if no cache yet       var[u,co,cl,tt]=await Promise.all([dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes()]);       setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);       setLoading(false); // show app even if tickets/logs still loading        // Load remaining data without blocking       var[tkt,lg,sch,et,ts]=await Promise.all([dbGetTickets(),dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates(),dbGetAllTimeSessions()]);       setTicketsR(tkt);setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);setAllTimeSessions(ts);        var savedPage2=localStorage.getItem("hd_page");       var safePages2=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];       if(savedPage2&&safePages2.includes(savedPage2))setPageR(savedPage2);        // ── Step 3: save fresh data to cache for next visit ──       try{         localStorage.setItem("hd_appCache",JSON.stringify({           users:u,companies:co,clients:cl,ticketTypes:tt,           tickets:tkt,logs:lg.slice(0,100),schedules:sch,           emailTemplates:et,allTimeSessions:ts.slice(0,500)         }));       }catch(e){}     }catch(e){console.error("loadAll failed",e);setLoading(false);}   }loadAll();},[]);
-  useEffect(function(){if(!curUser)return;dbGetNotifications(curUser.id).then(function(data){setNotifications(data);});var sub=supabase.channel("notifs-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"app_notifications",filter:"user_id=eq."+curUser.id},function(payload){setNotifications(function(prev){if(prev.find(function(n){return n.id===payload.new.id;}))return prev;return[payload.new].concat(prev);});}).subscribe();return function(){supabase.removeChannel(sub);};},[curUser?.id]);
-  var unreadCount=useMemo(function(){return notifications.filter(function(n){return !n.read;}).length;},[notifications]);
-  useEffect(function(){var parts=[];if(breaches.length>0)parts.push("\uD83D\uDEA8"+breaches.length);if(unreadCount>0)parts.push("\uD83D\uDD14"+unreadCount);if(unreadChatCount>0)parts.push("\uD83D\uDCAC"+unreadChatCount);document.title=parts.length>0?"("+parts.join(" | ")+") Hoptix":"Hoptix";},[unreadCount,breaches,unreadChatCount]);
-  var refreshTimeSessions=useCallback(async function(){var ts=await dbGetAllTimeSessions();setAllTimeSessions(ts);},[]);
-  useEffect(function(){var sub=supabase.channel('tickets-changes').on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(){dbGetTickets().then(function(t){setTicketsR(t);});}).on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){dbGetUsers().then(function(u){setUsers(u);});}).on('postgres_changes',{event:'*',schema:'public',table:'time_sessions'},function(){dbGetAllTimeSessions().then(function(ts){setAllTimeSessions(ts);});}).subscribe();return function(){supabase.removeChannel(sub);};},[]);
-  useEffect(function(){if(!curUser)return;var dmSub=supabase.channel("global-dm-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_chats"},function(payload){var m=payload.new;if(m.to_id===curUser.id){setPageR(function(curPage){if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});return curPage;});}}).subscribe();var groupSub=supabase.channel("global-group-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats"},function(payload){var m=payload.new;if(m.user_id===curUser.id)return;setPageR(function(curPage){if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});return curPage;});}).subscribe();return function(){supabase.removeChannel(dmSub);supabase.removeChannel(groupSub);};},[curUser?.id]);
-  async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
-  function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
-  function setPage(v){localStorage.setItem("hd_page",v);setPageR(v);setSidebarOpen(false);if(v==="team_chat")setUnreadChatCount(0);}
-  var addLog=useCallback(function(action,target,detail,uId){var entry={id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};setLogsR(function(p){return[entry].concat(p).slice(0,500);});dbAddLog(entry);},[curUser]);
-  var showToast=useCallback(function(msg,type){setToast({msg,type:type||"ok"});setTimeout(function(){setToast(null);},3500);},[]);
-  useEffect(function(){function check(){var newBreaches=tickets.filter(function(t){if(t.deleted||t.status==="Closed")return false;var s=getStatusSla(t,statusSla,schedules);return s&&s.breached;});setBreaches(newBreaches);if(curUser){newBreaches.forEach(function(t){if(!prevBreachIdsRef.current.includes(t.id)){var emails=getTicketEmails(t,users);var subj="🚨 SLA Breach — "+t.title;var body="A ticket has exceeded its SLA time limit.\n\nTicket: "+t.title+"\nStatus: "+t.status+"\nAssigned To: "+(users.find(function(u){return u.id===t.assignedTo;})?.name||"Unassigned")+"\n\nPlease attend to this ticket immediately.";notifyUsers(emails,subj,body);createNotificationsForTicket(t,users,"SLA breach on ticket: "+t.title,"sla",null);}});prevBreachIdsRef.current=newBreaches.map(function(t){return t.id;});}}check();var iv=setInterval(check,30000);return function(){clearInterval(iv);};},[tickets,statusSla,schedules,users,curUser]);
-  useEffect(function(){if(!curUser)return;async function fetchReplies(){try{var res=await fetch("/api/fetch-replies");if(!res.ok)return;var data=await res.json();if(!data.replies||!data.replies.length)return;var updated=tickets.slice();data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});setTickets(function(){return updated;});setInboxAlerts(function(prev){return prev.concat(data.replies);});showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");}catch(e){}}fetchReplies();var iv=setInterval(fetchReplies,60000);return function(){clearInterval(iv);};},[curUser]);
-  async function handleMarkNotificationsRead(){if(!curUser)return;await dbMarkNotificationsRead(curUser.id);setNotifications(function(prev){return prev.map(function(n){return Object.assign({},n,{read:true});});});}
-  var isAdmin=["admin","it_manager"].includes(curUser?.role);
-  var isTech=IT_ROLES.includes(curUser?.role);
-  var pendingUsers=useMemo(function(){return isAdmin?users.filter(function(u){return !u.active;}):[]},[users,isAdmin]);
-  var visible=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
-  var allNonDeleted=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
-  if(loading)return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#062d6b)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #0ea5e9",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"#7dd3fc",fontSize:14,fontWeight:600}}>Loading Hoptix…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
-  if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
-  var NAV=[{id:"dashboard",icon:"🏠",label:"Dashboard"},{id:"tickets",icon:"🎫",label:"Tickets"},{id:"new_ticket",icon:"➕",label:"New Ticket"},{id:"time_tracking",icon:"⏱️",label:"Time Tracking"},{id:"team_chat",icon:"💬",label:"Team Chat",chatBadge:true},{id:"user_guide",icon:"📖",label:"User Guide"},{id:"knowledge_base",icon:"📚",label:"Knowledge Base"},{id:"reports",icon:"📊",label:"Reports",admin:true},{id:"users",icon:"👥",label:"Users",admin:true},{id:"companies",icon:"🏢",label:"Companies",superAdmin:true},{id:"clients",icon:"🤝",label:"Clients",superAdmin:true},{id:"ticket_types",icon:"🏷️",label:"Ticket Types",superAdmin:true},{id:"activity_log",icon:"📋",label:"Activity Log",superAdmin:true},{id:"integrations",icon:"🔌",label:"Integrations",superAdmin:true}].filter(function(n){if(n.superAdmin)return curUser.role==="admin";if(n.admin)return isAdmin;return true;});
-  var bottomNav=NAV.slice(0,4);
-  var curNav=NAV.find(function(n){return n.id===page;})||{icon:"",label:"—"};
-  var sidebar=<div style={{width:220,background:"linear-gradient(180deg,#020e1f,#041833,#062d6b)",display:"flex",flexDirection:"column",flexShrink:0,height:"100%"}}>
-    <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(56,189,248,.15)"}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#fff 60%,#b3d9ff)",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:18,height:18,borderRadius:"50%",background:"linear-gradient(135deg,#0369a1,#0ea5e9)",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:7,height:7,borderRadius:"50%",background:"#020e1f"}}/></div></div><div><div style={{color:"#fff",fontWeight:800,fontSize:14}}>hoptix</div><div style={{color:"#38bdf8",fontSize:9}}>A.eye technology</div></div></div></div>
-    <div style={{padding:"8px",flex:1,overflowY:"auto"}}>{NAV.map(function(n){return<div key={n.id} className="nv" onClick={function(){setPage(n.id);}} style={{padding:"10px 12px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,marginBottom:2,background:page===n.id?"rgba(14,165,233,.25)":"transparent",color:page===n.id?"#fff":"#93c5fd",fontWeight:page===n.id?700:500,fontSize:12,borderLeft:page===n.id?"3px solid #0ea5e9":"3px solid transparent"}}><span style={{fontSize:15}}>{n.icon}</span>{n.label}{n.id==="tickets"&&breaches.length>0&&<span style={{marginLeft:"auto",background:"#ef4444",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10}}>{breaches.length}</span>}{n.id==="team_chat"&&unreadChatCount>0&&<span style={{marginLeft:"auto",background:"#6366f1",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10}}>{unreadChatCount>99?"99+":unreadChatCount}</span>}</div>;})}</div>
-    <div style={{padding:"12px 10px",borderTop:"1px solid rgba(56,189,248,.15)"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><Avatar name={curUser.name} id={curUser.id} size={30}/><div style={{flex:1,overflow:"hidden"}}><div style={{color:"#fff",fontSize:11,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{curUser.name}</div><div style={{color:"#7dd3fc",fontSize:10}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div></div><button onClick={function(){try{if(localStorage.getItem("hd_rememberMe")!=="true")localStorage.removeItem("hd_savedCreds");}catch(e){}setCurUser(null);setPageR("dashboard");saveState("hd_page","dashboard");setSelTicket(null);}} style={{width:"100%",padding:"7px",background:"rgba(239,68,68,.2)",color:"#fca5a5",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>🚪 Sign Out</button></div>
-  </div>;
-  return<ErrorBoundary>
-    <div style={{display:"flex",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:"#f8fafc",fontSize:13,overflow:"hidden"}}>
-      <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}button:active{opacity:.8}.nv:hover{background:rgba(14,165,233,.15)!important;color:#7dd3fc!important}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:767px){.hide-mobile{display:none!important}.desktop-only{display:none!important}}`}</style>
-      {!isMobile&&sidebar}
-      {isMobile&&sidebarOpen&&<div style={{position:"fixed",inset:0,zIndex:8888,display:"flex"}}><div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={function(){setSidebarOpen(false);}}/><div style={{position:"relative",zIndex:1,width:260,height:"100%"}}>{sidebar}</div></div>}
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
-        <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:isMobile?"10px 16px":"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:8}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            {isMobile&&<button onClick={function(){setSidebarOpen(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:2,color:"#334155",display:"flex",alignItems:"center"}}>☰</button>}
-            <div style={{fontWeight:700,fontSize:isMobile?13:14,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{curNav.icon} {curNav.label}</div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-            {pendingUsers.length>0&&isAdmin&&<div onClick={function(){setPage("users");}} style={{cursor:"pointer",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:20,padding:"4px 10px",color:"#92400e",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>⏳ {pendingUsers.length}</div>}
-            {breaches.length>0&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:20,padding:"4px 10px",color:"#dc2626",fontSize:10,fontWeight:700}}>⚠️ {breaches.length}</div>}
-            {inboxAlerts.length>0&&<div style={{cursor:"pointer",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:20,padding:"4px 10px",color:"#0369a1",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:4}} onClick={function(){setPage("tickets");}}>📬 {inboxAlerts.length}<button onClick={function(e){e.stopPropagation();setInboxAlerts([]);}} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:11,padding:0,lineHeight:1}}>✕</button></div>}
-            <NotificationBell notifications={notifications} onMarkRead={handleMarkNotificationsRead} onGoTicket={function(ticketId){setSelTicket(ticketId);}}/>
-            <button onClick={function(){setShowProfile(true);}} style={{display:"flex",alignItems:"center",gap:6,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"5px 10px 5px 5px",cursor:"pointer"}}><Avatar name={curUser.name} id={curUser.id} size={26}/>{!isMobile&&<div style={{textAlign:"left"}}><div style={{fontWeight:700,fontSize:11}}>{curUser.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div>}<span style={{fontSize:10,color:"#94a3b8"}}>▼</span></button>
-          </div>
-        </div>
-        {toast&&<div style={{position:"fixed",top:isMobile?70:20,right:12,left:isMobile?12:"auto",zIndex:10000,background:toast.type==="error"?"#ef4444":toast.type==="warn"?"#f59e0b":"#10b981",color:"#fff",padding:"10px 16px",borderRadius:10,fontWeight:600,fontSize:13,boxShadow:"0 4px 20px rgba(0,0,0,.2)",textAlign:"center"}}>{toast.msg}</div>}
-        <div style={{flex:1,overflowY:"auto",padding:isMobile?"12px":"24px",paddingBottom:isMobile?"80px":"24px",WebkitOverflowScrolling:"touch"}}>
-          {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
-          {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile}/>}
-          {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage} setSelTicket={setSelTicket} allTimeSessions={allTimeSessions}/>}
-          {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
-          {page==="team_chat"    &&<PageTeamChat    curUser={curUser} users={users} isAdmin={isAdmin} isMobile={isMobile}/>} {page==="user_guide"   &&<PageUserGuide  curUser={curUser}/>}           {page==="knowledge_base"&&<PageKnowledgeBase tickets={allNonDeleted} ticketTypes={ticketTypes} users={users} isMobile={isMobile}/>}
-          {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules} allTimeSessions={allTimeSessions}/>}
-          {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
-          {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast} dbSaveCompany={dbSaveCompany} dbDeleteCompany={dbDeleteCompany}/>}
-          {page==="clients"      &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast} dbSaveClient={dbSaveClient} dbDeleteClient={dbDeleteClient}/>}
-          {page==="ticket_types" &&<PageTicketTypes ticketTypes={ticketTypes} users={users} setTicketTypes={setTTR} statusSla={statusSla} setStatusSla={setStatusSlaR} addLog={addLog} showToast={showToast} dbSaveTicketType={dbSaveTicketType} dbDeleteTicketType={dbDeleteTicketType}/>}
-          {page==="activity_log" &&<PageActivityLog logs={logs} users={users} tickets={tickets} setTickets={setTickets} isAdmin={isAdmin} addLog={addLog} showToast={showToast}/>}
-          {page==="integrations" &&<PageIntegrations showToast={showToast} addLog={addLog} emailTemplates={emailTemplates} setEmailTemplates={setEmailTemplates} curUser={curUser} isAdmin={isAdmin}/>}
-        </div>
-        {isMobile&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #e2e8f0",display:"flex",zIndex:8000,boxShadow:"0 -2px 10px rgba(0,0,0,.08)"}}>
-          {bottomNav.map(function(n){var active=page===n.id;return<button key={n.id} onClick={function(){setPage(n.id);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative"}}><span style={{fontSize:20}}>{n.icon}</span>{n.id==="team_chat"&&unreadChatCount>0&&<span style={{position:"absolute",top:4,right:"calc(50% - 14px)",background:"#6366f1",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:9,fontWeight:800,lineHeight:"14px",minWidth:16,textAlign:"center"}}>{unreadChatCount>99?"99+":unreadChatCount}</span>}<span style={{fontSize:9,fontWeight:active?700:500,color:active?"#6366f1":"#94a3b8"}}>{n.label}</span>{active&&<div style={{width:4,height:4,borderRadius:"50%",background:"#6366f1"}}/>}</button>;})}
-          <button onClick={function(){setSidebarOpen(true);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:20}}>☰</span><span style={{fontSize:9,fontWeight:500,color:"#94a3b8"}}>More</span></button>
-        </div>}
-      </div>
-      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}} refreshTimeSessions={refreshTimeSessions} allTimeSessions={allTimeSessions}/>}
-      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} schedules={schedules} setSchedules={setSchedulesR} dbSaveSchedule={dbSaveSchedule} onClose={function(){setShowProfile(false);}}/>}
-    </div>
-  </ErrorBoundary>;
-}
-// ── Dashboard ─────────────────────────────────────────────────────────────────
-function PageDashboard(p){
-  var tickets=p.tickets;var allTickets=p.allTickets||p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var setPage=p.setPage;var setSelTicket=p.setSelTicket;var breaches=p.breaches||[];var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
-  var byStatus=ALL_STATUSES.map(function(s){return{name:s,value:tickets.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
-  var daily=Array.from({length:7},function(_,i){var d=new Date(Date.now()-(6-i)*86400000);return{lbl:d.toLocaleDateString("en",{weekday:"short"}),created:tickets.filter(function(t){return new Date(t.createdAt).toDateString()===d.toDateString();}).length,closed:tickets.filter(function(t){return t.closedAt&&new Date(t.closedAt).toDateString()===d.toDateString();}).length};});
-  var techs=users.filter(function(u){return["it_technician","it_manager"].includes(u.role);});
-  var byType=ticketTypes.map(function(tt,i){return{name:tt.name,value:tickets.filter(function(t){return t.typeId===tt.id;}).length,fill:PAL[i%PAL.length]};}).filter(function(x){return x.value>0;}).sort(function(a,b){return b.value-a.value;});
-  var totalLoggedMins=allTimeSessions.filter(function(s){return s.ended_at&&s.duration_minutes!=null&&s.duration_minutes>0&&s.duration_minutes<480;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
-  return<div>
-    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:16}}>
-      <Stat label="Total" value={tickets.length} icon="🎫" color="#6366f1" help="All active (non-deleted) tickets in the system."/>
-      <Stat label="Open" value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b" help="Submitted but not yet assigned or started."/>
-      <Stat label="In Progress" value={tickets.filter(function(t){return t.status==="In Progress";}).length} icon="⚙️" color="#6366f1" help="Currently being worked on by an assigned technician."/>
-      <Stat label="Pending" value={tickets.filter(function(t){return t.status==="Pending";}).length} icon="⏳" color="#0ea5e9" help="Awaiting response or action from the requester."/>
-      <Stat label="Escalated" value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed" help="Raised to senior staff."/>
-      <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981" help="Fully resolved and closed tickets."/>
-      <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Real work time logged by IT staff using the Start/Stop timer."/>
-    </div>
-    <div style={{background:breaches.length>0?"#fef2f2":"#f0fdf4",border:"2px solid "+(breaches.length>0?"#ef4444":"#bbf7d0"),borderRadius:12,padding:14,marginBottom:16}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:breaches.length>0?12:0}}>
-        <span style={{fontSize:22}}>{breaches.length>0?"🚨":"✅"}</span>
-        <div style={{flex:1}}><div style={{fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",fontSize:14}}>SLA Breach Alerts</div><div style={{fontSize:11,color:breaches.length>0?"#ef4444":"#16a34a",marginTop:2}}>{breaches.length===0?"All active tickets are within their SLA targets — great work!":breaches.length+" ticket"+(breaches.length!==1?"s are":" is")+" past the SLA threshold"}</div></div>
-        <div style={{textAlign:"center",background:breaches.length>0?"#fecaca":"#bbf7d0",borderRadius:10,padding:"6px 14px",flexShrink:0}}><div style={{fontSize:26,fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",lineHeight:1}}>{breaches.length}</div><div style={{fontSize:9,color:breaches.length>0?"#dc2626":"#166634",textTransform:"uppercase",fontWeight:700}}>Breached</div></div>
-      </div>
-      {breaches.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {breaches.slice(0,5).map(function(t){var pri=PRI_META[t.priority]||PRI_META.medium;var asgn=users.find(function(u){return u.id===t.assignedTo;});return<div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fecaca",gap:8}}>
-          <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/><Badge label={t.status} color={STATUS_META[t.status]?.color||"#6366f1"}/>{asgn&&<span style={{fontSize:10,color:"#64748b"}}>👤 {asgn.name}</span>}</div></div>
-          <Btn size="sm" variant="danger" onClick={function(){setSelTicket(t.id);}}>View →</Btn>
-        </div>;})}
-        {breaches.length>5&&<div style={{fontSize:11,color:"#ef4444",textAlign:"center",fontWeight:600,padding:"4px 0"}}>+{breaches.length-5} more — check the Tickets page</div>}
-      </div>}
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(280px,1fr))",gap:14,marginBottom:14}}>
-      <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{byStatus.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
-      <Card>{(function(){var trendData=[];for(var i=0;i<7;i++){var d=new Date(Date.now()-(6-i)*86400000);var obj={lbl:d.toLocaleDateString("en",{weekday:"short"})};for(var j=0;j<ticketTypes.length;j++){var tt=ticketTypes[j];obj[tt.name]=tickets.filter(function(t){return t.typeId===tt.id&&new Date(t.createdAt).toDateString()===d.toDateString();}).length;}trendData.push(obj);}return<div><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>7-Day Trend — Tickets by Type</div><ResponsiveContainer width="100%" height={180}><BarChart data={trendData} margin={{top:4,right:4,left:-16,bottom:0}}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="lbl" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}} allowDecimals={false}/><Tooltip/><Legend wrapperStyle={{fontSize:9}}/>{ticketTypes.map(function(tt,i){return<Bar key={tt.id} dataKey={tt.name} stackId="a" fill={tt.color||PAL[i%PAL.length]} radius={i===ticketTypes.length-1?[4,4,0,0]:[0,0,0,0]}/>;})}</BarChart></ResponsiveContainer></div>;})()}</Card>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
-      <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Technician Workload</div>{techs.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No technicians yet.</div>}{techs.map(function(t){var open=tickets.filter(function(tk){return tk.assignedTo===t.id&&tk.status!=="Closed";}).length;var total=tickets.filter(function(tk){return tk.assignedTo===t.id;}).length;var techMins=allTimeSessions.filter(function(s){return s.user_id===t.id&&s.ended_at&&s.duration_minutes!=null&&s.duration_minutes>0&&s.duration_minutes<480;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);return<div key={t.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar name={t.name} id={t.id} size={26}/><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600}}><span>{t.name}</span><span style={{color:"#6366f1"}}>{open}/{total} · <span style={{color:"#8b5cf6"}}>{fmtDuration(techMins)}</span></span></div><div style={{background:"#e2e8f0",borderRadius:4,height:5,marginTop:4}}><div style={{background:"#6366f1",height:5,borderRadius:4,width:(total?Math.min(100,Math.round(open/total*100)):0)+"%"}}/></div></div></div>;})}</Card>
-      <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Tickets by Type</div>{byType.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No tickets yet.</div>}{byType.slice(0,6).map(function(t,i){return<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #f1f5f9"}}><span style={{fontSize:12,color:"#475569"}}>{t.name}</span><Badge label={t.value} color={PAL[i%PAL.length]}/></div>;})}</Card>
-    </div>
-  </div>;
-}
-
-// ── New Ticket — stays on page after submit, clears form ──────────────────────
-function blankForm(ticketTypes,companies,curUser){
-  return{title:"",description:"",typeId:ticketTypes[0]?.id||"",companyId:curUser.companyId||companies[0]?.id||"",clientId:"",locationId:"",externalEmail:"",customTypeName:""};
-}
-function PageNewTicket(p){
-  var users=p.users;var companies=p.companies;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
-  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setPage=p.setPage;var setSelTicket=p.setSelTicket;
-  var[form,setForm]=useState(function(){return blankForm(ticketTypes,companies,curUser);});
-  var[startTime,setStartTime]=useState(Date.now());
-  var[preview,setPreview]=useState(null);
-  var[attachments,setAttachments]=useState([]);
-
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  var selType=ticketTypes.find(function(t){return t.id===form.typeId;});
-  var selClient=clients.find(function(c){return c.id===form.clientId;});var availLocs=selClient?selClient.locations:[];
-  var ACCEPTED=["image/jpeg","image/png","image/gif","image/webp","video/mp4","video/quicktime","video/webm"];
-  function processFiles(files){Array.from(files).forEach(function(file){if(!ACCEPTED.includes(file.type)){showToast("Unsupported: "+file.name,"error");return;}if(file.size>20*1024*1024){showToast(file.name+" > 20MB","error");return;}var r=new FileReader();r.onload=function(e){setAttachments(function(prev){if(prev.length>=10){showToast("Max 10 attachments","error");return prev;}return prev.concat([{id:uid(),name:file.name,type:file.type,size:file.size,dataUrl:e.target.result}]);});};r.readAsDataURL(file);});}
-  function removeAtt(id){setAttachments(function(prev){return prev.filter(function(a){return a.id!==id;});});}
-  function handlePreview(){
-    if(!form.title.trim()||!form.description.trim()){showToast("Fill in title and description","error");return;}
-    var assign=aiAssign(form.title,form.description,form.typeId,users,ticketTypes);
-    var tt=ticketTypes.find(function(t){return t.id===form.typeId;});
-    var now=new Date().toISOString();var sla=new Date(Date.now()+(tt?tt.slaHours:24)*3600000).toISOString();
-    var mins=Math.max(0.017,(Date.now()-startTime)/60000);
-    var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:new Date(startTime).toISOString(),slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],statusTimeLog:[{status:"Open",enteredAt:now,exitedAt:null,durationMins:null}],conversations:[],closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
-    setPreview({draft:draft,assign:assign});
-  }
-  function handleSubmit(){
-    setTickets(function(prev){return prev.concat([preview.draft]);});
-    addLog("TICKET_CREATED",preview.draft.id,"Ticket \""+preview.draft.title+"\" created.");
-    var assignedUser=users.find(function(u){return u.id===preview.draft.assignedTo;});
-    var tt2=ticketTypes.find(function(t){return t.id===preview.draft.typeId;});
-    // Notify all involved users
-    var emails=getTicketEmails(preview.draft,users);
-    var subjNew="🎫 New Ticket: "+preview.draft.title;
-    var bodyNew="A new support ticket has been submitted.\n\nTicket: "+preview.draft.title+"\nType: "+(tt2?tt2.name:"—")+"\nPriority: "+(PRI_META[preview.draft.priority]?.label||preview.draft.priority)+"\nSubmitted By: "+(users.find(function(u){return u.id===preview.draft.submittedBy;})?.name||"Unknown")+"\nAssigned To: "+(assignedUser?assignedUser.name:"Unassigned")+"\n\nDescription:\n"+preview.draft.description.slice(0,300)+(preview.draft.description.length>300?"…":"");
-    notifyUsers(emails,subjNew,bodyNew);
-    notifyAdmin("🎫 New Ticket Created — "+preview.draft.title,bodyNew);
-    createNotificationsForTicket(preview.draft,users,"New ticket submitted: "+preview.draft.title,"ticket",null);
-    // Open the new ticket detail immediately
-    var newId=preview.draft.id;
-    setPreview(null);
-    setForm(blankForm(ticketTypes,companies,curUser));
-    setAttachments([]);
-    setStartTime(Date.now());
-    showToast("✅ Ticket submitted!");
-    setSelTicket(newId);
-  }
-  return<div style={{maxWidth:640,margin:"0 auto"}}>
-    <Card>
-      <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:16}}>📋 Submit New Ticket</div>
-      {ticketTypes.length===0&&<div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⚠️ No ticket types configured yet.</div>}
-      <FInput label="Title *" value={form.title} onChange={function(e){fld("title",e.target.value);}} placeholder="Brief description"/>
-      {ticketTypes.length>0&&<FSelect label="Ticket Type *" value={form.typeId} onChange={function(e){fld("typeId",e.target.value);}} options={optTypes(ticketTypes)}/>}
-      {companies.length>0&&<FSelect label="Company *" value={form.companyId} onChange={function(e){fld("companyId",e.target.value);}} options={optCompanies(companies)}/>}
-      <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:14,marginBottom:14}}>
-        <div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:12}}>🤝 Client &amp; Location</div>
-        <FSelect label="Client" value={form.clientId} onChange={function(e){fld("clientId",e.target.value);fld("locationId","");}} options={optClients(clients)}/>
-        <FSelect label="Location" value={form.locationId} onChange={function(e){fld("locationId",e.target.value);}} options={optLocs(availLocs)} disabled={!form.clientId}/>
-      </div>
-      <FTextarea label="Description *" value={form.description} onChange={function(e){fld("description",e.target.value);}} placeholder="Detailed description..." rows={5}/>
-      <FInput label="External Email (optional)" value={form.externalEmail} onChange={function(e){fld("externalEmail",e.target.value);}} placeholder="external@client.com" type="email"/>
-      <div style={{marginBottom:14}}>
-        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>📎 Attachments</label>
-        <button type="button" onClick={function(){document.getElementById("tfi").click();}} style={{width:"100%",padding:"14px",border:"2px dashed #cbd5e1",borderRadius:10,background:"#f8fafc",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>📁 Tap to attach files</button>
-        <input id="tfi" type="file" multiple accept="image/*,video/*" style={{display:"none"}} onChange={function(e){processFiles(e.target.files);e.target.value="";}}/>
-        {attachments.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginTop:8}}>{attachments.map(function(a){return<div key={a.id} style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0"}}>{a.type.startsWith("image/")?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>:<div style={{height:70,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:24}}>🎬</span></div>}<button onClick={function(){removeAtt(a.id);}} style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,.55)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button></div>;})}</div>}
-      </div>
-      {selType&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:12,marginBottom:14,fontSize:12}}><div style={{fontWeight:700,color:"#0369a1",marginBottom:4}}>Auto-settings for "{selType.name}"</div><div style={{color:"#0c4a6e"}}>⚡ {PRI_META[selType.priority]?.label} · ⏱ {selType.slaHours}h SLA · 🤖 AI assign</div></div>}
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setPage("tickets");}}>Cancel</Btn><Btn onClick={handlePreview}>🔍 Preview &amp; Submit</Btn></div>
-    </Card>
-    {preview&&<Modal title="Confirm Submission" onClose={function(){setPreview(null);}}>
-      <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:12,marginBottom:14}}><div style={{fontWeight:700,color:"#166534",marginBottom:4}}>🤖 AI Assignment</div><div style={{fontSize:13,color:"#14532d"}}>{preview.assign.reason}</div></div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>{[["Title",preview.draft.title],["Priority",PRI_META[preview.draft.priority]?.label],["Assigned To",(users.find(function(u){return u.id===preview.draft.assignedTo;})||{name:"Unassigned"}).name],["Attachments",preview.draft.attachments.length+" files"]].map(function(pair){return<div key={pair[0]} style={{background:"#f8fafc",padding:10,borderRadius:8}}><div style={{color:"#64748b",fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{pair[0]}</div><div style={{fontWeight:600,color:"#1e293b",marginTop:2,fontSize:13}}>{pair[1]||"—"}</div></div>;})}</div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setPreview(null);}}>Edit</Btn><Btn variant="success" onClick={handleSubmit}>✅ Submit</Btn></div>
-    </Modal>}
-  </div>;
-}
-
-// ── Ticket Detail ─────────────────────────────────────────────────────────────
-function TicketDetail(p){
-  var ticket=p.ticket;var setTickets=p.setTickets;var users=p.users;var ticketTypes=p.ticketTypes;
-  var tickets=p.tickets||[];var liveTicket=tickets.find(function(t){return t.id===ticket.id;})||ticket;
-  var companies=p.companies;var clients=p.clients;var curUser=p.curUser;var isAdmin=p.isAdmin;var isTech=p.isTech;
-  var addLog=p.addLog;var showToast=p.showToast;var onClose=p.onClose;var statusSla=p.statusSla;var schedules=p.schedules||{};
-  var refreshTimeSessions=p.refreshTimeSessions||function(){};
-  var allTimeSessions=p.allTimeSessions||[];
-
-  var[tab,setTab]=useState("details");
-  var[status,setStatus]=useState(ticket.status);
-  var[asgn,setAsgn]=useState(ticket.assignedTo||"");
-  var[note,setNote]=useState("");
-  var[typeId,setTypeId]=useState(ticket.typeId||"");
-  var[showTimerBanner,setShowTimerBanner]=useState("");
-  var forceStopRef=useRef(null);
-
-  var shouldAutoStart=false;
-
-  function handleAutoStarted(){
-    setShowTimerBanner(true);
-    setTimeout(function(){setShowTimerBanner(false);},8000);
-  }
-
-  var[msgTo,setMsgTo]=useState("");var[msgCC,setMsgCC]=useState("");
-  var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);
-  var[msgBody,setMsgBody]=useState("");
-  var emailTemplates=p.emailTemplates||[];
-  var assignedUser=users.find(function(u){return u.id===ticket.assignedTo;});
-  function applyTemplate(tid){
-    var tmpl=emailTemplates.find(function(t){return t.id===tid;});if(!tmpl)return;
-    var cl2=clients.find(function(c){return c.id===ticket.clientId;});
-    var body=tmpl.body.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");
-    var subj=tmpl.subject.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");
-    setMsgSubj(subj);setMsgBody(body);
-    if(tmpl.defaultCC&&tmpl.defaultCC.trim())setMsgCC(tmpl.defaultCC.trim());
-  }
-  var[emailSending,setEmailSending]=useState(false);
-  function fu(id){return users.find(function(x){return x.id===id;});}
-  var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;});
-  var co=companies.find(function(c){return c.id===ticket.companyId;});
-  var client=clients.find(function(c){return c.id===ticket.clientId;});
-  var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
-  if(!ticket)return null;
-  var sSla=getStatusSla(ticket,statusSla,schedules);
-
-  var ticketSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
-  var hasLoggedTime=ticketSessions.length>0;
-  var totalLoggedMins=ticketSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
-
-  async function saveStatus(){
-    var statusChanged=status!==ticket.status;
-    var now=new Date().toISOString();
-
-    if(status==="Closed"&&!(ticket._resolutionNote&&ticket._resolutionNote.trim())){
-      showToast("A Resolution Note is required before closing this ticket.","error");return;
-    }
-
-    // Auto-stop timer if moving AWAY from In Progress (or closing)
-    var wasInProgress=ticket.status==="In Progress";
-    var movingAwayFromInProgress=statusChanged&&wasInProgress&&status!=="In Progress";
-    if(movingAwayFromInProgress&&forceStopRef.current){
-      await forceStopRef.current();
-      refreshTimeSessions();
-      setShowTimerBanner("stopped");
-      setTimeout(function(){setShowTimerBanner("");},8000);
-    }
-
-    // Auto-stop timer on close regardless of previous status
-    if(status==="Closed"&&!movingAwayFromInProgress&&forceStopRef.current){
-      await forceStopRef.current();
-      refreshTimeSessions();
-    }
-
-    // Auto-start timer if moving TO In Progress
-    var movingToInProgress=statusChanged&&status==="In Progress";
-    if(movingToInProgress){
-      var newSession={id:uid(),ticket_id:ticket.id,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:"Auto-started: status changed to In Progress",created_at:now};
-      await dbSaveTimeSession(newSession);
-      refreshTimeSessions();
-      setShowTimerBanner("started");
-      setTimeout(function(){setShowTimerBanner("");},8000);
-    }
-
-    var prevLog=ticket.statusTimeLog||[];
-    var newLog=prevLog.map(function(entry){
-      if(entry.exitedAt===null&&statusChanged){
-        var durMins=parseFloat(((new Date(now)-new Date(entry.enteredAt))/60000).toFixed(2));
-        return Object.assign({},entry,{exitedAt:now,durationMins:durMins});
-      }
-      return entry;
-    });
-    if(statusChanged){
-      newLog=newLog.concat([{status:status,enteredAt:now,exitedAt:null,durationMins:null}]);
-    }
-
-    var hist={status,assignedTo:asgn||null,timestamp:now,changedBy:curUser.id,note:note||(statusChanged?"Status changed to "+status:"Details updated")};
-    if(!statusChanged)hist._noSlaReset=true;
-
-    if(statusChanged&&prevLog.length>0){
-      var lastEntry=prevLog[prevLog.length-1];
-      if(lastEntry&&lastEntry.exitedAt===null){
-        hist.durationMins=parseFloat(((new Date(now)-new Date(lastEntry.enteredAt))/60000).toFixed(2));
-      }
-    }
-
-    var newTT=ticketTypes.find(function(t){return t.id===typeId;});var typeChanged=typeId&&typeId!==ticket.typeId;
-    var newSlaDeadline=typeChanged&&newTT?new Date(new Date(ticket.createdAt).getTime()+newTT.slaHours*3600000).toISOString():ticket.slaDeadline;
-    var newPriority=typeChanged&&newTT?newTT.priority:ticket.priority;
-    if(typeChanged)hist.note=(note||"")+(note?" | ":"")+"Type changed to: "+newTT.name;
-
-    var resNote=(status==="Closed"&&ticket._resolutionNote)?ticket._resolutionNote.trim():null;
-    setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;var newHist=statusChanged?(t.statusHistory||[]).concat([hist]):(t.statusHistory||[]).concat([Object.assign({},hist,{_noSlaReset:true})]);return Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:now,slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",closedAt:status==="Closed"&&!t.closedAt?now:t.closedAt,statusHistory:newHist,statusTimeLog:newLog,resolutionNote:resNote||t.resolutionNote,_resolutionNote:undefined});});});
-    if(resNote){addLog("TICKET_RESOLVED",ticket.id,"Resolution note saved for: \""+ticket.title+"\"");}
-
-    addLog("TICKET_STATUS",ticket.id,(statusChanged?"Status → "+status:"Details updated")+". Assigned: "+(fu(asgn)?.name||"nobody"));
-
-    if(statusChanged){
-      var assigneeName=fu(asgn)?.name||"Unassigned";
-      // Notify all involved users
-      var emails=getTicketEmails(ticket,users).filter(function(e){var me=users.find(function(u){return u.id===curUser.id;});return !me||e!==me.email;});
-      var subjStatus="🔄 Ticket Updated: "+ticket.title+" → "+status;
-      var bodyStatus="A ticket status has been changed.\n\nTicket: "+ticket.title+"\nNew Status: "+status+"\nAssigned To: "+assigneeName+"\nChanged By: "+curUser.name+"\n"+(note?"Note: "+note+"\n":"");
-      notifyUsers(emails,subjStatus,bodyStatus);
-      notifyAdmin("🔄 Ticket Status Updated — "+ticket.title,bodyStatus);
-      createNotificationsForTicket(ticket,users,"Status changed to "+status+": "+ticket.title,"status",curUser.id);
-      if(status==="Closed"){
-        var latestSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
-        if(latestSessions.length===0){
-          notifyAdmin("⚠️ Ticket Closed Without Timer — "+ticket.title,"A ticket was closed without any IT work time being logged.\n\nTicket: "+ticket.title+"\nClosed By: "+curUser.name+"\nAssigned To: "+assigneeName);
-        }
-      }
-    }
-    showToast("Ticket updated");setNote("");onClose();
-  }
-
-  async function sendEmail(){
-    if(!msgTo.trim()||!msgBody.trim()){showToast("Recipient and body required","error");return;}
-    setEmailSending(true);
-    var toList=msgTo.split(",").map(function(e){return e.trim();}).filter(Boolean);
-    var ccStr=msgCC.trim();
-    var msgId=uid();
-    var msg={id:msgId,from:curUser.id,fromEmail:curUser.email,to:[],toEmails:toList,cc:ccStr,subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false,status:"sending"};
-    setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{conversations:(t.conversations||[]).concat([msg])}):t;});});
-    var results=await Promise.all(toList.map(function(email){return callSendEmail({to:email,subject:msgSubj,body:msgBody,cc:ccStr});}));
-    var allOk=results.every(function(r){return r.success;});
-    var failMsg=!allOk?results.filter(function(r){return !r.success;}).map(function(r){return r.error;}).join(", "):"";
-    var finalConvs=(ticket.conversations||[]).concat([msg]).map(function(c){return c.id===msgId?Object.assign({},c,{status:allOk?"sent":"failed",failReason:failMsg}):c;});
-    setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;return Object.assign({},t,{conversations:finalConvs});});});
-    await dbSaveTicket(Object.assign({},ticket,{conversations:finalConvs}));
-    addLog("EMAIL_SENT",ticket.id,"Email to "+msgTo+(ccStr?" CC: "+ccStr:""));
-    // Notify involved users that email was sent
-    if(allOk){
-      var notifEmails=getTicketEmails(ticket,users).filter(function(e){return !toList.includes(e)&&e!==curUser.email;});
-      notifyUsers(notifEmails,"📧 Email Sent on Ticket: "+ticket.title,"An email was sent on ticket: "+ticket.title+"\n\nFrom: "+curUser.name+"\nTo: "+msgTo+"\nSubject: "+msgSubj);
-      createNotificationsForTicket(ticket,users,"Email sent by "+curUser.name+": "+msgSubj,"email",curUser.id);
-    }
-    showToast(allOk?"📧 Email sent!":"⚠️ Failed",allOk?"ok":"error");
-    setEmailSending(false);
-    if(allOk){setMsgTo("");setMsgCC("");setMsgBody("");}
-  }
-
-  var TABS=["details","status","timer","email","chat","history"].filter(function(t){if(t==="status"||t==="timer")return isTech;return true;});
-  var tabLabels={details:"📋",status:"🔄",timer:"⏱️",email:"📧",chat:"💬",history:"📜"};
-  var tabFullLabels={details:"Details",status:"Status",timer:"Timer",email:"Email",chat:"Chat",history:"History"};
-
-  return<Modal title={ticket.title} onClose={onClose} wide>
-    {showTimerBanner&&<div style={{background:"linear-gradient(135deg,#064e3b,#065f46)",borderRadius:10,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
-      <span style={{fontSize:18}}>⏱</span>
-      <div style={{flex:1}}><div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Timer {showTimerBanner==="started"?"started":"stopped"} automatically</div><div style={{fontSize:11,color:"#a7f3d0",marginTop:2}}>{showTimerBanner==="started"?"Status changed to In Progress — your work time is now being tracked.":"Status changed — your work time has been saved."}</div></div>
-      <button onClick={function(){setShowTimerBanner("");setTab("timer");}} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>View Timer</button>
-    </div>}
-    {ticket.status==="Closed"&&!hasLoggedTime&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
-      <span style={{fontSize:16}}>⚠️</span>
-      <div style={{flex:1}}><div style={{fontWeight:700,color:"#92400e",fontSize:13}}>No IT work time was recorded</div><div style={{fontSize:11,color:"#b45309",marginTop:2}}>This ticket was closed without ever being set to In Progress, or the timer was not running.</div></div>
-      <button onClick={function(){setTab("timer");}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>Add Manually</button>
-    </div>}
-    {liveTicket.hasUnreadReply&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
-      <span style={{fontSize:16}}>📬</span><div style={{flex:1}}><div style={{fontWeight:700,color:"#166534",fontSize:13}}>New reply received</div></div>
-      <button onClick={function(){setTab("email");setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});}} style={{padding:"6px 12px",background:"#10b981",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0}}>View</button>
-    </div>}
-    <div style={{display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
-      {TABS.map(function(t){return<button key={t} onClick={function(){if(t==="email"&&ticket.hasUnreadReply)setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});setTab(t);}} style={{background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0,position:"relative"}}>
-        {tabLabels[t]} {tabFullLabels[t]}{t==="email"&&ticket.hasUnreadReply&&<span style={{position:"absolute",top:-3,right:-3,background:"#10b981",color:"#fff",borderRadius:"50%",width:14,height:14,fontSize:8,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>!</span>}
-      </button>;})}
-    </div>
-    {tab==="details"&&<div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-        {[["Type",tt?.name||"—"],["Priority",<Badge key="p" label={PRI_META[ticket.priority]?.label||ticket.priority} color={PRI_META[ticket.priority]?.color||"#6366f1"}/>],["Status",<Badge key="s" label={ticket.status} color={STATUS_META[ticket.status]?.color||"#6366f1"}/>],["Company",co?.name||"—"],["Submitted By",fu(ticket.submittedBy)?.name||"—"],["Assigned To",fu(ticket.assignedTo)?.name||"Unassigned"],["Created",fdt(ticket.createdAt)],["SLA Deadline",fdt(ticket.slaDeadline)]].map(function(pair){return<div key={pair[0]} style={{background:"#f8fafc",padding:10,borderRadius:8}}><div style={{color:"#64748b",fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>{pair[0]}</div><div style={{fontWeight:600,color:"#1e293b",fontSize:12}}>{pair[1]}</div></div>;})}
-      </div>
-      <div style={{background:hasLoggedTime?"#f0fdf4":"#fffbeb",border:"1px solid "+(hasLoggedTime?"#bbf7d0":"#fde68a"),borderRadius:10,padding:10,marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
-        <span style={{fontSize:18}}>{hasLoggedTime?"🕐":"⚠️"}</span>
-        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:12,color:hasLoggedTime?"#166534":"#92400e"}}>IT Time Logged</div><div style={{fontSize:11,color:hasLoggedTime?"#16a34a":"#b45309",marginTop:1}}>{hasLoggedTime?fmtDuration(totalLoggedMins)+" logged across "+ticketSessions.length+" session"+(ticketSessions.length!==1?"s":""):"No time logged yet"}</div></div>
-        {isTech&&<button onClick={function(){setTab("timer");}} style={{padding:"5px 10px",background:hasLoggedTime?"#10b981":"#f59e0b",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>{hasLoggedTime?"View":"Add Time"}</button>}
-      </div>
-      {client&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12,marginBottom:12}}><div style={{fontWeight:700,color:"#0369a1",fontSize:12,marginBottom:8}}>🤝 {client.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {client.email} · 📞 {client.phone}</div>{loc&&<div style={{fontSize:11,color:"#64748b",marginTop:4}}>📍 {loc.name} — {loc.address}</div>}</div>}
-      <div style={{background:"#f8fafc",padding:12,borderRadius:8,fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap",color:"#334155",marginBottom:12}}>{ticket.description}</div>
-      {sSla&&<div style={{background:sSla.breached?"#fef2f2":"#f0fdf4",border:"1px solid "+(sSla.breached?"#fecaca":"#bbf7d0"),borderRadius:10,padding:12}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontWeight:700,color:sSla.breached?"#dc2626":"#166534",fontSize:12}}>⏱ Status SLA</div><Badge label={sSla.breached?"BREACHED":"✓ OK"} color={sSla.breached?"#ef4444":"#10b981"}/></div>
-        <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:8}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,fontSize:11}}><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Allowed</div><div style={{fontWeight:700}}>{sSla.hoursAllowed}h</div></div><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Spent</div><div style={{fontWeight:700}}>{sSla.hoursSpent}h</div></div><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Left</div><div style={{fontWeight:700,color:sSla.breached?"#ef4444":"#10b981"}}>{sSla.breached?"0h":sSla.remaining+"h"}</div></div></div>
-      </div>}
-      {ticket.statusTimeLog&&ticket.statusTimeLog.length>0&&<div style={{marginTop:12}}>
-        <div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>⏳ Time Per Status</div>
-        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          {ticket.statusTimeLog.map(function(entry,i){var sm=STATUS_META[entry.status]||STATUS_META.Open;var dur=entry.durationMins!=null?fmtDuration(entry.durationMins):(entry.exitedAt===null?"Ongoing…":"—");return<div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
-            <div style={{width:8,height:8,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
-            <span style={{fontSize:12,fontWeight:600,color:sm.color,minWidth:90}}>{entry.status}</span>
-            <span style={{fontSize:11,color:entry.exitedAt===null?"#6366f1":"#64748b",fontWeight:entry.exitedAt===null?700:400,flex:1}}>{dur}</span>
-            {entry.exitedAt===null&&<Badge label="Current" color="#6366f1"/>}
-          </div>;})}
-        </div>
-      </div>}
-      {ticket.resolutionNote&&<div style={{marginTop:12,background:"#f0fdf4",border:"2px solid #10b981",borderRadius:10,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:16}}>📝</span><div style={{fontWeight:700,color:"#166534",fontSize:13}}>Resolution Note</div><span style={{fontSize:10,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 8px",fontWeight:700}}>Knowledge Base</span></div><div style={{fontSize:13,color:"#14532d",lineHeight:1.7,whiteSpace:"pre-wrap",background:"#fff",borderRadius:8,padding:"10px 14px",border:"1px solid #bbf7d0"}}>{ticket.resolutionNote}</div><div style={{fontSize:10,color:"#16a34a",marginTop:6}}>💡 Saved to team knowledge base — reference this when the same issue arises.</div></div>}       {ticket.attachments&&ticket.attachments.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>📎 Attachments ({ticket.attachments.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>{ticket.attachments.map(function(a){var isImg=a.type.startsWith("image/");return<div key={a.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){var w=window.open();w.document.write(isImg?'<img src="'+a.dataUrl+'" style="max-width:100%;"/>':'<video src="'+a.dataUrl+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:80,objectFit:"cover",display:"block"}}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:28}}>▶️</span></div>}</div>;})}</div></div>}
-    </div>}
-    {tab==="status"&&isTech&&<div>
-      <FSelect label="Update Status" value={status} onChange={function(e){setStatus(e.target.value);}} options={OPT_STATUSES}/>
-      {status==="Closed"&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⚠️ Closing this ticket will automatically stop the timer if it is running.</div>}
-      <FSelect label="Assign To" value={asgn} onChange={function(e){setAsgn(e.target.value);}} options={optTechs(users)}/>
-      <FSelect label="Ticket Type" value={typeId} onChange={function(e){setTypeId(e.target.value);}} options={ticketTypes.map(function(t){return mkOpt(t.id,t.name+" — "+t.slaHours+"h SLA");})}/>
-      {typeId!==ticket.typeId&&<div style={{fontSize:11,color:"#f59e0b",marginBottom:14}}>⚠️ Changing type will update priority and SLA deadline.</div>}
-      <FTextarea label="Note" value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What was done or why?" rows={3}/>
-      {status==="Closed"&&<div style={{marginBottom:14}}>
-        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#166534",marginBottom:4}}>📝 Resolution Note <span style={{color:"#ef4444"}}>*</span> <span style={{fontWeight:400,color:"#94a3b8"}}>(required to close)</span></label>
-        <textarea value={ticket._resolutionNote||""} onChange={function(e){setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{_resolutionNote:e.target.value}):t;});});}} placeholder={"Describe the root cause and exact steps taken to fix this issue. This will be added to the team Knowledge Base.\n\nExample:\nRoot Cause: DNS server misconfiguration after router firmware update.\nFix: Reset DNS to 8.8.8.8 via Network Settings → Advanced → DNS. Restarted the network adapter."} rows={6} style={{width:"100%",padding:"10px 12px",border:"2px solid #10b981",borderRadius:8,fontSize:13,outline:"none",background:"#f0fdf4",resize:"vertical",boxSizing:"border-box",lineHeight:1.6}}/>
-        <div style={{fontSize:11,color:"#166534",marginTop:4}}>💡 Be specific — future IT staff will use this to resolve the same issue faster.</div>
-      </div>}
-      <Btn onClick={saveStatus} style={{width:"100%"}}>💾 Save Changes</Btn>
-    </div>}
-    {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions} autoStart={shouldAutoStart} onAutoStarted={handleAutoStarted} forceStopRef={forceStopRef}/>}
-    {tab==="email"&&<div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-        <div style={{fontWeight:700,color:"#1e293b"}}>📧 Send Email</div>
-        {emailTemplates.length>0&&<select onChange={function(e){if(e.target.value)applyTemplate(e.target.value);e.target.value="";}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc"}}><option value="">Use template…</option>{emailTemplates.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>}
-      </div>
-      <FInput label="To" value={msgTo} onChange={function(e){setMsgTo(e.target.value);}} placeholder="email@example.com"/>
-      <FInput label="CC (optional)" value={msgCC} onChange={function(e){setMsgCC(e.target.value);}} placeholder="cc@example.com"/>
-      <FInput label="Subject" value={msgSubj} onChange={function(e){setMsgSubj(e.target.value);}}/>
-      <FTextarea label="Message" value={msgBody} onChange={function(e){setMsgBody(e.target.value);}} rows={4} placeholder="Type your message…"/>
-      <button onClick={sendEmail} disabled={emailSending} style={{background:emailSending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,padding:"10px 18px",fontWeight:600,fontSize:14,cursor:emailSending?"not-allowed":"pointer",width:"100%",marginBottom:16}}>{emailSending?"⏳ Sending…":"📤 Send Email"}</button>
-      <div style={{fontWeight:700,color:"#1e293b",marginBottom:10}}>📬 Conversation Trail ({(liveTicket.conversations||[]).length})</div>
-      {(liveTicket.conversations||[]).length===0&&<div style={{color:"#94a3b8",fontSize:13}}>No messages yet.</div>}
-      {(liveTicket.conversations||[]).map(function(m){var isReply=m.isExternal||m.status==="received";return<div key={m.id} style={{background:isReply?"#f0fdf4":"#f8fafc",border:"1px solid "+(isReply?"#bbf7d0":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:10}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:4}}><div style={{fontWeight:700,fontSize:12,color:isReply?"#166534":"#1e293b"}}>{isReply?"📬 REPLY":"📧"} {isReply?(m.fromName||m.fromEmail):m.fromEmail}</div><div style={{display:"flex",gap:4,alignItems:"center"}}>{m.status==="sent"&&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}{m.status==="failed"&&<span style={{fontSize:10,color:"#ef4444"}}>❌</span>}<span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div></div>
-        <div style={{fontSize:11,color:"#64748b",marginBottom:2}}>Subj: {m.subject}</div>
-        {m.cc&&m.cc.trim()&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>CC: {m.cc}</div>}
-        <div style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>
-      </div>;})}
-    </div>}
-    {tab==="chat"&&<TicketChat ticketId={ticket.id} curUser={curUser} users={users} ticket={ticket}/>}
-    {tab==="history"&&<TicketHistory ticket={ticket} users={users} curUser={curUser}/>}
-  </Modal>;
-}
-
-// ── Time Tracking ─────────────────────────────────────────────────────────────
-function PageTimeTracking(p){
-  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
- var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[dateFrom,setDateFrom]=useState("");var[dateTo,setDateTo]=useState("");var[activeTab,setActiveTab]=useState(curUser.role==="end_user"?"create_time":"it_time");
-  var scope=useMemo(function(){var base=tickets.filter(function(t){return !t.deleted;});if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id||t.assignedTo===curUser.id;});if(filterUser)return base.filter(function(t){return t.assignedTo===filterUser||t.submittedBy===filterUser;});return base;},[tickets,curUser,isAdmin,filterUser]);
-  var filtered=useMemo(function(){var q=search.toLowerCase();return scope.filter(function(t){if(q&&!t.title.toLowerCase().includes(q)&&!t.id.includes(q))return false;if(dateFrom){var from=new Date(dateFrom);from.setHours(0,0,0,0);if(new Date(t.createdAt)<from)return false;}if(dateTo){var to=new Date(dateTo);to.setHours(23,59,59,999);if(new Date(t.createdAt)>to)return false;}return true;});},[scope,search,dateFrom,dateTo]);
-  function fu(id){return users.find(function(x){return x.id===id;});}
-  function ticketMins(ticketId){return allTimeSessions.filter(function(s){return s.ticket_id===ticketId&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
-  var totalITMins=filtered.reduce(function(a,t){return a+ticketMins(t.id);},0);
-  var totalCreateMins=filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);
-  var ticketsWithITTime=filtered.filter(function(t){return ticketMins(t.id)>0;}).length;
-  var avgCreateMins=filtered.length?totalCreateMins/filtered.length:0;
-  var selStyle={padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",boxSizing:"border-box"};
-  return<div>
-    <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking</div>
-    <div style={{display:"flex",gap:6,marginBottom:14}}>{(curUser.role==="end_user"?[{id:"create_time",label:"📝 My Ticket Creation Time"}]:[{id:"it_time",label:"🕐 IT Work Time"},{id:"create_time",label:"📝 Ticket Creation Time"}]).map(function(tab){return<button key={tab.id} onClick={function(){setActiveTab(tab.id);}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:activeTab===tab.id?"#6366f1":"#f1f5f9",color:activeTab===tab.id?"#fff":"#475569",fontSize:12,fontWeight:700,cursor:"pointer"}}>{tab.label}</button>;})}</div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-      {activeTab==="it_time"?<><Stat label="Total IT Hours" value={fmtDuration(totalITMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/><Stat label="Tickets Timed" value={ticketsWithITTime+"/"+filtered.length} icon="⏱" color="#0ea5e9"/></>:<><Stat label="Total Create Time" value={fmtMs(totalCreateMins)} icon="📝" color="#f59e0b" sub={filtered.length+" tickets"}/><Stat label="Avg Create Time" value={fmtMs(avgCreateMins)} icon="⏱" color="#0ea5e9"/></>}
-    </div>
-    <Card style={{marginBottom:14,padding:"12px 14px"}}>
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
-        <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets…" style={Object.assign({},selStyle,{width:"100%"})}/>
-        {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}>
-          <option value="">All Users</option>
-          <optgroup label="── IT Staff ──">{users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name} ({ROLE_META[u.role]?.label||u.role})</option>;})}</optgroup>
-          <optgroup label="── End Users ──">{users.filter(function(u){return !IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</optgroup>
-        </select>}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,alignItems:"center"}}>
-        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>From</label><input type="date" value={dateFrom} onChange={function(e){setDateFrom(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/></div>
-        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>To</label><input type="date" value={dateTo} onChange={function(e){setDateTo(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/></div>
-      </div>
-      {(dateFrom||dateTo)&&<button onClick={function(){setDateFrom("");setDateTo("");}} style={{marginTop:8,padding:"5px 12px",border:"1px solid #c7d2fe",borderRadius:6,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer"}}>✕ Clear dates</button>}
-    </Card>
-    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}{(dateFrom||dateTo)&&<span style={{color:"#6366f1",fontWeight:600}}> · Date filtered</span>}</div>
-    {activeTab==="it_time"&&<div>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#0369a1"}}>⏱ Hours shown are <strong>actual logged time</strong> from the Start/Stop timer inside each ticket.</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
-        {filtered.map(function(t){var asgn=fu(t.assignedTo);var sm=STATUS_META[t.status]||STATUS_META.Open;var mins=ticketMins(t.id);var sessions=allTimeSessions.filter(function(s){return s.ticket_id===t.id&&s.ended_at;});var cc=mins===0?"#94a3b8":mins<=60?"#10b981":mins<=240?"#f59e0b":"#ef4444";
-          return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Created: {fdt(t.createdAt)}</div></div><Badge label={t.status} color={sm.color} bg={sm.bg}/></div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>{asgn&&<Avatar name={asgn.name} id={asgn.id} size={18}/>}<span style={{fontSize:11,color:"#64748b"}}>{asgn?asgn.name:"Unassigned"}</span>{sessions.length>0&&<span style={{fontSize:10,color:"#94a3b8"}}>· {sessions.length} session{sessions.length!==1?"s":""}</span>}</div>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>{mins>0&&<div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,mins/240*100)+"%",background:cc,borderRadius:3}}/></div>}<span style={{fontSize:13,fontWeight:700,color:cc}}>{mins>0?fmtDuration(mins):"No time logged"}</span></div>
-            </div>
-          </div>;})}
-      </div>
-    </div>}
-    {activeTab==="create_time"&&<div>
-      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#92400e"}}>📝 This tracks how long each user took to <strong>fill in and submit</strong> the ticket form — from when they opened it to when they clicked Submit.</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
-        {filtered.map(function(t){var sub=fu(t.submittedBy);var sm=STATUS_META[t.status]||STATUS_META.Open;var cm=t.timeToCreateMins||0;var cc=cm<=2?"#10b981":cm<=10?"#f59e0b":"#ef4444";var pct=Math.min(100,cm/15*100);
-          return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Submitted: {fdt(t.submittedAt||t.createdAt)}</div></div><Badge label={t.status} color={sm.color} bg={sm.bg}/></div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>{sub&&<Avatar name={sub.name} id={sub.id} size={18}/>}<span style={{fontSize:11,color:"#64748b"}}>{sub?sub.name:"Unknown"}</span></div>
-              <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:cc,borderRadius:3}}/></div><span style={{fontSize:13,fontWeight:700,color:cc}}>{cm>0?fmtMs(cm):"—"}</span></div>
-            </div>
-          </div>;})}
-      </div>
-    </div>}
-  </div>;
-}
-
-// ── Tickets ───────────────────────────────────────────────────────────────────
-function PageTickets(p){
-  var tickets=p.tickets;var users=p.users;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
-  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setSelTicket=p.setSelTicket;var setPage=p.setPage;var isAdmin=p.isAdmin;var statusSla=p.statusSla;var schedules=p.schedules||{};var isMobile=p.isMobile;
-  var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");
-  var[fAssignee,setFAssignee]=useState(function(){return(p.curUser&&IT_ROLES.includes(p.curUser.role)&&p.curUser.role!=="admin"&&p.curUser.role!=="it_manager")?p.curUser.id:"";});
-  var techUsers=useMemo(function(){return users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});},[users]);
-  var STATUS_ORDER={"Open":0,"In Progress":1,"Pending":2,"Escalated":3,"Closed":4};
-  var filtered=tickets.filter(function(t){var q=search.toLowerCase();return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType)&&(!fAssignee||(fAssignee==="unassigned"?!t.assignedTo:t.assignedTo===fAssignee));}).sort(function(a,b){return(STATUS_ORDER[a.status]??99)-(STATUS_ORDER[b.status]??99);});
-  function delTicket(id){setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});});addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted");showToast("Ticket deleted");}
-  function fu(id){return users.find(function(x){return x.id===id;});}function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}function fcl(id){return clients.find(function(x){return x.id===id;});}
-  var selStyle={padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0};
-  return<div>
-    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}><input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none"}}/><Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn></div>
-    <div style={{display:"flex",gap:6,marginBottom:8,overflowX:"auto",paddingBottom:4,flexWrap:isMobile?"wrap":"nowrap"}}>
-      <select value={fStat} onChange={function(e){setFStat(e.target.value);}} style={selStyle}><option value="">All Status</option>{ALL_STATUSES.map(function(s){return<option key={s} value={s}>{s}</option>;})}</select>
-      <select value={fPri} onChange={function(e){setFPri(e.target.value);}} style={selStyle}><option value="">All Priority</option>{Object.keys(PRI_META).map(function(k){return<option key={k} value={k}>{PRI_META[k].label}</option>;})}</select>
-      <select value={fType} onChange={function(e){setFType(e.target.value);}} style={selStyle}><option value="">All Types</option>{ticketTypes.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>
-      <select value={fAssignee} onChange={function(e){setFAssignee(e.target.value);}} style={Object.assign({},selStyle,{background:fAssignee?"#eef2ff":"",color:fAssignee?"#4338ca":"",fontWeight:fAssignee?700:400})}><option value="">All Assignees</option><option value="unassigned">— Unassigned —</option>{techUsers.map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>
-      {fAssignee&&<button onClick={function(){setFAssignee("");}} style={{padding:"7px 10px",border:"1px solid #c7d2fe",borderRadius:8,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer",flexShrink:0}}>✕ Clear</button>}
-    </div>
-    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}{fAssignee&&fAssignee!=="unassigned"&&<span> assigned to <strong style={{color:"#6366f1"}}>{fu(fAssignee)?.name||"?"}</strong></span>}{fAssignee==="unassigned"&&<span> that are <strong style={{color:"#ef4444"}}>unassigned</strong></span>}</div>
-    {isMobile?(<div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found</div></Card>}
-      {filtered.map(function(t){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
-        return<div key={t.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:14,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}} onClick={function(){setSelTicket(t.id);}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}><div style={{flex:1}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,marginBottom:2}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ago(t.createdAt)}</div></div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>📬 New</span>}</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}><Badge label={t.status} color={sm.color} bg={sm.bg}/><Badge label={pri.label} color={pri.color} bg={pri.bg}/>{type&&<Badge label={type.name} color={type.color||"#94a3b8"}/>}</div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:11,color:"#64748b"}}>{asgn?<span>👤 {asgn.name}</span>:<span style={{color:"#ef4444"}}>Unassigned</span>}{client&&<span> · 🤝 {client.name}</span>}</div>{sSla&&<div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h"}</div>}</div>
-          {isAdmin&&<div style={{marginTop:8,display:"flex",justifyContent:"flex-end"}} onClick={function(e){e.stopPropagation();delTicket(t.id);}}><Btn size="sm" variant="danger">🗑 Delete</Btn></div>}
-        </div>;})}
-    </div>):(<div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}>
-        <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Assigned To","SLA",""].map(function(h){return<th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
-        <tbody>
-          {filtered.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found</td></tr>}
-          {filtered.map(function(t,i){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
-            return<tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
-              <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id.slice(-6)}</td>
-              <td style={{padding:"9px 12px",maxWidth:200}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>📬</span>}</td>
-              <td style={{padding:"9px 12px"}}><Badge label={type?.name||"—"} color={type?.color||"#94a3b8"}/></td>
-              <td style={{padding:"9px 12px"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/></td>
-              <td style={{padding:"9px 12px"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/></td>
-              <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{client?<span>🤝 {client.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
-              <td style={{padding:"9px 12px"}}>{asgn?<div style={{display:"flex",alignItems:"center",gap:5}}><Avatar name={asgn.name} id={asgn.id} size={20}/><span style={{fontSize:11}}>{asgn.name}</span></div>:<span style={{fontSize:11,color:"#ef4444"}}>Unassigned</span>}</td>
-              <td style={{padding:"9px 12px",minWidth:120}}>{sSla?<div><div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600,marginBottom:2}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h left"}</div><div style={{height:4,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div></div>:<span style={{fontSize:10,color:"#94a3b8"}}>—</span>}</td>
-              <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn>{isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}</div></td>
-            </tr>;})}
-        </tbody>
-      </table>
-    </div>)}
-  </div>;
-}// ── Reports ───────────────────────────────────────────────────────────────────
-function PageReports(p){
-  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};var allTimeSessions=p.allTimeSessions||[];
-
-  var MONTH_OPTS=useMemo(function(){var opts=[];var now=new Date();for(var i=0;i<13;i++){var d=new Date(now.getFullYear(),now.getMonth()-i,1);var val=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");var lbl=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});opts.push({value:val,label:lbl});}return opts;},[]);
-  var nowStr=(function(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
-  var[view,setView]=useState("summary");
-  var[range,setRange]=useState("month-"+nowStr);
-  var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
-  var selClientObj=clients.find(function(c){return c.id===fClient;});
-  var availLocations=selClientObj?selClientObj.locations:[];
-  function handleClientChange(v){setFClient(v);setFLocation("");}
-
-  var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return mon.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1])-1,1).toISOString();}if(range==="year")return new Date(now.getFullYear(),0,1).toISOString();return new Date(0).toISOString();},[range]);
-  var rangeEnd=useMemo(function(){var now=new Date();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var sun=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon+6,23,59,59,999);return sun.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1]),0,23,59,59,999).toISOString();}return null;},[range]);
-  var rangeLabel={day:"Today",week:"This Week",year:"This Year",all:"All Time"};
-  var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
-
-  var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;var d=new Date(t.createdAt);if(d<new Date(rangeStart))return false;if(rangeEnd&&d>new Date(rangeEnd))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,rangeEnd,fClient,fLocation]);
-  var allActive=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,fClient,fLocation]);
-
-  function loggedMins(ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
-  function userLoggedMins(userId,ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return s.user_id===userId&&ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
-
-  // ── Status time: based purely on statusTimeLog timestamps (status transitions), NOT the IT timer ──
-  // Each statusTimeLog entry records enteredAt and exitedAt — the actual clock time
-  // the ticket spent in that status. durationMins = (exitedAt - enteredAt) in minutes.
-  // For the currently-open status entry, we compute live from enteredAt to now.
-  var statusTimeSummary=useMemo(function(){
-    var totals={};var counts={};
-    ALL_STATUSES.forEach(function(s){totals[s]=0;counts[s]=0;});
-    active.forEach(function(t){
-      var schedule=schedules&&t.assignedTo?schedules[t.assignedTo]:null;
-      (t.statusTimeLog||[]).forEach(function(entry){
-        if(!entry.enteredAt)return;
-        var startMs=new Date(entry.enteredAt).getTime();
-        var endMs=entry.exitedAt?new Date(entry.exitedAt).getTime():Date.now();
-        var hrs=calcBusinessHoursElapsed(startMs,endMs,schedule);
-        var mins=hrs*60;
-        if(totals[entry.status]!==undefined){totals[entry.status]+=mins;counts[entry.status]+=1;}
-      });
-    });
-    var avgs={};
-    ALL_STATUSES.forEach(function(s){avgs[s]=counts[s]>0?totals[s]/counts[s]:0;});
-    return avgs;
-  },[active,schedules]);
-
-  // ── SLA Breach analysis — also uses statusTimeLog timestamps, not IT timer ──
-  var slaBreachAnalysis=useMemo(function(){
-    var cfg=statusSla||DEFAULT_STATUS_SLA;
-    var breachCount={};
-    var breachDuration={};
-    ALL_STATUSES.forEach(function(s){breachCount[s]=0;breachDuration[s]=0;});
-
-    active.forEach(function(t){
-      var schedule=schedules&&t.assignedTo?schedules[t.assignedTo]:null;
-      (t.statusTimeLog||[]).forEach(function(entry){
-        var allowed=cfg[entry.status];
-        if(allowed===null||allowed===undefined)return;
-        if(!entry.enteredAt)return;
-        var startMs=new Date(entry.enteredAt).getTime();
-        var endMs=entry.exitedAt?new Date(entry.exitedAt).getTime():Date.now();
-        var businessHrs=calcBusinessHoursElapsed(startMs,endMs,schedule);
-        var businessMins=businessHrs*60;
-        var allowedMins=allowed*60;
-        if(businessMins>allowedMins){
-          breachCount[entry.status]=(breachCount[entry.status]||0)+1;
-          breachDuration[entry.status]=(breachDuration[entry.status]||0)+(businessMins-allowedMins);
-        }
-      });
-    });
-
-    var totalBreachMins=Object.values(breachDuration).reduce(function(a,b){return a+b;},0);
-    var totalBreachCount=Object.values(breachCount).reduce(function(a,b){return a+b;},0);
-    var avgBreachMins=totalBreachCount>0?totalBreachMins/totalBreachCount:0;
-    return{breachCount:breachCount,breachDuration:breachDuration,totalBreachMins:totalBreachMins,avgBreachMins:avgBreachMins,totalBreachCount:totalBreachCount};
-  },[active,statusSla,schedules]);
-
-  var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine,statusSla,schedules),avgClose:calcAvgClose(res),loggedMins:loggedMins(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
-  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine,statusSla,schedules),avgClose:calcAvgClose(res),loggedMins:userLoggedMins(t.id,active)};});
-  var totalBreached=active.filter(function(t){return t.slaBreached;}).length;
-  var totalSlaRate=calcSlaRate(active,statusSla,schedules);var avgCloseAll=calcAvgClose(calcClosed(active));var totalLoggedMins=loggedMins(active);
-  var statusPieData=ALL_STATUSES.map(function(s){return{name:s,value:active.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
-  var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
-  var weeklyTrend=useMemo(function(){var now=new Date();var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return Array.from({length:8},function(_,i){var wStart=new Date(thisMon.getTime()-(7-i)*7*86400000);var wEnd=new Date(wStart.getTime()+7*86400000-1);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<=wEnd;});var lbl=wStart.toLocaleDateString("en-US",{month:"short",day:"numeric"});return{label:lbl,total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
-  var byClient=useMemo(function(){return clients.map(function(cl){var cTickets=allActive.filter(function(t){return t.clientId===cl.id;});if(cTickets.length===0)return null;var byLoc=(cl.locations||[]).map(function(loc){var lT=cTickets.filter(function(t){return t.locationId===loc.id;});var typeBreakdown=ticketTypes.map(function(tt){var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;}).filter(Boolean);return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(lT),slaRate:calcSlaRate(lT,statusSla,schedules),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};}).filter(function(l){return l.total>0;});var noLoc=cTickets.filter(function(t){return !t.locationId;});return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(cTickets),slaRate:calcSlaRate(cTickets,statusSla,schedules),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};}).filter(Boolean).sort(function(a,b){return b.total-a.total;});},[clients,allActive,ticketTypes,allTimeSessions]);
-
-  async function generateInsight(){
-    setAiLoading(true);setAiInsight("");
-    var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),statusTimeBreakdown:Object.keys(statusTimeSummary).filter(function(s){return statusTimeSummary[s]>0&&s!=="Closed";}).map(function(s){return s+": "+fmtDuration(statusTimeSummary[s])+" (actual elapsed time in status)";}),slaBreachAnalysis:{totalBreachInstances:slaBreachAnalysis.totalBreachCount,totalBreachTime:fmtDuration(slaBreachAnalysis.totalBreachMins),byStatus:ALL_STATUSES.filter(function(s){return slaBreachAnalysis.breachCount[s]>0;}).map(function(s){return s+" — "+slaBreachAnalysis.breachCount[s]+" breaches, "+fmtDuration(slaBreachAnalysis.breachDuration[s])+" over SLA";})},techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
-    try{
-      var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. ⏳ Status time bottlenecks — which status are tickets stuck in longest? (Note: these are real elapsed clock times from status transitions, not IT work time)\n3. 🚨 SLA breach analysis — which statuses breach most often and for how long?\n4. ⏱ IT hours analysis — are logged work hours proportionate to ticket volume?\n5. 💡 3 actionable recommendations\n\nBe concise. Use bullet points.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});
-      var data=await res.json();
-      setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");
-    }catch(e){setAiInsight("Error: "+e.message);}
-    setAiLoading(false);
-  }
-
-  // Removed "status_time" as a separate view — it's now part of summary
-  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"sla_breach",label:"🚨 SLA Breaches"},{id:"by_client",label:"🤝 By Client"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
-  var filterLabel="";if(fClient){filterLabel=selClientObj?.name||"Client";if(fLocation){var lObj=availLocations.find(function(l){return l.id===fLocation;});filterLabel+=" → "+(lObj?.name||"Location");}}
-
-  return<div>
-    <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>{VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}</div>
-
-    {/* Filters */}
-    <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
-      <span style={{fontSize:11,fontWeight:700,color:"#64748b",flexShrink:0}}>🔍 Filter:</span>
-      <select value={fClient} onChange={function(e){handleClientChange(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Clients</option>{clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}</select>
-      {fClient&&availLocations.length>0&&<select value={fLocation} onChange={function(e){setFLocation(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Locations</option>{availLocations.map(function(l){return<option key={l.id} value={l.id}>{l.name}</option>;})}</select>}
-      {filterLabel&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 10px"}}><span style={{fontSize:11,fontWeight:700,color:"#4338ca"}}>📍 {filterLabel}</span><button onClick={function(){setFClient("");setFLocation("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:13,padding:0,lineHeight:1}}>✕</button></div>}
-      <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{active.length} tickets · {fmtDuration(totalLoggedMins)} logged</div>
-    </div>
-
-    {/* Date range buttons */}
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
-      {["day","week","month","year","all"].map(function(r){
-        if(r==="month"){return<select key="month" value={range.startsWith("month-")?range:"month-"+nowStr} onChange={function(e){setRange(e.target.value);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range.startsWith("month-")?"#6366f1":"#e2e8f0"),background:range.startsWith("month-")?"#6366f1":"#fff",color:range.startsWith("month-")?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0,outline:"none"}}>{MONTH_OPTS.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select>;}
-        return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;
-      })}
-    </div>
-
-    {/* ── SUMMARY VIEW (includes Status Time) ── */}
-    {view==="summary"&&<div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"} help="SLA Rate = tickets resolved within their time target ÷ total tickets × 100. Green ≥90%, Yellow ≥75%, Red <75%."/>
-        <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9" help="Average hours from ticket creation to closure."/>
-        <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1" help="Number of tickets created within the selected time period."/>
-        <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual work time" help="Total real work time logged by IT staff using the Start/Stop timer."/>
-        <Stat label="Breach Instances" value={slaBreachAnalysis.totalBreachCount} icon="🚨" color="#ef4444" sub="status-level breaches" help="Total number of times a ticket exceeded its SLA time limit while in a given status."/>
-        <Stat label="Avg Breach Time" value={fmtDuration(slaBreachAnalysis.avgBreachMins)} icon="⏰" color="#dc2626" sub="avg per breach instance" help="Average time each breach instance exceeded its SLA threshold, based on assigned tech's schedule."/>
-      </div>
-
-      {/* Tickets by Status pie */}
-      <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
-
-      {/* ── STATUS TIME SECTION (now inside Summary) ── */}
-      <Card style={{marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:6}}>
-          <div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>⏳ Time Per Status</div>
-          <span style={{fontSize:10,color:"#64748b",fontStyle:"italic"}}>Average business hours per ticket in each status</span>
-        </div>
-        <div style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"6px 10px",marginBottom:14}}>
-          ℹ️ Average business hours each ticket spent in this status, based on assigned tech's schedule. Excludes off-hours and days off.
-        </div>
-        {ALL_STATUSES.filter(function(s){return s!=="Closed";}).map(function(s){
-          var sm=STATUS_META[s];
-          var mins=statusTimeSummary[s]||0;
-          var cfg=statusSla||DEFAULT_STATUS_SLA;
-          var allowed=cfg[s];
-          var allowedMins=allowed!=null?allowed*60:null;
-          var maxMins=Math.max.apply(null,ALL_STATUSES.filter(function(sx){return sx!=="Closed";}).map(function(sx){return statusTimeSummary[sx]||0;}));
-          var barPct=maxMins>0?Math.round(mins/maxMins*100):0;
-          var isOverSla=allowedMins!=null&&mins>allowedMins;
-          var bCount=slaBreachAnalysis.breachCount[s]||0;
-          var ticketsNow=active.filter(function(t){return t.status===s;}).length;
-          return<div key={s} style={{marginBottom:14,padding:"10px 12px",background:isOverSla?"#fef2f2":"#f8fafc",border:"1px solid "+(isOverSla?"#fecaca":"#e2e8f0"),borderRadius:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:6}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
-                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{s}</span>
-                <Badge label={ticketsNow+" now"} color={sm.color}/>
-                {bCount>0&&<Badge label={bCount+" breach"+(bCount!==1?"es":"")} color="#ef4444"/>}
-              </div>
-              <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                {allowedMins!=null&&<span style={{fontSize:10,color:"#94a3b8"}}>SLA: {fmtDuration(allowedMins)}</span>}
-                <span style={{fontSize:14,fontWeight:800,color:isOverSla?"#ef4444":sm.color}}>{mins>0?fmtDuration(mins):"—"}</span>
-              </div>
-            </div>
-            <div style={{height:7,background:"#e2e8f0",borderRadius:4,overflow:"hidden",marginBottom:isOverSla?6:0}}>
-              <div style={{height:"100%",width:barPct+"%",background:isOverSla?"#ef4444":sm.color,borderRadius:4,transition:"width .4s"}}/>
-            </div>
-            {isOverSla&&allowedMins!=null&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>⚠️ Average time exceeds SLA limit by {fmtDuration(mins-allowedMins)}</div>}
-          </div>;
-        })}
-        <div style={{marginTop:4,fontSize:10,color:"#94a3b8",textAlign:"right"}}>
-          {active.filter(function(t){return t.statusTimeLog&&t.statusTimeLog.length>0;}).length} of {active.length} tickets have status tracking data
-        </div>
-      </Card>
-
-      {/* AI Analysis */}
-      <Card style={{borderLeft:"4px solid #6366f1"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{filterLabel?"Filtered: "+filterLabel:"All clients & locations"} · Includes status time &amp; breach data</div></div>
-          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer",flexShrink:0}}>{aiLoading?"⏳ Analyzing…":"✨ Analyze Now"}</button>
-        </div>
-        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>🔍</div>Click "Analyze Now" for AI insights on status bottlenecks, breach patterns, and IT workload.</div>}
-        {aiLoading&&<div style={{textAlign:"center",padding:20,color:"#6366f1",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>⏳</div>Analyzing {active.length} tickets…</div>}
-        {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
-      </Card>
-    </div>}
-
-    {/* ── SLA BREACH VIEW ── */}
-    {view==="sla_breach"&&<div>
-      <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
-        <span style={{fontSize:24,flexShrink:0}}>🚨</span>
-        <div>
-          <div style={{fontWeight:700,fontSize:14,color:"#dc2626"}}>SLA Breach Report</div>
-          <div style={{fontSize:12,color:"#ef4444",marginTop:2}}>Tracks every instance a ticket exceeded its time limit in a given status, and how long it was over the SLA threshold. Times are based on actual status transition timestamps.</div>
-        </div>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-        <div style={{background:slaBreachAnalysis.totalBreachCount===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.totalBreachCount===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}>
-          <div style={{fontSize:32,fontWeight:800,color:slaBreachAnalysis.totalBreachCount===0?"#10b981":"#ef4444"}}>{slaBreachAnalysis.totalBreachCount}</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Total Breach Instances</div>
-          <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>across all statuses</div>
-        </div>
-        <div style={{background:slaBreachAnalysis.avgBreachMins===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.avgBreachMins===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}>
-          <div style={{fontSize:28,fontWeight:800,color:slaBreachAnalysis.avgBreachMins===0?"#10b981":"#dc2626"}}>{slaBreachAnalysis.avgBreachMins>0?fmtDuration(slaBreachAnalysis.avgBreachMins):"0"}</div>
-          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Avg Time Over SLA</div>
-          <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>per breach instance</div>
-        </div>
-      </div>
-
-      <Card style={{marginBottom:16}}>
-        <div style={{fontWeight:700,color:"#1e293b",marginBottom:14,fontSize:13}}>🚨 Breach Breakdown by Status</div>
-        {ALL_STATUSES.filter(function(s){return s!=="Closed";}).map(function(s){
-          var sm=STATUS_META[s];
-          var cfg=statusSla||DEFAULT_STATUS_SLA;
-          var allowed=cfg[s];
-          var bCount=slaBreachAnalysis.breachCount[s]||0;
-          var bMins=slaBreachAnalysis.breachDuration[s]||0;
-          var maxBCount=Math.max.apply(null,ALL_STATUSES.map(function(sx){return slaBreachAnalysis.breachCount[sx]||0;}));
-          var pct=maxBCount>0?Math.round(bCount/maxBCount*100):0;
-          var hasBreaches=bCount>0;
-          return<div key={s} style={{marginBottom:14,padding:"12px 14px",background:hasBreaches?"#fef2f2":"#f8fafc",border:"1px solid "+(hasBreaches?"#fecaca":"#e2e8f0"),borderRadius:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
-                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{s}</span>
-                {allowed!=null&&<span style={{fontSize:10,color:"#64748b",background:"#f1f5f9",borderRadius:4,padding:"2px 6px"}}>SLA: {allowed}h</span>}
-                {allowed===null&&<span style={{fontSize:10,color:"#94a3b8",fontStyle:"italic"}}>No SLA</span>}
-              </div>
-              <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                <div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:hasBreaches?"#ef4444":"#10b981"}}>{bCount}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Breaches</div></div>
-                <div style={{textAlign:"center"}}><div style={{fontSize:14,fontWeight:700,color:hasBreaches?"#dc2626":"#10b981"}}>{bMins>0?fmtDuration(bMins):"—"}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Over SLA</div></div>
-              </div>
-            </div>
-            {allowed!=null&&<div>
-              <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:4}}>
-                <div style={{height:"100%",width:pct+"%",background:hasBreaches?"#ef4444":sm.color,borderRadius:3}}/>
-              </div>
-              {hasBreaches&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>Avg excess per breach: {fmtDuration(bMins/bCount)}</div>}
-              {!hasBreaches&&<div style={{fontSize:10,color:"#10b981",marginTop:4}}>✅ No breaches recorded</div>}
-            </div>}
-          </div>;
-        })}
-      </Card>
-
-      <div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:10}}>🎫 Tickets with SLA Breaches</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {(function(){
-          var cfg=statusSla||DEFAULT_STATUS_SLA;
-          var breachedTickets=active.filter(function(t){
-            return (t.statusTimeLog||[]).some(function(entry){
-              var allowed=cfg[entry.status];
-              if(allowed===null||allowed===undefined)return false;
-              var allowedMins=allowed*60;
-              var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-              return durMins!=null&&durMins>allowedMins;
-            });
-          });
-          if(breachedTickets.length===0){
-            return<Card><div style={{textAlign:"center",padding:32,color:"#10b981"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontWeight:700,fontSize:14}}>No SLA breaches found</div><div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>All tickets in this period are within their SLA limits.</div></div></Card>;
-          }
-          return breachedTickets.map(function(t){
-            var sm=STATUS_META[t.status]||STATUS_META.Open;
-            var asgn=users.find(function(u){return u.id===t.assignedTo;});
-            var cfg2=statusSla||DEFAULT_STATUS_SLA;
-            var breachedEntries=(t.statusTimeLog||[]).filter(function(entry){
-              var allowed=cfg2[entry.status];
-              if(allowed===null||allowed===undefined)return false;
-              var allowedMins=allowed*60;
-              var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-              return durMins!=null&&durMins>allowedMins;
-            });
-            var totalExcess=breachedEntries.reduce(function(sum,entry){
-              var allowed=cfg2[entry.status];
-              var allowedMins=allowed*60;
-              var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-              return sum+(durMins-allowedMins);
-            },0);
-            return<Card key={t.id} style={{padding:14,borderLeft:"3px solid #ef4444"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
-                <div style={{flex:1,overflow:"hidden"}}>
-                  <div style={{fontWeight:700,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-                  <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
-                    <Badge label={t.status} color={sm.color} bg={sm.bg}/>
-                    {asgn&&<span style={{fontSize:11,color:"#64748b"}}>👤 {asgn.name}</span>}
-                    <span style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>🚨 {breachedEntries.length} breach{breachedEntries.length!==1?"es":""} · +{fmtDuration(totalExcess)} over SLA</span>
-                  </div>
-                </div>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                {breachedEntries.map(function(entry,i){
-                  var esm=STATUS_META[entry.status]||STATUS_META.Open;
-                  var allowed=cfg2[entry.status];
-                  var allowedMins=allowed*60;
-                  var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-                  var excess=durMins-allowedMins;
-                  return<div key={i} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"8px 12px"}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <div style={{width:8,height:8,borderRadius:"50%",background:esm.color,flexShrink:0}}/>
-                        <span style={{fontSize:12,fontWeight:700,color:esm.color}}>{entry.status}</span>
-                      </div>
-                      <div style={{display:"flex",gap:8,fontSize:11,flexWrap:"wrap"}}>
-                        <span style={{color:"#64748b"}}>Time: <strong>{fmtDuration(durMins)}</strong></span>
-                        <span style={{color:"#64748b"}}>Limit: <strong>{fmtDuration(allowedMins)}</strong></span>
-                        <span style={{color:"#ef4444",fontWeight:700}}>+{fmtDuration(excess)} over</span>
-                        {entry.exitedAt===null&&<Badge label="Active now" color="#ef4444"/>}
-                      </div>
-                    </div>
-                  </div>;
-                })}
-              </div>
-            </Card>;
-          });
-        })()}
-      </div>
-    </div>}
-
-    {/* ── BY CLIENT VIEW ── */}
-    {view==="by_client"&&<div>
-      {byClient.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>🤝</div>No client data yet.</div></Card>}
-      {byClient.map(function(cl){return<Card key={cl.id} style={{marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div style={{display:"flex",gap:10,alignItems:"center"}}><div style={{width:40,height:40,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div><div style={{fontWeight:800,color:"#1e293b",fontSize:14}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>{cl.email}</div></div></div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <div style={{textAlign:"center",background:"#f8fafc",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#6366f1"}}>{cl.total}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Tickets</div></div>
-            <div style={{textAlign:"center",background:"#fef3c7",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#f59e0b"}}>{cl.open}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Open</div></div>
-            <div style={{textAlign:"center",background:"#eef2ff",borderRadius:8,padding:"6px 12px",minWidth:70}}><div style={{fontSize:15,fontWeight:800,color:"#6366f1"}}>{fmtDuration(cl.loggedMins)}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>IT Time</div></div>
-            <div style={{textAlign:"center",background:cl.slaRate>=90?"#f0fdf4":cl.slaRate>=75?"#fffbeb":"#fef2f2",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:slaColor(cl.slaRate)}}>{cl.slaRate}%</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>SLA</div></div>
-          </div>
-        </div>
-        {cl.byLoc.length>0&&<div>
-          <div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8,letterSpacing:0.5}}>📍 Locations</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {cl.byLoc.map(function(loc){var worstColor=loc.slaRate<75?"#fef2f2":loc.slaRate<90?"#fffbeb":"#f8fafc";return<div key={loc.id} style={{background:worstColor,border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:6}}>
-                <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div>{loc.address&&<div style={{fontSize:10,color:"#64748b"}}>{loc.address}</div>}</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge label={loc.total+" tickets"} color="#6366f1"/><Badge label={loc.open+" open"} color={loc.open>0?"#f59e0b":"#10b981"}/><Badge label={fmtDuration(loc.loggedMins)+" IT"} color="#8b5cf6"/><Badge label={loc.slaRate+"% SLA"} color={slaColor(loc.slaRate)}/>{loc.breached>0&&<Badge label={loc.breached+" breached"} color="#ef4444"/>}</div>
-              </div>
-              {loc.typeBreakdown.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{loc.typeBreakdown.sort(function(a,b){return b.count-a.count;}).map(function(tb){return<div key={tb.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}><div style={{width:7,height:7,borderRadius:"50%",background:tb.color||"#6366f1",flexShrink:0}}/><span style={{fontSize:11,color:"#334155",fontWeight:600}}>{tb.name}</span><span style={{fontSize:11,color:"#6366f1",fontWeight:800}}>×{tb.count}</span></div>;})}</div>}
-            </div>;})}
-            {cl.noLoc>0&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#94a3b8"}}>+ {cl.noLoc} ticket{cl.noLoc>1?"s":""} with no location assigned</div>}
-          </div>
-        </div>}
-      </Card>;})}
-    </div>}
-
-    {/* ── TREND VIEW ── */}
-    {view==="trend"&&<div>
-      <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Weekly Volume</div><ResponsiveContainer width="100%" height={200}><AreaChart data={weeklyTrend}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="label" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Area type="monotone" dataKey="total" stroke="#6366f1" fill="#eef2ff" name="Total" strokeWidth={2}/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed" strokeWidth={2}/></AreaChart></ResponsiveContainer></Card>
-      <Card style={{borderLeft:"4px solid #6366f1"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div>
-          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer"}}>{aiLoading?"⏳ Analyzing…":"✨ Generate"}</button>
-        </div>
-        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}>Ready to analyze your data</div>}
-        {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
-      </Card>
-    </div>}
-
-    {/* ── BY TYPE VIEW ── */}
-    {view==="by_type"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {byType.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byType.map(function(t){
-        var typeTickets=active.filter(function(tk){return tk.typeId===t.id;});
-        var typeStatusTime={};
-        ALL_STATUSES.forEach(function(s){typeStatusTime[s]=0;});
-        typeTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){
-          var mins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-          if(mins!=null&&typeStatusTime[entry.status]!==undefined)typeStatusTime[entry.status]+=mins;
-        });});
-        var hasStatusData=Object.values(typeStatusTime).some(function(v){return v>0;});
-        return<Card key={t.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span></div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}>
-            <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
-            <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
-          </div>
-          {hasStatusData&&<div>
-            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Elapsed Time Per Status</div>
-            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-              {ALL_STATUSES.filter(function(s){return typeStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(typeStatusTime));var pct=maxV>0?Math.round(typeStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span>
-                <div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div>
-                <span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(typeStatusTime[s])}</span>
-              </div>;})}
-            </div>
-          </div>}
-        </Card>;
-      })}
-    </div>}
-
-        {/* ── PER USER VIEW ── */}
-    {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
-      {byUser.map(function(t){
-        var userTickets=active.filter(function(tk){return tk.assignedTo===t.id;});
-        var userStatusTime={};
-        ALL_STATUSES.forEach(function(s){userStatusTime[s]=0;});
-        userTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){
-          var mins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);
-          if(mins!=null&&userStatusTime[entry.status]!==undefined)userStatusTime[entry.status]+=mins;
-        });});
-        var hasStatusData=Object.values(userStatusTime).some(function(v){return v>0;});
-        return<Card key={t.id}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div>
-          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}>
-            <span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span>
-            <span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span>
-            <span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span>
-          </div>
-          {hasStatusData&&<div>
-            <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Elapsed Time Per Status</div>
-            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-              {ALL_STATUSES.filter(function(s){return userStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(userStatusTime));var pct=maxV>0?Math.round(userStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span>
-                <div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div>
-                <span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(userStatusTime[s])}</span>
-              </div>;})}
-            </div>
-          </div>}
-        </Card>;
-      })}
-    </div>}
-  </div>;
-}
-// ── Users ─────────────────────────────────────────────────────────────────────
-function PageUsers(p){
-  var users=p.users;var companies=p.companies;var setUsers=p.setUsers;var curUser=p.curUser;var addLog=p.addLog;var showToast=p.showToast;var schedules=p.schedules||{};var setSchedules=p.setSchedules;var isMobile=p.isMobile;
-  var dbSaveUser=p.dbSaveUser;var dbDeleteUser=p.dbDeleteUser;var dbSetPassword=p.dbSetPassword;var dbSaveSchedule=p.dbSaveSchedule;
-  var[modal,setModal]=useState(null);var[form,setForm]=useState({});var[emailStatus,setEmailStatus]=useState(null);
-  var[pwModal,setPwModal]=useState(null);var[newPw,setNewPw]=useState("");var[pwErr,setPwErr]=useState("");
-  var[roles,setRolesState]=useState(function(){return loadRoles();});
-  var[rolesModal,setRolesModal]=useState(false);
-  var[roleForm,setRoleForm]=useState({key:"",label:"",color:"#6366f1"});var[roleEdit,setRoleEdit]=useState(null);
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function syncRoles(next){saveRoles(next);setRolesState(next);Object.keys(ROLE_META).forEach(function(k){delete ROLE_META[k];});Object.assign(ROLE_META,next);}
-  function addRole(){if(!roleForm.key.trim()||!roleForm.label.trim()){showToast("Key and label required","error");return;}var key=roleForm.key.trim().toLowerCase().replace(/\s+/g,"_");if(roles[key]){showToast("Role key already exists","error");return;}var next=Object.assign({},roles);next[key]={label:roleForm.label.trim(),color:roleForm.color,system:false};syncRoles(next);showToast("Role added!");setRoleForm({key:"",label:"",color:"#6366f1"});}
-  function saveRoleEdit(){if(!roleForm.label.trim()){showToast("Label required","error");return;}var next=Object.assign({},roles);next[roleEdit]=Object.assign({},next[roleEdit],{label:roleForm.label.trim(),color:roleForm.color});syncRoles(next);showToast("Role updated!");setRoleEdit(null);setRoleForm({key:"",label:"",color:"#6366f1"});}
-  function deleteRole(key){if(roles[key]?.system){showToast("Cannot delete system roles","error");return;}if(users.some(function(u){return u.role===key;})){showToast("Cannot delete — in use","error");return;}var next=Object.assign({},roles);delete next[key];syncRoles(next);showToast("Role deleted!");}
-  async function resetPassword(){if(!newPw||newPw.length<6){setPwErr("Minimum 6 characters");return;}await dbSetPassword(pwModal.id,newPw);addLog("PASSWORD_RESET",pwModal.id,"Password reset for "+pwModal.name);showToast("✅ Password reset!");setPwModal(null);setNewPw("");setPwErr("");}
-  async function approveUser(u){var updated=Object.assign({},u,{active:true});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});addLog("USER_APPROVED",u.id,u.name+" approved");showToast("✅ Account approved!");}
-  function handleScheduleChange(userId,sch){setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});dbSaveSchedule(userId,sch);}
-  var allRoleOpts=Object.keys(roles).map(function(k){return mkOpt(k,roles[k].label);});
-  var pendingUsers=users.filter(function(u){return !u.active;});
-  var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
-  async function save(){
-    if(!form.name||!form.email){showToast("Name and email required","error");return;}
-    if(modal==="new"){var nu=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString(),lastLogin:null});await dbSaveUser(nu);await dbSetPassword(nu.id,"password123");setUsers(function(prev){return prev.concat([nu]);});addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");showToast("User created");setEmailStatus("sending");var emailBody=["Hi "+nu.name+",","","An account has been created for you on the Hoptix IT Helpdesk portal.","","📧 Email: "+nu.email,"🔑 Temporary Password: password123","","⚠️ Please sign in and change your password immediately.","","— The Hoptix IT Team"].join("\n");var result=await callSendEmail({to:nu.email,subject:"🎉 Your Hoptix IT Helpdesk account is ready",body:emailBody});setEmailStatus(result.success?"sent":"failed");}
-    else{var old=users.find(function(u){return u.id===form.id;});await dbSaveUser(form);setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});if(old&&old.role!==form.role)addLog("USER_ROLE_CHANGE",form.id,"Role changed");showToast("User updated");}
-    setModal(null);
-  }
-  return<div>
-    {pendingUsers.length>0&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:14,marginBottom:16}}>
-      <div style={{fontWeight:700,color:"#92400e",marginBottom:10,fontSize:13}}>⏳ {pendingUsers.length} Account{pendingUsers.length>1?"s":""} Awaiting Approval</div>
-      {pendingUsers.map(function(u){return<div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fde68a",marginBottom:6,gap:8}}>
-        <div style={{display:"flex",gap:8,alignItems:"center",flex:1,overflow:"hidden"}}><Avatar name={u.name} id={u.id} size={30}/><div style={{overflow:"hidden"}}><div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div></div></div>
-        <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Rejected");}}>✕</Btn></div>
-      </div>;})}
-    </div>}
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,gap:8,flexWrap:"wrap",alignItems:"center"}}>
-      <div style={{fontWeight:700,fontSize:14}}>Users ({users.length})</div>
-      <div style={{display:"flex",gap:8}}><Btn variant="ghost" size="sm" onClick={function(){setRolesModal(true);}}>🏷️ Roles</Btn><Btn onClick={function(){setEmailStatus(null);setForm({name:"",email:"",role:"end_user",companyId:companies[0]?.id||"",phone:"",dept:"",active:true});setModal("new");}}>➕ Add</Btn></div>
-    </div>
-    <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {users.map(function(u){var co=companies.find(function(c){return c.id===u.companyId;});var rm=roles[u.role]||{label:u.role,color:"#6366f1"};
-        return<Card key={u.id} style={{padding:14}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar name={u.name} id={u.id} size={36}/><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div></div><Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/></div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}><Badge label={rm.label} color={rm.color}/>{co&&<span style={{fontSize:11,color:"#64748b"}}>🏢 {co.name}</span>}</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️ Edit</Btn>
-            <Btn size="sm" variant="ghost" onClick={function(){setPwModal(u);setNewPw("");setPwErr("");}}>🔑 Password</Btn>
-            <Btn size="sm" variant={u.active?"warning":"success"} onClick={async function(){var updated=Object.assign({},u,{active:!u.active});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>
-            {u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}
-          </div>
-        </Card>;
-      })}
-    </div>
-    {modal&&<Modal title={modal==="new"?"Add User":"Edit User"} onClose={function(){setModal(null);}}>
-      <FInput label="Full Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Email *" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Department" value={form.dept||""} onChange={function(e){fld("dept",e.target.value);}}/><FSelect label="Role" value={form.role||"end_user"} onChange={function(e){fld("role",e.target.value);}} options={allRoleOpts}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompanies(companies)}/>
-      {IT_ROLES.includes(form.role)&&<ScheduleEditor userId={form.id||"__new__"} schedules={schedules} onChange={handleScheduleChange}/>}
-      {modal==="new"&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1"}}>📧 A welcome email will be sent upon creation.</div>}
-      {emailStatus==="sending"&&<div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⏳ Sending welcome email…</div>}
-      {emailStatus==="sent"&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#166534"}}>✅ Welcome email sent!</div>}
-      {emailStatus==="failed"&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#dc2626"}}>⚠️ Email failed. Account still created.</div>}
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create & Email":"Save"}</Btn></div>
-    </Modal>}
-    {pwModal&&<Modal title={"🔑 Reset — "+pwModal.name} onClose={function(){setPwModal(null);setNewPw("");setPwErr("");}}>
-      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#92400e"}}>Resetting password for <strong>{pwModal.name}</strong></div>
-      <div style={{marginBottom:8}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password (min 6 chars)</label><input type="password" value={newPw} onChange={function(e){setNewPw(e.target.value);setPwErr("");}} placeholder="••••••••" style={inp}/></div>
-      {pwErr&&<div style={{fontSize:12,color:"#dc2626",marginBottom:10}}>⚠️ {pwErr}</div>}
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:8}}><Btn variant="ghost" onClick={function(){setPwModal(null);}}>Cancel</Btn><Btn variant="danger" onClick={resetPassword}>🔑 Reset</Btn></div>
-    </Modal>}
-    {rolesModal&&<Modal title="🏷️ Manage Roles" onClose={function(){setRolesModal(false);setRoleEdit(null);setRoleForm({key:"",label:"",color:"#6366f1"});}}>
-      <div style={{marginBottom:16}}>{Object.keys(roles).map(function(key){var r=roles[key];var isEditing=roleEdit===key;return<div key={key} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f8fafc",borderRadius:8,marginBottom:6,border:"1px solid #e2e8f0"}}>
-        {isEditing?<><input value={roleForm.label} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{label:e.target.value});});}} style={{flex:1,padding:"6px 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:13,outline:"none"}}/><input type="color" value={roleForm.color} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{color:e.target.value});});}} style={{width:32,height:30,border:"none",borderRadius:4,cursor:"pointer",padding:0}}/><Btn size="sm" variant="success" onClick={saveRoleEdit}>✓</Btn><Btn size="sm" variant="ghost" onClick={function(){setRoleEdit(null);}}>✕</Btn></>:<><div style={{width:10,height:10,borderRadius:"50%",background:r.color,flexShrink:0}}/><span style={{flex:1,fontSize:13,fontWeight:600}}>{r.label}</span><span style={{fontSize:10,color:"#94a3b8",background:"#e2e8f0",borderRadius:4,padding:"2px 6px"}}>{key}</span>{r.system&&<span style={{fontSize:10,color:"#6366f1",fontWeight:600}}>sys</span>}<Btn size="sm" variant="ghost" onClick={function(){setRoleEdit(key);setRoleForm({key:key,label:r.label,color:r.color});}}>✏️</Btn>{!r.system&&<Btn size="sm" variant="danger" onClick={function(){deleteRole(key);}}>🗑</Btn>}</>}
-      </div>;})}
-      </div>
-      <div style={{borderTop:"1px solid #e2e8f0",paddingTop:14}}>
-        <div style={{fontWeight:700,fontSize:13,marginBottom:10}}>➕ Add Role</div>
-        <FInput label="Key" value={roleForm.key} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{key:e.target.value});});}} placeholder="e.g. supervisor"/>
-        <FInput label="Label" value={roleForm.label} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{label:e.target.value});});}} placeholder="Supervisor"/>
-        <Btn onClick={addRole}>➕ Add Role</Btn>
-      </div>
-    </Modal>}
-  </div>;
-}
-
-// ── Companies ─────────────────────────────────────────────────────────────────
-function PageCompanies(p){
-  var companies=p.companies;var users=p.users;var setCompanies=p.setCompanies;var addLog=p.addLog;var showToast=p.showToast;var dbSaveCompany=p.dbSaveCompany;var dbDeleteCompany=p.dbDeleteCompany;
-  var[modal,setModal]=useState(null);var[form,setForm]=useState({});
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  async function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nc=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString()});await dbSaveCompany(nc);setCompanies(function(prev){return prev.concat([nc]);});addLog("COMPANY_CREATED",nc.id,'"'+nc.name+'" created');showToast("Created");}else{await dbSaveCompany(form);setCompanies(function(prev){return prev.map(function(c){return c.id===form.id?Object.assign({},form):c;});});showToast("Updated");}setModal(null);}
-  return<div>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Companies ({companies.length})</div><Btn onClick={function(){setForm({name:"",domain:"",address:"",phone:"",industry:"",size:""});setModal("new");}}>➕ Add</Btn></div>
-    {companies.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No companies yet.</div></Card>}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
-      {companies.map(function(c){var members=users.filter(function(u){return u.companyId===c.id;});return<Card key={c.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><div style={{width:40,height:40,borderRadius:10,background:avCol(c.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16}}>{c.name[0]}</div><div style={{display:"flex",gap:6}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},c));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteCompany(c.id);setCompanies(function(prev){return prev.filter(function(x){return x.id!==c.id;});});showToast("Deleted");}}>🗑</Btn></div></div><div style={{fontWeight:700,color:"#1e293b",marginBottom:6,fontSize:14}}>{c.name}</div><div style={{fontSize:12,color:"#64748b"}}>🌐 {c.domain||"—"} · 📍 {c.address||"—"}</div><div style={{fontSize:12,color:"#64748b",marginBottom:10}}>🏭 {c.industry||"—"} · {c.size||"—"}</div><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{members.slice(0,5).map(function(m){return<Avatar key={m.id} name={m.name} id={m.id} size={22}/>;})}{members.length>5&&<div style={{fontSize:10,color:"#94a3b8",alignSelf:"center"}}>+{members.length-5}</div>}</div></Card>;})}
-    </div>
-    {modal&&<Modal title={modal==="new"?"Add Company":"Edit Company"} onClose={function(){setModal(null);}}>
-      <FInput label="Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Domain" value={form.domain||""} onChange={function(e){fld("domain",e.target.value);}}/><FInput label="Address" value={form.address||""} onChange={function(e){fld("address",e.target.value);}}/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FInput label="Size" value={form.size||""} onChange={function(e){fld("size",e.target.value);}}/>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div>
-    </Modal>}
-  </div>;
-}
-
-// ── Clients ───────────────────────────────────────────────────────────────────
-function PageClients(p){
-  var clients=p.clients;var setClients=p.setClients;var companies=p.companies;var addLog=p.addLog;var showToast=p.showToast;var dbSaveClient=p.dbSaveClient;var dbDeleteClient=p.dbDeleteClient;
-  var[modal,setModal]=useState(null);var[selCl,setSelCl]=useState(null);var[form,setForm]=useState({});
-  var[lForm,setLForm]=useState({name:"",address:"",floor:"",contacts:[]});
-  var[newContact,setNewContact]=useState({name:"",email:"",phone:""});
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function lfld(k,v){setLForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function ncfld(k,v){setNewContact(function(prev){return Object.assign({},prev,{[k]:v});});}
-  function addContact(){if(!newContact.name.trim()){showToast("Contact name required","error");return;}lfld("contacts",(lForm.contacts||[]).concat([Object.assign({},newContact,{id:uid()})]));setNewContact({name:"",email:"",phone:""});}
-  function removeContact(cid){lfld("contacts",(lForm.contacts||[]).filter(function(c){return c.id!==cid;}));}
-  function updateContact(cid,field,val){lfld("contacts",(lForm.contacts||[]).map(function(c){return c.id===cid?Object.assign({},c,{[field]:val}):c;}));}
-  async function saveCl(){if(!form.name){showToast("Name required","error");return;}if(modal==="newCl"){var nc=Object.assign({},form,{id:uid(),locations:[],contacts:form.contacts||[]});await dbSaveClient(nc);setClients(function(prev){return prev.concat([nc]);});addLog("CLIENT_CREATED",nc.id,"Client \""+nc.name+"\" added");showToast("Client added");}else{var updated=Object.assign({},form,{locations:clients.find(function(c){return c.id===form.id;})?.locations||[],contacts:form.contacts||[]});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===form.id?updated:c;});});showToast("Updated");}setModal(null);}
-  async function saveLoc(){
-    if(!lForm.name||!lForm.address){showToast("Location name and address required","error");return;}
-    var cl=clients.find(function(c){return c.id===selCl;});if(!cl)return;
-    var locToSave=Object.assign({},lForm,{contacts:lForm.contacts||[]});
-    var newLocs;
-    if(modal==="newLoc"){var nl=Object.assign({},locToSave,{id:uid()});newLocs=cl.locations.concat([nl]);}
-    else{newLocs=cl.locations.map(function(l){return l.id===lForm.id?locToSave:l;});}
-    var updated=Object.assign({},cl,{locations:newLocs});
-    await dbSaveClient(updated);
-    setClients(function(prev){return prev.map(function(c){return c.id===selCl?updated:c;});});
-    showToast(modal==="newLoc"?"Location added":"Location updated");setModal(null);
-  }
-  function openNewLoc(clId){setSelCl(clId);setLForm({name:"",address:"",floor:"",contacts:[]});setNewContact({name:"",email:"",phone:""});setModal("newLoc");}
-  function openEditLoc(clId,loc){setSelCl(clId);var contacts=loc.contacts||(loc.contact?[{id:uid(),name:loc.contact,email:"",phone:""}]:[]);setLForm(Object.assign({},loc,{contacts:contacts}));setNewContact({name:"",email:"",phone:""});setModal("editLoc");}
-  var inp={width:"100%",padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
-  return<div>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Clients ({clients.length})</div><Btn onClick={function(){setForm({name:"",email:"",phone:"",industry:"",companyId:companies[0]?.id||"",contacts:[]});setModal("newCl");}}>➕ Add Client</Btn></div>
-    {clients.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No clients yet.</div></Card>}
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {clients.map(function(cl){return<Card key={cl.id}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-          <div style={{display:"flex",gap:12,alignItems:"center",flex:1,overflow:"hidden"}}><div style={{width:42,height:42,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div style={{overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cl.name}</div>{cl.industry&&<div style={{fontSize:11,color:"#64748b"}}>🏭 {cl.industry}</div>}</div></div>
-          <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},cl));setModal("editCl");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteClient(cl.id);setClients(function(prev){return prev.filter(function(x){return x.id!==cl.id;});});showToast("Removed");}}>🗑</Btn></div>
-        </div>
-        {(cl.contacts||[]).length>0&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12,marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:"#0369a1",textTransform:"uppercase",marginBottom:8,letterSpacing:0.5}}>👥 Contact Persons</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{(cl.contacts||[]).map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",borderRadius:8,padding:"7px 10px"}}><Avatar name={ct.name} id={ct.id} size={22}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}{ct.position&&<span style={{fontWeight:400,color:"#64748b",fontSize:11}}> · {ct.position}</span>}</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}{ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}</div></div></div>;})}</div></div>}
-        <div style={{background:"#f8fafc",borderRadius:10,padding:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div><Btn size="sm" onClick={function(){openNewLoc(cl.id);}}>➕ Add Location</Btn></div>
-          {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No locations yet.</div>}
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {cl.locations.map(function(loc){var contacts=loc.contacts||(loc.contact?[{id:"leg",name:loc.contact,email:"",phone:""}]:[]);return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:contacts.length>0?8:0}}>
-                <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{loc.address}</div>{loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}</div>
-                <div style={{display:"flex",gap:4,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEditLoc(cl.id,loc);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){var newLocs=cl.locations.filter(function(l){return l.id!==loc.id;});var updated=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===cl.id?updated:c;});});showToast("Location removed");}}>🗑</Btn></div>
-              </div>
-              {contacts.length>0&&<div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>👥 Contact Persons</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{contacts.map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}><Avatar name={ct.name} id={ct.id} size={22}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}{ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}</div></div></div>;})}</div></div>}
-              {contacts.length===0&&<div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",marginTop:4}}>No contacts added yet.</div>}
-            </div>;})}
-          </div>
-        </div>
-      </Card>;})}
-    </div>
-    {(modal==="newCl"||modal==="editCl")&&<Modal title={modal==="newCl"?"Add Client":"Edit Client"} onClose={function(){setModal(null);}} wide>
-      <FInput label="Client Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompaniesNone(companies)}/>
-      <div style={{marginBottom:14}}>
-        <div style={{fontWeight:700,fontSize:12,color:"#475569",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>👥 Contact Persons ({(form.contacts||[]).length})</span><span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>Up to 5 contacts</span></div>
-        {(form.contacts||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>{(form.contacts||[]).map(function(ct,idx){return<div key={ct.id} style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontSize:11,fontWeight:700,color:"#0369a1"}}>Contact {idx+1}</div><button onClick={function(){fld("contacts",(form.contacts||[]).filter(function(c){return c.id!==ct.id;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:0,lineHeight:1}}>✕</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><input value={ct.name||""} onChange={function(e){var v=e.target.value;fld("contacts",(form.contacts||[]).map(function(c){return c.id===ct.id?Object.assign({},c,{name:v}):c;}));}} placeholder="Full Name *" style={inp}/><input value={ct.position||""} onChange={function(e){var v=e.target.value;fld("contacts",(form.contacts||[]).map(function(c){return c.id===ct.id?Object.assign({},c,{position:v}):c;}));}} placeholder="Position / Title" style={inp}/><input value={ct.email||""} onChange={function(e){var v=e.target.value;fld("contacts",(form.contacts||[]).map(function(c){return c.id===ct.id?Object.assign({},c,{email:v}):c;}));}} placeholder="Email address" type="email" style={inp}/><input value={ct.phone||""} onChange={function(e){var v=e.target.value;fld("contacts",(form.contacts||[]).map(function(c){return c.id===ct.id?Object.assign({},c,{phone:v}):c;}));}} placeholder="Phone number" style={inp}/></div></div>;})}</div>}
-        {(form.contacts||[]).length<5&&<button onClick={function(){fld("contacts",(form.contacts||[]).concat([{id:uid(),name:"",position:"",email:"",phone:""}]));}} style={{width:"100%",padding:"10px",border:"2px dashed #bae6fd",borderRadius:8,background:"#f0f9ff",color:"#0369a1",fontSize:12,fontWeight:600,cursor:"pointer"}}>➕ Add Contact Person</button>}
-      </div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveCl}>{modal==="newCl"?"Add Client":"Save"}</Btn></div>
-    </Modal>}
-    {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={function(){setModal(null);}} wide>
-      <FInput label="Location Name *" value={lForm.name||""} onChange={function(e){lfld("name",e.target.value);}} placeholder="e.g. HQ — Makati"/>
-      <FInput label="Address *" value={lForm.address||""} onChange={function(e){lfld("address",e.target.value);}}/>
-      <FInput label="Floor / Area" value={lForm.floor||""} onChange={function(e){lfld("floor",e.target.value);}} placeholder="e.g. 3rd Floor, East Wing"/>
-      <div style={{marginBottom:14}}>
-        <div style={{fontWeight:700,fontSize:12,color:"#475569",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>👥 Contact Persons ({(lForm.contacts||[]).length})</span><span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>Up to 5 contacts per location</span></div>
-        {(lForm.contacts||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>{(lForm.contacts||[]).map(function(ct,idx){return<div key={ct.id} style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontSize:11,fontWeight:700,color:"#0369a1"}}>Contact {idx+1}</div><button onClick={function(){removeContact(ct.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:0,lineHeight:1}}>✕</button></div><div style={{display:"grid",gridTemplateColumns:"1fr",gap:6}}><input value={ct.name} onChange={function(e){updateContact(ct.id,"name",e.target.value);}} placeholder="Full Name *" style={inp}/><input value={ct.email} onChange={function(e){updateContact(ct.id,"email",e.target.value);}} placeholder="Email address" type="email" style={inp}/><input value={ct.phone} onChange={function(e){updateContact(ct.id,"phone",e.target.value);}} placeholder="Phone number" style={inp}/></div></div>;})}</div>}
-        {(lForm.contacts||[]).length<5&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:10,padding:12}}><div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>➕ Add Contact Person</div><div style={{display:"grid",gridTemplateColumns:"1fr",gap:6,marginBottom:8}}><input value={newContact.name} onChange={function(e){ncfld("name",e.target.value);}} placeholder="Full Name *" style={inp}/><input value={newContact.email} onChange={function(e){ncfld("email",e.target.value);}} placeholder="Email address" type="email" style={inp}/><input value={newContact.phone} onChange={function(e){ncfld("phone",e.target.value);}} placeholder="Phone number" style={inp}/></div><Btn size="sm" onClick={addContact} variant="ghost">➕ Add Contact</Btn></div>}
-      </div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save Location"}</Btn></div>
-    </Modal>}
-  </div>;
-}
-
-// ── Ticket Types ──────────────────────────────────────────────────────────────
-function PageTicketTypes(p){
-  var ticketTypes=p.ticketTypes;var users=p.users;var setTicketTypes=p.setTicketTypes;var statusSla=p.statusSla;var setStatusSla=p.setStatusSla;var addLog=p.addLog;var showToast=p.showToast;var dbSaveTicketType=p.dbSaveTicketType;var dbDeleteTicketType=p.dbDeleteTicketType;
-  var[modal,setModal]=useState(null);var[form,setForm]=useState({});var[kwInput,setKwInput]=useState("");
-  var[slaEdit,setSlaEdit]=useState(function(){return Object.assign({},statusSla);});var[slaChanged,setSlaChanged]=useState(false);
-  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
-  async function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nt=Object.assign({},form,{id:uid(),keywords:form.keywords||[]});await dbSaveTicketType(nt);setTicketTypes(function(prev){return prev.concat([nt]);});showToast("Created");}else{await dbSaveTicketType(form);setTicketTypes(function(prev){return prev.map(function(t){return t.id===form.id?Object.assign({},form):t;});});showToast("Updated");}setModal(null);}
-  function addKw(){if(kwInput.trim()){fld("keywords",(form.keywords||[]).concat([kwInput.trim()]));setKwInput("");}}
-  function updateSlaField(status,val){var n=Object.assign({},slaEdit);n[status]=val===""||val===null?null:parseFloat(val);setSlaEdit(n);setSlaChanged(true);}
-  function saveSla(){setStatusSla(slaEdit);saveStatusSlaStore(slaEdit);addLog("SLA_UPDATED","system","SLA thresholds updated");showToast("✅ SLA settings saved!");setSlaChanged(false);}
-  var SLA_DESC={"Open":"Acknowledgement time","In Progress":"Resolution time","Pending":"Awaiting requester","Escalated":"Senior staff response","Closed":"No SLA"};
-  return<div>
-    <Card style={{marginBottom:20,borderTop:"3px solid #6366f1"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>⏱ Status SLA Thresholds</div></div><div style={{display:"flex",gap:8}}><Btn size="sm" variant="ghost" onClick={function(){setSlaEdit(Object.assign({},DEFAULT_STATUS_SLA));setSlaChanged(true);}}>↺ Reset</Btn><Btn size="sm" variant={slaChanged?"primary":"ghost"} onClick={saveSla} style={{opacity:slaChanged?1:0.5}}>💾 Save</Btn></div></div>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {ALL_STATUSES.map(function(status){var sm=STATUS_META[status];var isClosed=status==="Closed";var val=slaEdit[status];return<div key={status} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:sm.color}}/><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{status}</div></div>{!isClosed&&val!==null?<Badge label={val+"h"} color={sm.color}/>:<Badge label="No SLA" color="#94a3b8"/>}</div><div style={{fontSize:11,color:"#64748b",marginBottom:isClosed?0:10}}>{SLA_DESC[status]}</div>{!isClosed&&<div style={{display:"flex",alignItems:"center",gap:8}}><input type="number" min="0.5" step="0.5" value={val===null||val===undefined?"":val} onChange={function(e){updateSlaField(status,e.target.value);}} style={{width:80,padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#fff",boxSizing:"border-box"}}/><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>hours</span></div>}</div>;})}
-      </div>
-      {slaChanged&&<div style={{marginTop:12,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e"}}>⚠️ Unsaved changes — click Save.</div>}
-    </Card>
-    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Ticket Types ({ticketTypes.length})</div><Btn onClick={function(){setForm({name:"",priority:"medium",slaHours:24,color:"#6366f1",keywords:[],defaultAssignee:""});setModal("new");}}>➕ Add Type</Btn></div>
-    {ticketTypes.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No ticket types yet.</div></Card>}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:12}}>
-      {ticketTypes.map(function(tt){var asgn=users.find(function(u){return u.id===tt.defaultAssignee;});return<Card key={tt.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:tt.color}}/><span style={{fontWeight:700,color:"#1e293b"}}>{tt.name}</span></div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},tt,{keywords:(tt.keywords||[]).slice()}));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteTicketType(tt.id);setTicketTypes(function(prev){return prev.filter(function(t){return t.id!==tt.id;});});showToast("Deleted");}}>🗑</Btn></div></div><div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}><Badge label={PRI_META[tt.priority]?.label||tt.priority} color={PRI_META[tt.priority]?.color||"#6366f1"}/><Badge label={"SLA "+tt.slaHours+"h"} color="#0ea5e9"/></div>{asgn&&<div style={{fontSize:11,color:"#64748b",marginBottom:6}}>👤 {asgn.name}</div>}<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(tt.keywords||[]).slice(0,4).map(function(k){return<span key={k} style={{background:"#f1f5f9",color:"#475569",fontSize:10,padding:"2px 6px",borderRadius:4}}>{k}</span>;})}{ (tt.keywords||[]).length>4&&<span style={{fontSize:10,color:"#94a3b8"}}>+{(tt.keywords||[]).length-4}</span>}</div></Card>;})}
-    </div>
-    {modal&&<Modal title={modal==="new"?"Add Ticket Type":"Edit Ticket Type"} onClose={function(){setModal(null);}}><FInput label="Type Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FSelect label="Priority" value={form.priority||"medium"} onChange={function(e){fld("priority",e.target.value);}} options={OPT_PRIORITY}/><FInput label="SLA Hours" value={form.slaHours||24} onChange={function(e){fld("slaHours",Number(e.target.value));}} type="number" min={1}/><FInput label="Color" value={form.color||"#6366f1"} onChange={function(e){fld("color",e.target.value);}} type="color"/><FSelect label="Default Assignee" value={form.defaultAssignee||""} onChange={function(e){fld("defaultAssignee",e.target.value);}} options={optAssignees(users)}/><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Keywords</label><div style={{display:"flex",gap:6,marginBottom:6}}><input value={kwInput} onChange={function(e){setKwInput(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addKw();}} placeholder="e.g. printer" style={{flex:1,padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:13,outline:"none"}}/><Btn size="sm" onClick={addKw}>Add</Btn></div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(form.keywords||[]).map(function(k,i){return<span key={i} onClick={function(){fld("keywords",(form.keywords||[]).filter(function(_,j){return j!==i;}));}} style={{background:"#eef2ff",color:"#4338ca",fontSize:12,padding:"3px 10px",borderRadius:4,cursor:"pointer"}}>{k} ×</span>;})}</div></div><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div></Modal>}
-  </div>;
-}
-
-// ── Activity Log ──────────────────────────────────────────────────────────────
-const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_RESOLVED:{icon:"📝",color:"#10b981",label:"Resolution Note Added"},TICKET_REINSTATED:{icon:"♻️",color:"#10b981",label:"Ticket Reinstated"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
-function PageActivityLog(p){
-  var logs=p.logs;var users=p.users;var tickets=p.tickets||[];var setTickets=p.setTickets||function(){};var isAdmin=p.isAdmin||false;var addLog=p.addLog||function(){};var showToast=p.showToast||function(){};
-  var[filter,setFilter]=useState("");
-  function fu(id){return users.find(function(x){return x.id===id;});}
-  var filtered=filter?logs.filter(function(l){return l.action===filter;}):logs;
-  async function reinstateTicket(ticketId,ticketTitle){
-    setTickets(function(prev){return prev.map(function(t){return t.id===ticketId?Object.assign({},t,{deleted:false}):t;});});
-    addLog("TICKET_REINSTATED",ticketId,"Ticket \""+ticketTitle+"\" reinstated by admin");
-    showToast("♻️ Ticket reinstated!");
-  }
-  return<div>
-    <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}><div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div><select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return<option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select></div>
-    <Card style={{padding:0}}>
-      {filtered.length===0&&<div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No activity found</div>}
-      {filtered.map(function(log,i){var am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action};var actor=fu(log.userId);var isDeleteLog=log.action==="TICKET_DELETED";var deletedTicket=isDeleteLog?tickets.find(function(t){return t.id===log.target;}):null;var alreadyRestored=deletedTicket&&!deletedTicket.deleted;return<div key={log.id} style={{display:"flex",gap:12,padding:"12px 16px",borderBottom:i<filtered.length-1?"1px solid #f1f5f9":"none",alignItems:"flex-start"}}><div style={{width:32,height:32,borderRadius:8,background:am.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{am.icon}</div><div style={{flex:1,minWidth:0}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><Badge label={am.label} color={am.color}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(log.timestamp)}</span></div><div style={{fontSize:12,color:"#334155",marginTop:4,overflow:"hidden",textOverflow:"ellipsis"}}>{log.detail}</div>{actor&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Avatar name={actor.name} id={actor.id} size={14}/>By {actor.name}</div>}{isDeleteLog&&isAdmin&&deletedTicket&&<div style={{marginTop:8}}>{alreadyRestored?<span style={{fontSize:11,color:"#10b981",fontWeight:600}}>♻️ Already reinstated</span>:<Btn size="sm" variant="success" onClick={function(){reinstateTicket(log.target,log.detail.replace('Ticket #','').split(' ')[1]||log.target);}}>♻️ Reinstate Ticket</Btn>}</div>}</div></div>;})}
-    </Card>
-  </div>;
-}
-
-// ── Integrations ──────────────────────────────────────────────────────────────
-function PageIntegrations(p){
-  var emailTemplates=p.emailTemplates||[];var setEmailTemplates=p.setEmailTemplates||function(){};var isAdmin=p.isAdmin;var showToast=p.showToast;
-  var[testTo,setTestTo]=useState("");var[sending,setSending]=useState(false);var[status,setStatus]=useState("");
-  var[tmplModal,setTmplModal]=useState(false);var[tmplForm,setTmplForm]=useState({name:"",subject:"",body:"",defaultCC:""});var[tmplEdit,setTmplEdit]=useState(null);
-  function openNew(){setTmplForm({name:"",subject:"",body:"",defaultCC:""});setTmplEdit(null);setTmplModal(true);}
-  function openEdit(t){setTmplForm({name:t.name,subject:t.subject,body:t.body,defaultCC:t.defaultCC||""});setTmplEdit(t.id);setTmplModal(true);}
-  async function saveTmpl(){if(!tmplForm.name.trim()||!tmplForm.subject.trim()||!tmplForm.body.trim()){showToast("Name, subject, and body required","error");return;}var t={id:tmplEdit||uid(),name:tmplForm.name.trim(),subject:tmplForm.subject.trim(),body:tmplForm.body.trim(),defaultCC:tmplForm.defaultCC.trim(),createdAt:new Date().toISOString()};await dbSaveEmailTemplate(t);setEmailTemplates(function(prev){return tmplEdit?prev.map(function(x){return x.id===tmplEdit?t:x;}):prev.concat([t]);});showToast(tmplEdit?"Template updated!":"Template created!");setTmplModal(false);}
-  async function deleteTmpl(id){await dbDeleteEmailTemplate(id);setEmailTemplates(function(prev){return prev.filter(function(x){return x.id!==id;});});showToast("Template deleted");}
-  async function runTest(){if(!testTo.trim()){showToast("Enter a recipient email","error");return;}setSending(true);setStatus("");try{var r=await callSendEmail({to:testTo.trim(),subject:"Hoptix Test",body:"Your email integration is working!"});if(r.success){setStatus("ok");showToast("📧 Test sent!");}else{setStatus("fail");showToast("Failed: "+r.error,"error");}}catch(e){setStatus("fail");showToast("Error: "+e.message,"error");}setSending(false);}
-  return<div style={{maxWidth:600}}>
-    <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🔌 Integrations</div>
-    <div style={{fontSize:12,color:"#64748b",marginBottom:20}}>Configure your email provider and review service costs.</div>
-    <Card style={{borderTop:"3px solid #10b981",marginBottom:20}}>
-      <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>💰 Cost Transparency</div>
-      <div style={{fontSize:11,color:"#64748b",marginBottom:14}}>Everything this app uses, and what (if anything) you pay for it.</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {[{name:"Vercel (Hosting)",tier:"Free",detail:"Hobby plan — free forever for personal/small projects. Unlimited deploys, 100GB bandwidth/month.",color:"#10b981"},{name:"Supabase (Database)",tier:"Free",detail:"Free tier — 500MB database, 1GB file storage, 50,000 monthly active users.",color:"#10b981"},{name:"GitHub (Code Storage)",tier:"Free",detail:"Free for public and private repos.",color:"#10b981"},{name:"Gmail / Nodemailer (Email)",tier:"Free",detail:"Uses your existing Gmail account with an App Password. No cost.",color:"#10b981"},{name:"AI Analysis (Google Gemini)",tier:"Free",detail:"Free tier via Google AI Studio — 1,500 requests/day, no credit card needed. Uses Gemini 2.0 Flash.",color:"#10b981"},{name:"Recharts (Charts)",tier:"Free",detail:"Open-source charting library. Zero cost, runs entirely in the browser.",color:"#10b981"}].map(function(item){return<div key={item.name} style={{display:"flex",gap:10,padding:"10px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,alignItems:"flex-start"}}><div style={{width:8,height:8,borderRadius:"50%",background:item.color,flexShrink:0,marginTop:4}}/><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}><span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{item.name}</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{item.tier}</span></div><div style={{fontSize:11,color:"#475569",lineHeight:1.6}}>{item.detail}</div></div></div>;})}
-      </div>
-      <div style={{marginTop:12,background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",fontSize:11,color:"#0369a1",lineHeight:1.7}}>💡 <strong>Summary:</strong> Everything is free. The only potential cost is AI Analysis if you exceed free tier limits — typically less than <strong>₱5/month</strong> under normal usage.</div>
-    </Card>
-    <Card style={{borderTop:"3px solid #6366f1",marginBottom:20}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a></div>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1",lineHeight:1.8}}>Set in Vercel → Settings → Environment Variables:<br/><code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_USER</code> and <code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_APP_PASSWORD</code></div>
-      <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>Send Test Email</label>
-      <div style={{display:"flex",gap:8,marginBottom:8}}><input type="email" value={testTo} onChange={function(e){setTestTo(e.target.value);}} placeholder="recipient@example.com" style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}/><button onClick={runTest} disabled={sending} style={{padding:"10px 16px",background:sending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:sending?"not-allowed":"pointer",flexShrink:0}}>{sending?"Sending…":"📤 Test"}</button></div>
-      {status==="ok"&&<div style={{padding:"8px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,fontSize:12,color:"#166534"}}>✅ Test email delivered!</div>}
-      {status==="fail"&&<div style={{padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:12,color:"#dc2626"}}>❌ Failed — check env variables.</div>}
-    </Card>
-    {isAdmin&&<Card style={{borderTop:"3px solid #6366f1"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
-        <div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Variables: <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div></div>
-        <Btn onClick={openNew}>➕ Add Template</Btn>
-      </div>
-      {emailTemplates.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>No templates yet.</div>}
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div><div style={{fontSize:11,color:"#64748b",marginBottom:2}}>Subject: {t.subject}</div>{t.defaultCC&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Default CC: {t.defaultCC}</div>}<div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div></div>
-            <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn></div>
-          </div>
-        </div>;})}
-      </div>
-    </Card>}
-    {tmplModal&&<Modal title={tmplEdit?"Edit Template":"New Email Template"} onClose={function(){setTmplModal(false);}}>
-      <FInput label="Template Name *" value={tmplForm.name} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{name:e.target.value});});}} placeholder="e.g. Initial Response"/>
-      <FInput label="Subject *" value={tmplForm.subject} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{subject:e.target.value});});}} placeholder="Re: Your IT Request"/>
-      <FInput label="Default CC (optional)" value={tmplForm.defaultCC} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{defaultCC:e.target.value});});}} placeholder="manager@company.com"/>
-      <FTextarea label="Body *" value={tmplForm.body} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{body:e.target.value});});}} rows={8} placeholder={"Hi {{client_name}},\n\nThank you for reaching out...\n\nBest regards,\n{{agent_name}}"}/>
-      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>💡 <strong>{"{{client_name}}"}</strong> and <strong>{"{{agent_name}}"}</strong> auto-fill on tickets. The Default CC will pre-fill the CC field when this template is selected.</div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setTmplModal(false);}}>Cancel</Btn><Btn onClick={saveTmpl}>{tmplEdit?"Save Changes":"Create Template"}</Btn></div>
-    </Modal>}
-  </div>;
-}
-// ── Knowledge Base ────────────────────────────────────────────────────────────
+// ── Knowledge Base ─────────────────────────────────────────────────────────────
 function PageKnowledgeBase(p){
   var tickets=p.tickets||[];var ticketTypes=p.ticketTypes||[];var users=p.users||[];var isMobile=p.isMobile;
   var kbTickets=tickets.filter(function(t){return !t.deleted&&t.resolutionNote&&t.resolutionNote.trim();});
@@ -2478,3 +734,976 @@ function PageKnowledgeBase(p){
     </div>
   </div>;
 }
+
+// ── Root App ──────────────────────────────────────────────────────────────────
+export default function App(){
+  var[users,setUsers]=useState([]);var[companies,setCompanies]=useState([]);var[clients,setClients]=useState([]);
+  var[tickets,setTicketsR]=useState([]);var[ticketTypes,setTTR]=useState([]);
+  var[statusSla,setStatusSlaR]=useState(DEFAULT_STATUS_SLA);var[schedules,setSchedulesR]=useState({});
+  var[logs,setLogsR]=useState([]);var[emailTemplates,setEmailTemplates]=useState([]);
+  var[allTimeSessions,setAllTimeSessions]=useState([]);
+  var[curUser,setCurUserR]=useState(function(){return loadState("hd_curUser",null);});
+  var[page,setPageR]=useState(function(){try{var raw=localStorage.getItem("hd_page");var s=raw?raw.replace(/^"|"$/g,""):null;var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
+  var[selTicket,setSelTicket]=useState(null);var[toast,setToast]=useState(null);
+  var[breaches,setBreaches]=useState([]);var[inboxAlerts,setInboxAlerts]=useState([]);
+  var[showProfile,setShowProfile]=useState(false);
+  // ── FIX: separate loading states so tickets load independently ──
+  var[appReady,setAppReady]=useState(false);
+  var[ticketsLoaded,setTicketsLoaded]=useState(false);
+  var[ticketsLoading,setTicketsLoading]=useState(false);
+  var[ticketsError,setTicketsError]=useState(null);
+  var[sidebarOpen,setSidebarOpen]=useState(false);
+  var[notifications,setNotifications]=useState([]);var[unreadChatCount,setUnreadChatCount]=useState(0);
+  var prevBreachIdsRef=useRef([]);
+  var isMobile=useIsMobile();
+
+  // ── FIX: reliable ticket loader with retry ──
+  var loadTicketsRef=useRef(null);
+  loadTicketsRef.current=async function(attempt){
+    attempt=attempt||1;
+    setTicketsLoading(true);
+    setTicketsError(null);
+    try{
+      var tkt=await dbGetTickets();
+      setTicketsR(tkt);
+      setTicketsLoaded(true);
+      setTicketsLoading(false);
+      try{
+        var cached=JSON.parse(localStorage.getItem("hd_appCache")||"{}");
+        cached.tickets=tkt;
+        localStorage.setItem("hd_appCache",JSON.stringify(cached));
+      }catch(e){}
+    }catch(e){
+      console.error("dbGetTickets attempt "+attempt+" failed:",e);
+      if(attempt<3){
+        setTimeout(function(){loadTicketsRef.current(attempt+1);},1500*attempt);
+      }else{
+        setTicketsError("Failed to load tickets. Tap Refresh to try again.");
+        setTicketsLoading(false);
+      }
+    }
+  };
+
+  useEffect(function(){
+    async function loadAll(){
+      // Step 1: restore cache instantly
+      try{
+        var cached=localStorage.getItem("hd_appCache");
+        if(cached){
+          var c=JSON.parse(cached);
+          if(c.users)setUsers(c.users);
+          if(c.companies)setCompanies(c.companies);
+          if(c.clients)setClients(c.clients);
+          if(c.ticketTypes)setTTR(c.ticketTypes);
+          if(c.tickets&&c.tickets.length>0){setTicketsR(c.tickets);setTicketsLoaded(true);}
+          if(c.logs)setLogsR(c.logs);
+          if(c.schedules)setSchedulesR(c.schedules);
+          if(c.emailTemplates)setEmailTemplates(c.emailTemplates);
+          if(c.allTimeSessions)setAllTimeSessions(c.allTimeSessions);
+          var savedPage=localStorage.getItem("hd_page");
+          var safePages=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];
+          if(savedPage&&safePages.includes(savedPage))setPageR(savedPage);
+          setAppReady(true);
+        }
+      }catch(e){}
+
+      // Step 2: fetch fresh data
+      try{
+        var[u,co,cl,tt]=await Promise.all([dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes()]);
+        setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);
+        setAppReady(true);
+
+        // Step 3: load tickets separately with retry logic
+        loadTicketsRef.current(1);
+
+        // Step 4: load secondary data
+        var[lg,sch,et,ts]=await Promise.all([dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates(),dbGetAllTimeSessions()]);
+        setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);setAllTimeSessions(ts);
+
+        var savedPage2=localStorage.getItem("hd_page");
+        var safePages2=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];
+        if(savedPage2&&safePages2.includes(savedPage2))setPageR(savedPage2);
+
+        // Step 5: update cache (without tickets — tickets updates its own cache slice)
+        try{
+          var existing=JSON.parse(localStorage.getItem("hd_appCache")||"{}");
+          localStorage.setItem("hd_appCache",JSON.stringify(Object.assign({},existing,{
+            users:u,companies:co,clients:cl,ticketTypes:tt,
+            logs:lg.slice(0,100),schedules:sch,
+            emailTemplates:et,allTimeSessions:ts.slice(0,500)
+          })));
+        }catch(e){}
+      }catch(e){console.error("loadAll failed",e);setAppReady(true);}
+    }
+    loadAll();
+  },[]);
+
+  useEffect(function(){if(!appReady&&!curUser)return;var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];if(saved&&safe.includes(saved)&&saved!==page){setPageR(saved);}},[appReady,curUser?.id]);
+  useEffect(function(){if(!curUser)return;dbGetNotifications(curUser.id).then(function(data){setNotifications(data);});var sub=supabase.channel("notifs-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"app_notifications",filter:"user_id=eq."+curUser.id},function(payload){setNotifications(function(prev){if(prev.find(function(n){return n.id===payload.new.id;}))return prev;return[payload.new].concat(prev);});}).subscribe();return function(){supabase.removeChannel(sub);};},[curUser?.id]);
+  var unreadCount=useMemo(function(){return notifications.filter(function(n){return !n.read;}).length;},[notifications]);
+  useEffect(function(){var parts=[];if(breaches.length>0)parts.push("\uD83D\uDEA8"+breaches.length);if(unreadCount>0)parts.push("\uD83D\uDD14"+unreadCount);if(unreadChatCount>0)parts.push("\uD83D\uDCAC"+unreadChatCount);document.title=parts.length>0?"("+parts.join(" | ")+") Hoptix":"Hoptix";},[unreadCount,breaches,unreadChatCount]);
+  var refreshTimeSessions=useCallback(async function(){var ts=await dbGetAllTimeSessions();setAllTimeSessions(ts);},[]);
+  useEffect(function(){var sub=supabase.channel('tickets-changes').on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(){dbGetTickets().then(function(t){setTicketsR(t);setTicketsLoaded(true);});}).on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){dbGetUsers().then(function(u){setUsers(u);});}).on('postgres_changes',{event:'*',schema:'public',table:'time_sessions'},function(){dbGetAllTimeSessions().then(function(ts){setAllTimeSessions(ts);});}).subscribe();return function(){supabase.removeChannel(sub);};},[]);
+  useEffect(function(){if(!curUser)return;var dmSub=supabase.channel("global-dm-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_chats"},function(payload){var m=payload.new;if(m.to_id===curUser.id){setPageR(function(curPage){if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});return curPage;});}}).subscribe();var groupSub=supabase.channel("global-group-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats"},function(payload){var m=payload.new;if(m.user_id===curUser.id)return;setPageR(function(curPage){if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});return curPage;});}).subscribe();return function(){supabase.removeChannel(dmSub);supabase.removeChannel(groupSub);};},[curUser?.id]);
+  async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
+  function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
+  function setPage(v){localStorage.setItem("hd_page",v);setPageR(v);setSidebarOpen(false);if(v==="team_chat")setUnreadChatCount(0);}
+  var addLog=useCallback(function(action,target,detail,uId){var entry={id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};setLogsR(function(p){return[entry].concat(p).slice(0,500);});dbAddLog(entry);},[curUser]);
+  var showToast=useCallback(function(msg,type){setToast({msg,type:type||"ok"});setTimeout(function(){setToast(null);},3500);},[]);
+  useEffect(function(){function check(){var newBreaches=tickets.filter(function(t){if(t.deleted||t.status==="Closed")return false;var s=getStatusSla(t,statusSla,schedules);return s&&s.breached;});setBreaches(newBreaches);if(curUser){newBreaches.forEach(function(t){if(!prevBreachIdsRef.current.includes(t.id)){var emails=getTicketEmails(t,users);var subj="🚨 SLA Breach — "+t.title;var body="A ticket has exceeded its SLA time limit.\n\nTicket: "+t.title+"\nStatus: "+t.status+"\nAssigned To: "+(users.find(function(u){return u.id===t.assignedTo;})?.name||"Unassigned")+"\n\nPlease attend to this ticket immediately.";notifyUsers(emails,subj,body);createNotificationsForTicket(t,users,"SLA breach on ticket: "+t.title,"sla",null);}});prevBreachIdsRef.current=newBreaches.map(function(t){return t.id;});}}check();var iv=setInterval(check,30000);return function(){clearInterval(iv);};},[tickets,statusSla,schedules,users,curUser]);
+  useEffect(function(){if(!curUser)return;async function fetchReplies(){try{var res=await fetch("/api/fetch-replies");if(!res.ok)return;var data=await res.json();if(!data.replies||!data.replies.length)return;var updated=tickets.slice();data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});setTickets(function(){return updated;});setInboxAlerts(function(prev){return prev.concat(data.replies);});showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");}catch(e){}}fetchReplies();var iv=setInterval(fetchReplies,60000);return function(){clearInterval(iv);};},[curUser]);
+  async function handleMarkNotificationsRead(){if(!curUser)return;await dbMarkNotificationsRead(curUser.id);setNotifications(function(prev){return prev.map(function(n){return Object.assign({},n,{read:true});});});}
+  var isAdmin=["admin","it_manager"].includes(curUser?.role);
+  var isTech=IT_ROLES.includes(curUser?.role);
+  var pendingUsers=useMemo(function(){return isAdmin?users.filter(function(u){return !u.active;}):[]},[users,isAdmin]);
+  var visible=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
+  var allNonDeleted=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
+  if(!appReady)return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#062d6b)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #0ea5e9",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"#7dd3fc",fontSize:14,fontWeight:600}}>Loading Hoptix…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
+  if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
+  var NAV=[{id:"dashboard",icon:"🏠",label:"Dashboard"},{id:"tickets",icon:"🎫",label:"Tickets"},{id:"new_ticket",icon:"➕",label:"New Ticket"},{id:"time_tracking",icon:"⏱️",label:"Time Tracking"},{id:"team_chat",icon:"💬",label:"Team Chat",chatBadge:true},{id:"user_guide",icon:"📖",label:"User Guide"},{id:"knowledge_base",icon:"📚",label:"Knowledge Base"},{id:"reports",icon:"📊",label:"Reports",admin:true},{id:"users",icon:"👥",label:"Users",admin:true},{id:"companies",icon:"🏢",label:"Companies",superAdmin:true},{id:"clients",icon:"🤝",label:"Clients",superAdmin:true},{id:"ticket_types",icon:"🏷️",label:"Ticket Types",superAdmin:true},{id:"activity_log",icon:"📋",label:"Activity Log",superAdmin:true},{id:"integrations",icon:"🔌",label:"Integrations",superAdmin:true}].filter(function(n){if(n.superAdmin)return curUser.role==="admin";if(n.admin)return isAdmin;return true;});
+  var bottomNav=NAV.slice(0,4);
+  var curNav=NAV.find(function(n){return n.id===page;})||{icon:"",label:"—"};
+  var sidebar=<div style={{width:220,background:"linear-gradient(180deg,#020e1f,#041833,#062d6b)",display:"flex",flexDirection:"column",flexShrink:0,height:"100%"}}>
+    <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(56,189,248,.15)"}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#fff 60%,#b3d9ff)",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:18,height:18,borderRadius:"50%",background:"linear-gradient(135deg,#0369a1,#0ea5e9)",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:7,height:7,borderRadius:"50%",background:"#020e1f"}}/></div></div><div><div style={{color:"#fff",fontWeight:800,fontSize:14}}>hoptix</div><div style={{color:"#38bdf8",fontSize:9}}>A.eye technology</div></div></div></div>
+    <div style={{padding:"8px",flex:1,overflowY:"auto"}}>{NAV.map(function(n){return<div key={n.id} className="nv" onClick={function(){setPage(n.id);}} style={{padding:"10px 12px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,marginBottom:2,background:page===n.id?"rgba(14,165,233,.25)":"transparent",color:page===n.id?"#fff":"#93c5fd",fontWeight:page===n.id?700:500,fontSize:12,borderLeft:page===n.id?"3px solid #0ea5e9":"3px solid transparent"}}><span style={{fontSize:15}}>{n.icon}</span>{n.label}{n.id==="tickets"&&breaches.length>0&&<span style={{marginLeft:"auto",background:"#ef4444",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10}}>{breaches.length}</span>}{n.id==="team_chat"&&unreadChatCount>0&&<span style={{marginLeft:"auto",background:"#6366f1",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10}}>{unreadChatCount>99?"99+":unreadChatCount}</span>}</div>;})}</div>
+    <div style={{padding:"12px 10px",borderTop:"1px solid rgba(56,189,248,.15)"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><Avatar name={curUser.name} id={curUser.id} size={30}/><div style={{flex:1,overflow:"hidden"}}><div style={{color:"#fff",fontSize:11,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{curUser.name}</div><div style={{color:"#7dd3fc",fontSize:10}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div></div><button onClick={function(){try{if(localStorage.getItem("hd_rememberMe")!=="true")localStorage.removeItem("hd_savedCreds");}catch(e){}setCurUser(null);setPageR("dashboard");saveState("hd_page","dashboard");setSelTicket(null);}} style={{width:"100%",padding:"7px",background:"rgba(239,68,68,.2)",color:"#fca5a5",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>🚪 Sign Out</button></div>
+  </div>;
+  return<ErrorBoundary>
+    <div style={{display:"flex",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:"#f8fafc",fontSize:13,overflow:"hidden"}}>
+      <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}button:active{opacity:.8}.nv:hover{background:rgba(14,165,233,.15)!important;color:#7dd3fc!important}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:767px){.hide-mobile{display:none!important}.desktop-only{display:none!important}}`}</style>
+      {!isMobile&&sidebar}
+      {isMobile&&sidebarOpen&&<div style={{position:"fixed",inset:0,zIndex:8888,display:"flex"}}><div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.5)"}} onClick={function(){setSidebarOpen(false);}}/><div style={{position:"relative",zIndex:1,width:260,height:"100%"}}>{sidebar}</div></div>}
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
+        <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:isMobile?"10px 16px":"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {isMobile&&<button onClick={function(){setSidebarOpen(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:2,color:"#334155",display:"flex",alignItems:"center"}}>☰</button>}
+            <div style={{fontWeight:700,fontSize:isMobile?13:14,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{curNav.icon} {curNav.label}</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+            {pendingUsers.length>0&&isAdmin&&<div onClick={function(){setPage("users");}} style={{cursor:"pointer",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:20,padding:"4px 10px",color:"#92400e",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>⏳ {pendingUsers.length}</div>}
+            {breaches.length>0&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:20,padding:"4px 10px",color:"#dc2626",fontSize:10,fontWeight:700}}>⚠️ {breaches.length}</div>}
+            {inboxAlerts.length>0&&<div style={{cursor:"pointer",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:20,padding:"4px 10px",color:"#0369a1",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:4}} onClick={function(){setPage("tickets");}}>📬 {inboxAlerts.length}<button onClick={function(e){e.stopPropagation();setInboxAlerts([]);}} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:11,padding:0,lineHeight:1}}>✕</button></div>}
+            <NotificationBell notifications={notifications} onMarkRead={handleMarkNotificationsRead} onGoTicket={function(ticketId){setSelTicket(ticketId);}}/>
+            <button onClick={function(){setShowProfile(true);}} style={{display:"flex",alignItems:"center",gap:6,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"5px 10px 5px 5px",cursor:"pointer"}}><Avatar name={curUser.name} id={curUser.id} size={26}/>{!isMobile&&<div style={{textAlign:"left"}}><div style={{fontWeight:700,fontSize:11}}>{curUser.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div>}<span style={{fontSize:10,color:"#94a3b8"}}>▼</span></button>
+          </div>
+        </div>
+        {toast&&<div style={{position:"fixed",top:isMobile?70:20,right:12,left:isMobile?12:"auto",zIndex:10000,background:toast.type==="error"?"#ef4444":toast.type==="warn"?"#f59e0b":"#10b981",color:"#fff",padding:"10px 16px",borderRadius:10,fontWeight:600,fontSize:13,boxShadow:"0 4px 20px rgba(0,0,0,.2)",textAlign:"center"}}>{toast.msg}</div>}
+        <div style={{flex:1,overflowY:"auto",padding:isMobile?"12px":"24px",paddingBottom:isMobile?"80px":"24px",WebkitOverflowScrolling:"touch"}}>
+          {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
+          {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile} ticketsLoaded={ticketsLoaded} ticketsLoading={ticketsLoading} ticketsError={ticketsError} onRefresh={function(){loadTicketsRef.current(1);}}/>}
+          {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage} setSelTicket={setSelTicket} allTimeSessions={allTimeSessions}/>}
+          {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
+          {page==="team_chat"    &&<PageTeamChat    curUser={curUser} users={users} isAdmin={isAdmin} isMobile={isMobile}/>}
+          {page==="user_guide"   &&<PageUserGuide   curUser={curUser}/>}
+          {page==="knowledge_base"&&<PageKnowledgeBase tickets={allNonDeleted} ticketTypes={ticketTypes} users={users} isMobile={isMobile}/>}
+          {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules} allTimeSessions={allTimeSessions}/>}
+          {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
+          {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast} dbSaveCompany={dbSaveCompany} dbDeleteCompany={dbDeleteCompany}/>}
+          {page==="clients"      &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast} dbSaveClient={dbSaveClient} dbDeleteClient={dbDeleteClient}/>}
+          {page==="ticket_types" &&<PageTicketTypes ticketTypes={ticketTypes} users={users} setTicketTypes={setTTR} statusSla={statusSla} setStatusSla={setStatusSlaR} addLog={addLog} showToast={showToast} dbSaveTicketType={dbSaveTicketType} dbDeleteTicketType={dbDeleteTicketType}/>}
+          {page==="activity_log" &&<PageActivityLog logs={logs} users={users} tickets={tickets} setTickets={setTickets} isAdmin={isAdmin} addLog={addLog} showToast={showToast}/>}
+          {page==="integrations" &&<PageIntegrations showToast={showToast} addLog={addLog} emailTemplates={emailTemplates} setEmailTemplates={setEmailTemplates} curUser={curUser} isAdmin={isAdmin}/>}
+        </div>
+        {isMobile&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #e2e8f0",display:"flex",zIndex:8000,boxShadow:"0 -2px 10px rgba(0,0,0,.08)"}}>
+          {bottomNav.map(function(n){var active=page===n.id;return<button key={n.id} onClick={function(){setPage(n.id);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,position:"relative"}}><span style={{fontSize:20}}>{n.icon}</span>{n.id==="team_chat"&&unreadChatCount>0&&<span style={{position:"absolute",top:4,right:"calc(50% - 14px)",background:"#6366f1",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:9,fontWeight:800,lineHeight:"14px",minWidth:16,textAlign:"center"}}>{unreadChatCount>99?"99+":unreadChatCount}</span>}<span style={{fontSize:9,fontWeight:active?700:500,color:active?"#6366f1":"#94a3b8"}}>{n.label}</span>{active&&<div style={{width:4,height:4,borderRadius:"50%",background:"#6366f1"}}/>}</button>;})}
+          <button onClick={function(){setSidebarOpen(true);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:20}}>☰</span><span style={{fontSize:9,fontWeight:500,color:"#94a3b8"}}>More</span></button>
+        </div>}
+      </div>
+      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}} refreshTimeSessions={refreshTimeSessions} allTimeSessions={allTimeSessions}/>}
+      {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} schedules={schedules} setSchedules={setSchedulesR} dbSaveSchedule={dbSaveSchedule} onClose={function(){setShowProfile(false);}}/>}
+    </div>
+  </ErrorBoundary>;
+}
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+function PageDashboard(p){
+  var tickets=p.tickets;var allTickets=p.allTickets||p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var setPage=p.setPage;var setSelTicket=p.setSelTicket;var breaches=p.breaches||[];var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
+  var byStatus=ALL_STATUSES.map(function(s){return{name:s,value:tickets.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
+  var daily=Array.from({length:7},function(_,i){var d=new Date(Date.now()-(6-i)*86400000);return{lbl:d.toLocaleDateString("en",{weekday:"short"}),created:tickets.filter(function(t){return new Date(t.createdAt).toDateString()===d.toDateString();}).length,closed:tickets.filter(function(t){return t.closedAt&&new Date(t.closedAt).toDateString()===d.toDateString();}).length};});
+  var techs=users.filter(function(u){return["it_technician","it_manager"].includes(u.role);});
+  var byType=ticketTypes.map(function(tt,i){return{name:tt.name,value:tickets.filter(function(t){return t.typeId===tt.id;}).length,fill:PAL[i%PAL.length]};}).filter(function(x){return x.value>0;}).sort(function(a,b){return b.value-a.value;});
+  var totalLoggedMins=allTimeSessions.filter(function(s){return s.ended_at&&s.duration_minutes!=null&&s.duration_minutes>0&&s.duration_minutes<480;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
+  return<div>
+    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(150px,1fr))",gap:10,marginBottom:16}}>
+      <Stat label="Total" value={tickets.length} icon="🎫" color="#6366f1" help="All active (non-deleted) tickets in the system."/>
+      <Stat label="Open" value={tickets.filter(function(t){return t.status==="Open";}).length} icon="📬" color="#f59e0b" help="Submitted but not yet assigned or started."/>
+      <Stat label="In Progress" value={tickets.filter(function(t){return t.status==="In Progress";}).length} icon="⚙️" color="#6366f1" help="Currently being worked on by an assigned technician."/>
+      <Stat label="Pending" value={tickets.filter(function(t){return t.status==="Pending";}).length} icon="⏳" color="#0ea5e9" help="Awaiting response or action from the requester."/>
+      <Stat label="Escalated" value={tickets.filter(function(t){return t.status==="Escalated";}).length} icon="🔺" color="#7c3aed" help="Raised to senior staff."/>
+      <Stat label="Closed" value={allTickets.filter(function(t){return t.status==="Closed";}).length} icon="✅" color="#10b981" help="Fully resolved and closed tickets."/>
+      <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual time worked" help="Real work time logged by IT staff using the Start/Stop timer."/>
+    </div>
+    <div style={{background:breaches.length>0?"#fef2f2":"#f0fdf4",border:"2px solid "+(breaches.length>0?"#ef4444":"#bbf7d0"),borderRadius:12,padding:14,marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:breaches.length>0?12:0}}>
+        <span style={{fontSize:22}}>{breaches.length>0?"🚨":"✅"}</span>
+        <div style={{flex:1}}><div style={{fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",fontSize:14}}>SLA Breach Alerts</div><div style={{fontSize:11,color:breaches.length>0?"#ef4444":"#16a34a",marginTop:2}}>{breaches.length===0?"All active tickets are within their SLA targets — great work!":breaches.length+" ticket"+(breaches.length!==1?"s are":" is")+" past the SLA threshold"}</div></div>
+        <div style={{textAlign:"center",background:breaches.length>0?"#fecaca":"#bbf7d0",borderRadius:10,padding:"6px 14px",flexShrink:0}}><div style={{fontSize:26,fontWeight:800,color:breaches.length>0?"#dc2626":"#166534",lineHeight:1}}>{breaches.length}</div><div style={{fontSize:9,color:breaches.length>0?"#dc2626":"#166634",textTransform:"uppercase",fontWeight:700}}>Breached</div></div>
+      </div>
+      {breaches.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {breaches.slice(0,5).map(function(t){var pri=PRI_META[t.priority]||PRI_META.medium;var asgn=users.find(function(u){return u.id===t.assignedTo;});return<div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fecaca",gap:8}}>
+          <div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/><Badge label={t.status} color={STATUS_META[t.status]?.color||"#6366f1"}/>{asgn&&<span style={{fontSize:10,color:"#64748b"}}>👤 {asgn.name}</span>}</div></div>
+          <Btn size="sm" variant="danger" onClick={function(){setSelTicket(t.id);}}>View →</Btn>
+        </div>;})}
+        {breaches.length>5&&<div style={{fontSize:11,color:"#ef4444",textAlign:"center",fontWeight:600,padding:"4px 0"}}>+{breaches.length-5} more — check the Tickets page</div>}
+      </div>}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(280px,1fr))",gap:14,marginBottom:14}}>
+      <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={byStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{byStatus.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
+      <Card>{(function(){var trendData=[];for(var i=0;i<7;i++){var d=new Date(Date.now()-(6-i)*86400000);var obj={lbl:d.toLocaleDateString("en",{weekday:"short"})};for(var j=0;j<ticketTypes.length;j++){var tt=ticketTypes[j];obj[tt.name]=tickets.filter(function(t){return t.typeId===tt.id&&new Date(t.createdAt).toDateString()===d.toDateString();}).length;}trendData.push(obj);}return<div><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>7-Day Trend — Tickets by Type</div><ResponsiveContainer width="100%" height={180}><BarChart data={trendData} margin={{top:4,right:4,left:-16,bottom:0}}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="lbl" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}} allowDecimals={false}/><Tooltip/><Legend wrapperStyle={{fontSize:9}}/>{ticketTypes.map(function(tt,i){return<Bar key={tt.id} dataKey={tt.name} stackId="a" fill={tt.color||PAL[i%PAL.length]} radius={i===ticketTypes.length-1?[4,4,0,0]:[0,0,0,0]}/>;})}</BarChart></ResponsiveContainer></div>;})()}</Card>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
+      <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Technician Workload</div>{techs.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No technicians yet.</div>}{techs.map(function(t){var open=tickets.filter(function(tk){return tk.assignedTo===t.id&&tk.status!=="Closed";}).length;var total=tickets.filter(function(tk){return tk.assignedTo===t.id;}).length;var techMins=allTimeSessions.filter(function(s){return s.user_id===t.id&&s.ended_at&&s.duration_minutes!=null&&s.duration_minutes>0&&s.duration_minutes<480;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);return<div key={t.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar name={t.name} id={t.id} size={26}/><div style={{flex:1}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600}}><span>{t.name}</span><span style={{color:"#6366f1"}}>{open}/{total} · <span style={{color:"#8b5cf6"}}>{fmtDuration(techMins)}</span></span></div><div style={{background:"#e2e8f0",borderRadius:4,height:5,marginTop:4}}><div style={{background:"#6366f1",height:5,borderRadius:4,width:(total?Math.min(100,Math.round(open/total*100)):0)+"%"}}/></div></div></div>;})}</Card>
+      <Card><div style={{fontWeight:700,color:"#1e293b",marginBottom:12,fontSize:13}}>Tickets by Type</div>{byType.length===0&&<div style={{color:"#94a3b8",fontSize:12}}>No tickets yet.</div>}{byType.slice(0,6).map(function(t,i){return<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #f1f5f9"}}><span style={{fontSize:12,color:"#475569"}}>{t.name}</span><Badge label={t.value} color={PAL[i%PAL.length]}/></div>;})}</Card>
+    </div>
+  </div>;
+}
+
+// ── New Ticket ────────────────────────────────────────────────────────────────
+function blankForm(ticketTypes,companies,curUser){
+  return{title:"",description:"",typeId:ticketTypes[0]?.id||"",companyId:curUser.companyId||companies[0]?.id||"",clientId:"",locationId:"",externalEmail:"",customTypeName:""};
+}
+function PageNewTicket(p){
+  var users=p.users;var companies=p.companies;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
+  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setPage=p.setPage;var setSelTicket=p.setSelTicket;
+  var[form,setForm]=useState(function(){return blankForm(ticketTypes,companies,curUser);});
+  var[startTime,setStartTime]=useState(Date.now());
+  var[preview,setPreview]=useState(null);
+  var[attachments,setAttachments]=useState([]);
+  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
+  var selType=ticketTypes.find(function(t){return t.id===form.typeId;});
+  var selClient=clients.find(function(c){return c.id===form.clientId;});var availLocs=selClient?selClient.locations:[];
+  var ACCEPTED=["image/jpeg","image/png","image/gif","image/webp","video/mp4","video/quicktime","video/webm"];
+  function processFiles(files){Array.from(files).forEach(function(file){if(!ACCEPTED.includes(file.type)){showToast("Unsupported: "+file.name,"error");return;}if(file.size>20*1024*1024){showToast(file.name+" > 20MB","error");return;}var r=new FileReader();r.onload=function(e){setAttachments(function(prev){if(prev.length>=10){showToast("Max 10 attachments","error");return prev;}return prev.concat([{id:uid(),name:file.name,type:file.type,size:file.size,dataUrl:e.target.result}]);});};r.readAsDataURL(file);});}
+  function removeAtt(id){setAttachments(function(prev){return prev.filter(function(a){return a.id!==id;});});}
+  function handlePreview(){
+    if(!form.title.trim()||!form.description.trim()){showToast("Fill in title and description","error");return;}
+    var assign=aiAssign(form.title,form.description,form.typeId,users,ticketTypes);
+    var tt=ticketTypes.find(function(t){return t.id===form.typeId;});
+    var now=new Date().toISOString();var sla=new Date(Date.now()+(tt?tt.slaHours:24)*3600000).toISOString();
+    var mins=Math.max(0.017,(Date.now()-startTime)/60000);
+    var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:new Date(startTime).toISOString(),slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],statusTimeLog:[{status:"Open",enteredAt:now,exitedAt:null,durationMins:null}],conversations:[],closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
+    setPreview({draft:draft,assign:assign});
+  }
+  function handleSubmit(){
+    setTickets(function(prev){return prev.concat([preview.draft]);});
+    addLog("TICKET_CREATED",preview.draft.id,"Ticket \""+preview.draft.title+"\" created.");
+    var assignedUser=users.find(function(u){return u.id===preview.draft.assignedTo;});
+    var tt2=ticketTypes.find(function(t){return t.id===preview.draft.typeId;});
+    var emails=getTicketEmails(preview.draft,users);
+    var subjNew="🎫 New Ticket: "+preview.draft.title;
+    var bodyNew="A new support ticket has been submitted.\n\nTicket: "+preview.draft.title+"\nType: "+(tt2?tt2.name:"—")+"\nPriority: "+(PRI_META[preview.draft.priority]?.label||preview.draft.priority)+"\nSubmitted By: "+(users.find(function(u){return u.id===preview.draft.submittedBy;})?.name||"Unknown")+"\nAssigned To: "+(assignedUser?assignedUser.name:"Unassigned")+"\n\nDescription:\n"+preview.draft.description.slice(0,300)+(preview.draft.description.length>300?"…":"");
+    notifyUsers(emails,subjNew,bodyNew);
+    notifyAdmin("🎫 New Ticket Created — "+preview.draft.title,bodyNew);
+    createNotificationsForTicket(preview.draft,users,"New ticket submitted: "+preview.draft.title,"ticket",null);
+    var newId=preview.draft.id;
+    setPreview(null);
+    setForm(blankForm(ticketTypes,companies,curUser));
+    setAttachments([]);
+    setStartTime(Date.now());
+    showToast("✅ Ticket submitted!");
+    setSelTicket(newId);
+  }
+  return<div style={{maxWidth:640,margin:"0 auto"}}>
+    <Card>
+      <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:16}}>📋 Submit New Ticket</div>
+      {ticketTypes.length===0&&<div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⚠️ No ticket types configured yet.</div>}
+      <FInput label="Title *" value={form.title} onChange={function(e){fld("title",e.target.value);}} placeholder="Brief description"/>
+      {ticketTypes.length>0&&<FSelect label="Ticket Type *" value={form.typeId} onChange={function(e){fld("typeId",e.target.value);}} options={optTypes(ticketTypes)}/>}
+      {companies.length>0&&<FSelect label="Company *" value={form.companyId} onChange={function(e){fld("companyId",e.target.value);}} options={optCompanies(companies)}/>}
+      <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:14,marginBottom:14}}>
+        <div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:12}}>🤝 Client &amp; Location</div>
+        <FSelect label="Client" value={form.clientId} onChange={function(e){fld("clientId",e.target.value);fld("locationId","");}} options={optClients(clients)}/>
+        <FSelect label="Location" value={form.locationId} onChange={function(e){fld("locationId",e.target.value);}} options={optLocs(availLocs)} disabled={!form.clientId}/>
+      </div>
+      <FTextarea label="Description *" value={form.description} onChange={function(e){fld("description",e.target.value);}} placeholder="Detailed description..." rows={5}/>
+      <FInput label="External Email (optional)" value={form.externalEmail} onChange={function(e){fld("externalEmail",e.target.value);}} placeholder="external@client.com" type="email"/>
+      <div style={{marginBottom:14}}>
+        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>📎 Attachments</label>
+        <button type="button" onClick={function(){document.getElementById("tfi").click();}} style={{width:"100%",padding:"14px",border:"2px dashed #cbd5e1",borderRadius:10,background:"#f8fafc",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>📁 Tap to attach files</button>
+        <input id="tfi" type="file" multiple accept="image/*,video/*" style={{display:"none"}} onChange={function(e){processFiles(e.target.files);e.target.value="";}}/>
+        {attachments.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginTop:8}}>{attachments.map(function(a){return<div key={a.id} style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0"}}>{a.type.startsWith("image/")?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>:<div style={{height:70,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:24}}>🎬</span></div>}<button onClick={function(){removeAtt(a.id);}} style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,.55)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button></div>;})}</div>}
+      </div>
+      {selType&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:12,marginBottom:14,fontSize:12}}><div style={{fontWeight:700,color:"#0369a1",marginBottom:4}}>Auto-settings for "{selType.name}"</div><div style={{color:"#0c4a6e"}}>⚡ {PRI_META[selType.priority]?.label} · ⏱ {selType.slaHours}h SLA · 🤖 AI assign</div></div>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setPage("tickets");}}>Cancel</Btn><Btn onClick={handlePreview}>🔍 Preview &amp; Submit</Btn></div>
+    </Card>
+    {preview&&<Modal title="Confirm Submission" onClose={function(){setPreview(null);}}>
+      <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:12,marginBottom:14}}><div style={{fontWeight:700,color:"#166534",marginBottom:4}}>🤖 AI Assignment</div><div style={{fontSize:13,color:"#14532d"}}>{preview.assign.reason}</div></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>{[["Title",preview.draft.title],["Priority",PRI_META[preview.draft.priority]?.label],["Assigned To",(users.find(function(u){return u.id===preview.draft.assignedTo;})||{name:"Unassigned"}).name],["Attachments",preview.draft.attachments.length+" files"]].map(function(pair){return<div key={pair[0]} style={{background:"#f8fafc",padding:10,borderRadius:8}}><div style={{color:"#64748b",fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{pair[0]}</div><div style={{fontWeight:600,color:"#1e293b",marginTop:2,fontSize:13}}>{pair[1]||"—"}</div></div>;})}</div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setPreview(null);}}>Edit</Btn><Btn variant="success" onClick={handleSubmit}>✅ Submit</Btn></div>
+    </Modal>}
+  </div>;
+}
+
+// ── Ticket Detail ─────────────────────────────────────────────────────────────
+function TicketDetail(p){
+  var ticket=p.ticket;var setTickets=p.setTickets;var users=p.users;var ticketTypes=p.ticketTypes;
+  var tickets=p.tickets||[];var liveTicket=tickets.find(function(t){return t.id===ticket.id;})||ticket;
+  var companies=p.companies;var clients=p.clients;var curUser=p.curUser;var isAdmin=p.isAdmin;var isTech=p.isTech;
+  var addLog=p.addLog;var showToast=p.showToast;var onClose=p.onClose;var statusSla=p.statusSla;var schedules=p.schedules||{};
+  var refreshTimeSessions=p.refreshTimeSessions||function(){};
+  var allTimeSessions=p.allTimeSessions||[];
+  var[tab,setTab]=useState("details");
+  var[status,setStatus]=useState(ticket.status);
+  var[asgn,setAsgn]=useState(ticket.assignedTo||"");
+  var[note,setNote]=useState("");
+  var[typeId,setTypeId]=useState(ticket.typeId||"");
+  var[showTimerBanner,setShowTimerBanner]=useState("");
+  var forceStopRef=useRef(null);
+  var shouldAutoStart=false;
+  function handleAutoStarted(){setShowTimerBanner(true);setTimeout(function(){setShowTimerBanner(false);},8000);}
+  var[msgTo,setMsgTo]=useState("");var[msgCC,setMsgCC]=useState("");
+  var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);
+  var[msgBody,setMsgBody]=useState("");
+  var emailTemplates=p.emailTemplates||[];
+  var assignedUser=users.find(function(u){return u.id===ticket.assignedTo;});
+  function applyTemplate(tid){var tmpl=emailTemplates.find(function(t){return t.id===tid;});if(!tmpl)return;var cl2=clients.find(function(c){return c.id===ticket.clientId;});var body=tmpl.body.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");var subj=tmpl.subject.replace(/{{client_name}}/g,cl2?cl2.name:"[Client]").replace(/{{agent_name}}/g,assignedUser?assignedUser.name:"[Agent]");setMsgSubj(subj);setMsgBody(body);if(tmpl.defaultCC&&tmpl.defaultCC.trim())setMsgCC(tmpl.defaultCC.trim());}
+  var[emailSending,setEmailSending]=useState(false);
+  function fu(id){return users.find(function(x){return x.id===id;});}
+  var tt=ticketTypes.find(function(t){return t.id===ticket.typeId;});
+  var co=companies.find(function(c){return c.id===ticket.companyId;});
+  var client=clients.find(function(c){return c.id===ticket.clientId;});
+  var loc=client?client.locations.find(function(l){return l.id===ticket.locationId;}):null;
+  if(!ticket)return null;
+  var sSla=getStatusSla(ticket,statusSla,schedules);
+  var ticketSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
+  var hasLoggedTime=ticketSessions.length>0;
+  var totalLoggedMins=ticketSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
+  async function saveStatus(){
+    var statusChanged=status!==ticket.status;
+    var now=new Date().toISOString();
+    if(status==="Closed"&&!(ticket._resolutionNote&&ticket._resolutionNote.trim())){showToast("A Resolution Note is required before closing this ticket.","error");return;}
+    var wasInProgress=ticket.status==="In Progress";
+    var movingAwayFromInProgress=statusChanged&&wasInProgress&&status!=="In Progress";
+    if(movingAwayFromInProgress&&forceStopRef.current){await forceStopRef.current();refreshTimeSessions();setShowTimerBanner("stopped");setTimeout(function(){setShowTimerBanner("");},8000);}
+    if(status==="Closed"&&!movingAwayFromInProgress&&forceStopRef.current){await forceStopRef.current();refreshTimeSessions();}
+    var movingToInProgress=statusChanged&&status==="In Progress";
+    if(movingToInProgress){var newSession={id:uid(),ticket_id:ticket.id,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:"Auto-started: status changed to In Progress",created_at:now};await dbSaveTimeSession(newSession);refreshTimeSessions();setShowTimerBanner("started");setTimeout(function(){setShowTimerBanner("");},8000);}
+    var prevLog=ticket.statusTimeLog||[];
+    var newLog=prevLog.map(function(entry){if(entry.exitedAt===null&&statusChanged){var durMins=parseFloat(((new Date(now)-new Date(entry.enteredAt))/60000).toFixed(2));return Object.assign({},entry,{exitedAt:now,durationMins:durMins});}return entry;});
+    if(statusChanged){newLog=newLog.concat([{status:status,enteredAt:now,exitedAt:null,durationMins:null}]);}
+    var hist={status,assignedTo:asgn||null,timestamp:now,changedBy:curUser.id,note:note||(statusChanged?"Status changed to "+status:"Details updated")};
+    if(!statusChanged)hist._noSlaReset=true;
+    if(statusChanged&&prevLog.length>0){var lastEntry=prevLog[prevLog.length-1];if(lastEntry&&lastEntry.exitedAt===null){hist.durationMins=parseFloat(((new Date(now)-new Date(lastEntry.enteredAt))/60000).toFixed(2));}}
+    var newTT=ticketTypes.find(function(t){return t.id===typeId;});var typeChanged=typeId&&typeId!==ticket.typeId;
+    var newSlaDeadline=typeChanged&&newTT?new Date(new Date(ticket.createdAt).getTime()+newTT.slaHours*3600000).toISOString():ticket.slaDeadline;
+    var newPriority=typeChanged&&newTT?newTT.priority:ticket.priority;
+    if(typeChanged)hist.note=(note||"")+(note?" | ":"")+"Type changed to: "+newTT.name;
+    var resNote=(status==="Closed"&&ticket._resolutionNote)?ticket._resolutionNote.trim():null;
+    setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;var newHist=statusChanged?(t.statusHistory||[]).concat([hist]):(t.statusHistory||[]).concat([Object.assign({},hist,{_noSlaReset:true})]);return Object.assign({},t,{status,assignedTo:asgn||null,typeId:typeId||t.typeId,priority:newPriority,slaDeadline:newSlaDeadline,updatedAt:now,slaBreached:new Date()>new Date(newSlaDeadline)&&status!=="Closed",closedAt:status==="Closed"&&!t.closedAt?now:t.closedAt,statusHistory:newHist,statusTimeLog:newLog,resolutionNote:resNote||t.resolutionNote,_resolutionNote:undefined});});});
+    if(resNote){addLog("TICKET_RESOLVED",ticket.id,"Resolution note saved for: \""+ticket.title+"\"");}
+    addLog("TICKET_STATUS",ticket.id,(statusChanged?"Status → "+status:"Details updated")+". Assigned: "+(fu(asgn)?.name||"nobody"));
+    if(statusChanged){
+      var assigneeName=fu(asgn)?.name||"Unassigned";
+      var emails=getTicketEmails(ticket,users).filter(function(e){var me=users.find(function(u){return u.id===curUser.id;});return !me||e!==me.email;});
+      var subjStatus="🔄 Ticket Updated: "+ticket.title+" → "+status;
+      var bodyStatus="A ticket status has been changed.\n\nTicket: "+ticket.title+"\nNew Status: "+status+"\nAssigned To: "+assigneeName+"\nChanged By: "+curUser.name+"\n"+(note?"Note: "+note+"\n":"");
+      notifyUsers(emails,subjStatus,bodyStatus);
+      notifyAdmin("🔄 Ticket Status Updated — "+ticket.title,bodyStatus);
+      createNotificationsForTicket(ticket,users,"Status changed to "+status+": "+ticket.title,"status",curUser.id);
+      if(status==="Closed"){var latestSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});if(latestSessions.length===0){notifyAdmin("⚠️ Ticket Closed Without Timer — "+ticket.title,"A ticket was closed without any IT work time being logged.\n\nTicket: "+ticket.title+"\nClosed By: "+curUser.name+"\nAssigned To: "+assigneeName);}}
+    }
+    showToast("Ticket updated");setNote("");onClose();
+  }
+  async function sendEmail(){
+    if(!msgTo.trim()||!msgBody.trim()){showToast("Recipient and body required","error");return;}
+    setEmailSending(true);
+    var toList=msgTo.split(",").map(function(e){return e.trim();}).filter(Boolean);
+    var ccStr=msgCC.trim();
+    var msgId=uid();
+    var msg={id:msgId,from:curUser.id,fromEmail:curUser.email,to:[],toEmails:toList,cc:ccStr,subject:msgSubj,body:msgBody,timestamp:new Date().toISOString(),isExternal:false,status:"sending"};
+    setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{conversations:(t.conversations||[]).concat([msg])}):t;});});
+    var results=await Promise.all(toList.map(function(email){return callSendEmail({to:email,subject:msgSubj,body:msgBody,cc:ccStr});}));
+    var allOk=results.every(function(r){return r.success;});
+    var failMsg=!allOk?results.filter(function(r){return !r.success;}).map(function(r){return r.error;}).join(", "):"";
+    var finalConvs=(ticket.conversations||[]).concat([msg]).map(function(c){return c.id===msgId?Object.assign({},c,{status:allOk?"sent":"failed",failReason:failMsg}):c;});
+    setTickets(function(prev){return prev.map(function(t){if(t.id!==ticket.id)return t;return Object.assign({},t,{conversations:finalConvs});});});
+    await dbSaveTicket(Object.assign({},ticket,{conversations:finalConvs}));
+    addLog("EMAIL_SENT",ticket.id,"Email to "+msgTo+(ccStr?" CC: "+ccStr:""));
+    if(allOk){var notifEmails=getTicketEmails(ticket,users).filter(function(e){return !toList.includes(e)&&e!==curUser.email;});notifyUsers(notifEmails,"📧 Email Sent on Ticket: "+ticket.title,"An email was sent on ticket: "+ticket.title+"\n\nFrom: "+curUser.name+"\nTo: "+msgTo+"\nSubject: "+msgSubj);createNotificationsForTicket(ticket,users,"Email sent by "+curUser.name+": "+msgSubj,"email",curUser.id);}
+    showToast(allOk?"📧 Email sent!":"⚠️ Failed",allOk?"ok":"error");
+    setEmailSending(false);
+    if(allOk){setMsgTo("");setMsgCC("");setMsgBody("");}
+  }
+  var TABS=["details","status","timer","email","chat","history"].filter(function(t){if(t==="status"||t==="timer")return isTech;return true;});
+  var tabLabels={details:"📋",status:"🔄",timer:"⏱️",email:"📧",chat:"💬",history:"📜"};
+  var tabFullLabels={details:"Details",status:"Status",timer:"Timer",email:"Email",chat:"Chat",history:"History"};
+  return<Modal title={ticket.title} onClose={onClose} wide>
+    {showTimerBanner&&<div style={{background:"linear-gradient(135deg,#064e3b,#065f46)",borderRadius:10,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:18}}>⏱</span>
+      <div style={{flex:1}}><div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Timer {showTimerBanner==="started"?"started":"stopped"} automatically</div><div style={{fontSize:11,color:"#a7f3d0",marginTop:2}}>{showTimerBanner==="started"?"Status changed to In Progress — your work time is now being tracked.":"Status changed — your work time has been saved."}</div></div>
+      <button onClick={function(){setShowTimerBanner("");setTab("timer");}} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>View Timer</button>
+    </div>}
+    {ticket.status==="Closed"&&!hasLoggedTime&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:16}}>⚠️</span>
+      <div style={{flex:1}}><div style={{fontWeight:700,color:"#92400e",fontSize:13}}>No IT work time was recorded</div><div style={{fontSize:11,color:"#b45309",marginTop:2}}>This ticket was closed without ever being set to In Progress, or the timer was not running.</div></div>
+      <button onClick={function(){setTab("timer");}} style={{background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>Add Manually</button>
+    </div>}
+    {liveTicket.hasUnreadReply&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:16}}>📬</span><div style={{flex:1}}><div style={{fontWeight:700,color:"#166534",fontSize:13}}>New reply received</div></div>
+      <button onClick={function(){setTab("email");setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});}} style={{padding:"6px 12px",background:"#10b981",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0}}>View</button>
+    </div>}
+    <div style={{display:"flex",gap:4,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
+      {TABS.map(function(t){return<button key={t} onClick={function(){if(t==="email"&&ticket.hasUnreadReply)setTickets(function(prev){return prev.map(function(tk){return tk.id===ticket.id?Object.assign({},tk,{hasUnreadReply:false}):tk;});});setTab(t);}} style={{background:tab===t?"#6366f1":"#f1f5f9",color:tab===t?"#fff":"#475569",border:"none",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0,position:"relative"}}>
+        {tabLabels[t]} {tabFullLabels[t]}{t==="email"&&ticket.hasUnreadReply&&<span style={{position:"absolute",top:-3,right:-3,background:"#10b981",color:"#fff",borderRadius:"50%",width:14,height:14,fontSize:8,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>!</span>}
+      </button>;})}
+    </div>
+    {tab==="details"&&<div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+        {[["Type",tt?.name||"—"],["Priority",<Badge key="p" label={PRI_META[ticket.priority]?.label||ticket.priority} color={PRI_META[ticket.priority]?.color||"#6366f1"}/>],["Status",<Badge key="s" label={ticket.status} color={STATUS_META[ticket.status]?.color||"#6366f1"}/>],["Company",co?.name||"—"],["Submitted By",fu(ticket.submittedBy)?.name||"—"],["Assigned To",fu(ticket.assignedTo)?.name||"Unassigned"],["Created",fdt(ticket.createdAt)],["SLA Deadline",fdt(ticket.slaDeadline)]].map(function(pair){return<div key={pair[0]} style={{background:"#f8fafc",padding:10,borderRadius:8}}><div style={{color:"#64748b",fontSize:10,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>{pair[0]}</div><div style={{fontWeight:600,color:"#1e293b",fontSize:12}}>{pair[1]}</div></div>;})}
+      </div>
+      <div style={{background:hasLoggedTime?"#f0fdf4":"#fffbeb",border:"1px solid "+(hasLoggedTime?"#bbf7d0":"#fde68a"),borderRadius:10,padding:10,marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:18}}>{hasLoggedTime?"🕐":"⚠️"}</span>
+        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:12,color:hasLoggedTime?"#166534":"#92400e"}}>IT Time Logged</div><div style={{fontSize:11,color:hasLoggedTime?"#16a34a":"#b45309",marginTop:1}}>{hasLoggedTime?fmtDuration(totalLoggedMins)+" logged across "+ticketSessions.length+" session"+(ticketSessions.length!==1?"s":""):"No time logged yet"}</div></div>
+        {isTech&&<button onClick={function(){setTab("timer");}} style={{padding:"5px 10px",background:hasLoggedTime?"#10b981":"#f59e0b",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0}}>{hasLoggedTime?"View":"Add Time"}</button>}
+      </div>
+      {client&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12,marginBottom:12}}><div style={{fontWeight:700,color:"#0369a1",fontSize:12,marginBottom:8}}>🤝 {client.name}</div><div style={{fontSize:11,color:"#64748b"}}>📧 {client.email} · 📞 {client.phone}</div>{loc&&<div style={{fontSize:11,color:"#64748b",marginTop:4}}>📍 {loc.name} — {loc.address}</div>}</div>}
+      <div style={{background:"#f8fafc",padding:12,borderRadius:8,fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap",color:"#334155",marginBottom:12}}>{ticket.description}</div>
+      {sSla&&<div style={{background:sSla.breached?"#fef2f2":"#f0fdf4",border:"1px solid "+(sSla.breached?"#fecaca":"#bbf7d0"),borderRadius:10,padding:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontWeight:700,color:sSla.breached?"#dc2626":"#166534",fontSize:12}}>⏱ Status SLA</div><Badge label={sSla.breached?"BREACHED":"✓ OK"} color={sSla.breached?"#ef4444":"#10b981"}/></div>
+        <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:8}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,fontSize:11}}><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Allowed</div><div style={{fontWeight:700}}>{sSla.hoursAllowed}h</div></div><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Spent</div><div style={{fontWeight:700}}>{sSla.hoursSpent}h</div></div><div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:10}}>Left</div><div style={{fontWeight:700,color:sSla.breached?"#ef4444":"#10b981"}}>{sSla.breached?"0h":sSla.remaining+"h"}</div></div></div>
+      </div>}
+      {ticket.statusTimeLog&&ticket.statusTimeLog.length>0&&<div style={{marginTop:12}}>
+        <div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>⏳ Time Per Status</div>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {ticket.statusTimeLog.map(function(entry,i){var sm=STATUS_META[entry.status]||STATUS_META.Open;var dur=entry.durationMins!=null?fmtDuration(entry.durationMins):(entry.exitedAt===null?"Ongoing…":"—");return<div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:sm.color,flexShrink:0}}/>
+            <span style={{fontSize:12,fontWeight:600,color:sm.color,minWidth:90}}>{entry.status}</span>
+            <span style={{fontSize:11,color:entry.exitedAt===null?"#6366f1":"#64748b",fontWeight:entry.exitedAt===null?700:400,flex:1}}>{dur}</span>
+            {entry.exitedAt===null&&<Badge label="Current" color="#6366f1"/>}
+          </div>;})}
+        </div>
+      </div>}
+      {ticket.resolutionNote&&<div style={{marginTop:12,background:"#f0fdf4",border:"2px solid #10b981",borderRadius:10,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:16}}>📝</span><div style={{fontWeight:700,color:"#166534",fontSize:13}}>Resolution Note</div><span style={{fontSize:10,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 8px",fontWeight:700}}>Knowledge Base</span></div><div style={{fontSize:13,color:"#14532d",lineHeight:1.7,whiteSpace:"pre-wrap",background:"#fff",borderRadius:8,padding:"10px 14px",border:"1px solid #bbf7d0"}}>{ticket.resolutionNote}</div><div style={{fontSize:10,color:"#16a34a",marginTop:6}}>💡 Saved to team knowledge base — reference this when the same issue arises.</div></div>}
+      {ticket.attachments&&ticket.attachments.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>📎 Attachments ({ticket.attachments.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>{ticket.attachments.map(function(a){var isImg=a.type.startsWith("image/");return<div key={a.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){var w=window.open();w.document.write(isImg?'<img src="'+a.dataUrl+'" style="max-width:100%;"/>':'<video src="'+a.dataUrl+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:80,objectFit:"cover",display:"block"}}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:28}}>▶️</span></div>}</div>;})}</div></div>}
+    </div>}
+    {tab==="status"&&isTech&&<div>
+      <FSelect label="Update Status" value={status} onChange={function(e){setStatus(e.target.value);}} options={OPT_STATUSES}/>
+      {status==="Closed"&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⚠️ Closing this ticket will automatically stop the timer if it is running.</div>}
+      <FSelect label="Assign To" value={asgn} onChange={function(e){setAsgn(e.target.value);}} options={optTechs(users)}/>
+      <FSelect label="Ticket Type" value={typeId} onChange={function(e){setTypeId(e.target.value);}} options={ticketTypes.map(function(t){return mkOpt(t.id,t.name+" — "+t.slaHours+"h SLA");})}/>
+      {typeId!==ticket.typeId&&<div style={{fontSize:11,color:"#f59e0b",marginBottom:14}}>⚠️ Changing type will update priority and SLA deadline.</div>}
+      <FTextarea label="Note" value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What was done or why?" rows={3}/>
+      {status==="Closed"&&<div style={{marginBottom:14}}>
+        <label style={{display:"block",fontSize:12,fontWeight:600,color:"#166534",marginBottom:4}}>📝 Resolution Note <span style={{color:"#ef4444"}}>*</span> <span style={{fontWeight:400,color:"#94a3b8"}}>(required to close)</span></label>
+        <textarea value={ticket._resolutionNote||""} onChange={function(e){setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{_resolutionNote:e.target.value}):t;});});}} placeholder={"Describe the root cause and exact steps taken to fix this issue.\n\nExample:\nRoot Cause: DNS server misconfiguration after router firmware update.\nFix: Reset DNS to 8.8.8.8 via Network Settings → Advanced → DNS."} rows={6} style={{width:"100%",padding:"10px 12px",border:"2px solid #10b981",borderRadius:8,fontSize:13,outline:"none",background:"#f0fdf4",resize:"vertical",boxSizing:"border-box",lineHeight:1.6}}/>
+        <div style={{fontSize:11,color:"#166534",marginTop:4}}>💡 Be specific — future IT staff will use this to resolve the same issue faster.</div>
+      </div>}
+      <Btn onClick={saveStatus} style={{width:"100%"}}>💾 Save Changes</Btn>
+    </div>}
+    {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions} autoStart={shouldAutoStart} onAutoStarted={handleAutoStarted} forceStopRef={forceStopRef}/>}
+    {tab==="email"&&<div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div style={{fontWeight:700,color:"#1e293b"}}>📧 Send Email</div>
+        {emailTemplates.length>0&&<select onChange={function(e){if(e.target.value)applyTemplate(e.target.value);e.target.value="";}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc"}}><option value="">Use template…</option>{emailTemplates.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>}
+      </div>
+      <FInput label="To" value={msgTo} onChange={function(e){setMsgTo(e.target.value);}} placeholder="email@example.com"/>
+      <FInput label="CC (optional)" value={msgCC} onChange={function(e){setMsgCC(e.target.value);}} placeholder="cc@example.com"/>
+      <FInput label="Subject" value={msgSubj} onChange={function(e){setMsgSubj(e.target.value);}}/>
+      <FTextarea label="Message" value={msgBody} onChange={function(e){setMsgBody(e.target.value);}} rows={4} placeholder="Type your message…"/>
+      <button onClick={sendEmail} disabled={emailSending} style={{background:emailSending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,padding:"10px 18px",fontWeight:600,fontSize:14,cursor:emailSending?"not-allowed":"pointer",width:"100%",marginBottom:16}}>{emailSending?"⏳ Sending…":"📤 Send Email"}</button>
+      <div style={{fontWeight:700,color:"#1e293b",marginBottom:10}}>📬 Conversation Trail ({(liveTicket.conversations||[]).length})</div>
+      {(liveTicket.conversations||[]).length===0&&<div style={{color:"#94a3b8",fontSize:13}}>No messages yet.</div>}
+      {(liveTicket.conversations||[]).map(function(m){var isReply=m.isExternal||m.status==="received";return<div key={m.id} style={{background:isReply?"#f0fdf4":"#f8fafc",border:"1px solid "+(isReply?"#bbf7d0":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:10}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:4}}><div style={{fontWeight:700,fontSize:12,color:isReply?"#166534":"#1e293b"}}>{isReply?"📬 REPLY":"📧"} {isReply?(m.fromName||m.fromEmail):m.fromEmail}</div><div style={{display:"flex",gap:4,alignItems:"center"}}>{m.status==="sent"&&<span style={{fontSize:10,color:"#10b981"}}>✅</span>}{m.status==="failed"&&<span style={{fontSize:10,color:"#ef4444"}}>❌</span>}<span style={{fontSize:10,color:"#94a3b8"}}>{fdt(m.timestamp)}</span></div></div>
+        <div style={{fontSize:11,color:"#64748b",marginBottom:2}}>Subj: {m.subject}</div>
+        {m.cc&&m.cc.trim()&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>CC: {m.cc}</div>}
+        <div style={{fontSize:13,color:"#334155",whiteSpace:"pre-wrap",lineHeight:1.6}}>{m.body}</div>
+      </div>;})}
+    </div>}
+    {tab==="chat"&&<TicketChat ticketId={ticket.id} curUser={curUser} users={users} ticket={ticket}/>}
+    {tab==="history"&&<TicketHistory ticket={ticket} users={users} curUser={curUser}/>}
+  </Modal>;
+}
+
+// ── Time Tracking ─────────────────────────────────────────────────────────────
+function PageTimeTracking(p){
+  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var curUser=p.curUser;var isAdmin=p.isAdmin;var setSelTicket=p.setSelTicket;var isMobile=p.isMobile;var allTimeSessions=p.allTimeSessions||[];
+  var[search,setSearch]=useState("");var[filterUser,setFilterUser]=useState("");var[dateFrom,setDateFrom]=useState("");var[dateTo,setDateTo]=useState("");var[activeTab,setActiveTab]=useState(curUser.role==="end_user"?"create_time":"it_time");
+  var scope=useMemo(function(){var base=tickets.filter(function(t){return !t.deleted;});if(!isAdmin)return base.filter(function(t){return t.submittedBy===curUser.id||t.assignedTo===curUser.id;});if(filterUser)return base.filter(function(t){return t.assignedTo===filterUser||t.submittedBy===filterUser;});return base;},[tickets,curUser,isAdmin,filterUser]);
+  var filtered=useMemo(function(){var q=search.toLowerCase();return scope.filter(function(t){if(q&&!t.title.toLowerCase().includes(q)&&!t.id.includes(q))return false;if(dateFrom){var from=new Date(dateFrom);from.setHours(0,0,0,0);if(new Date(t.createdAt)<from)return false;}if(dateTo){var to=new Date(dateTo);to.setHours(23,59,59,999);if(new Date(t.createdAt)>to)return false;}return true;});},[scope,search,dateFrom,dateTo]);
+  function fu(id){return users.find(function(x){return x.id===id;});}
+  function ticketMins(ticketId){return allTimeSessions.filter(function(s){return s.ticket_id===ticketId&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
+  var totalITMins=filtered.reduce(function(a,t){return a+ticketMins(t.id);},0);
+  var totalCreateMins=filtered.reduce(function(a,t){return a+(t.timeToCreateMins||0);},0);
+  var ticketsWithITTime=filtered.filter(function(t){return ticketMins(t.id)>0;}).length;
+  var avgCreateMins=filtered.length?totalCreateMins/filtered.length:0;
+  var selStyle={padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",boxSizing:"border-box"};
+  return<div>
+    <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:14}}>⏱️ Time Tracking</div>
+    <div style={{display:"flex",gap:6,marginBottom:14}}>{(curUser.role==="end_user"?[{id:"create_time",label:"📝 My Ticket Creation Time"}]:[{id:"it_time",label:"🕐 IT Work Time"},{id:"create_time",label:"📝 Ticket Creation Time"}]).map(function(tab){return<button key={tab.id} onClick={function(){setActiveTab(tab.id);}} style={{padding:"8px 16px",borderRadius:8,border:"none",background:activeTab===tab.id?"#6366f1":"#f1f5f9",color:activeTab===tab.id?"#fff":"#475569",fontSize:12,fontWeight:700,cursor:"pointer"}}>{tab.label}</button>;})}</div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+      {activeTab==="it_time"?<><Stat label="Total IT Hours" value={fmtDuration(totalITMins)} icon="🕐" color="#8b5cf6" sub="actual time worked"/><Stat label="Tickets Timed" value={ticketsWithITTime+"/"+filtered.length} icon="⏱" color="#0ea5e9"/></>:<><Stat label="Total Create Time" value={fmtMs(totalCreateMins)} icon="📝" color="#f59e0b" sub={filtered.length+" tickets"}/><Stat label="Avg Create Time" value={fmtMs(avgCreateMins)} icon="⏱" color="#0ea5e9"/></>}
+    </div>
+    <Card style={{marginBottom:14,padding:"12px 14px"}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
+        <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets…" style={Object.assign({},selStyle,{width:"100%"})}/>
+        {isAdmin&&<select value={filterUser} onChange={function(e){setFilterUser(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}>
+          <option value="">All Users</option>
+          <optgroup label="── IT Staff ──">{users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name} ({ROLE_META[u.role]?.label||u.role})</option>;})}</optgroup>
+          <optgroup label="── End Users ──">{users.filter(function(u){return !IT_ROLES.includes(u.role)&&u.active;}).map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</optgroup>
+        </select>}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,alignItems:"center"}}>
+        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>From</label><input type="date" value={dateFrom} onChange={function(e){setDateFrom(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/></div>
+        <div><label style={{display:"block",fontSize:11,fontWeight:600,color:"#475569",marginBottom:3}}>To</label><input type="date" value={dateTo} onChange={function(e){setDateTo(e.target.value);}} style={Object.assign({},selStyle,{width:"100%"})}/></div>
+      </div>
+      {(dateFrom||dateTo)&&<button onClick={function(){setDateFrom("");setDateTo("");}} style={{marginTop:8,padding:"5px 12px",border:"1px solid #c7d2fe",borderRadius:6,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer"}}>✕ Clear dates</button>}
+    </Card>
+    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}{(dateFrom||dateTo)&&<span style={{color:"#6366f1",fontWeight:600}}> · Date filtered</span>}</div>
+    {activeTab==="it_time"&&<div>
+      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#0369a1"}}>⏱ Hours shown are <strong>actual logged time</strong> from the Start/Stop timer inside each ticket.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
+        {filtered.map(function(t){var asgn=fu(t.assignedTo);var sm=STATUS_META[t.status]||STATUS_META.Open;var mins=ticketMins(t.id);var sessions=allTimeSessions.filter(function(s){return s.ticket_id===t.id&&s.ended_at;});var cc=mins===0?"#94a3b8":mins<=60?"#10b981":mins<=240?"#f59e0b":"#ef4444";
+          return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Created: {fdt(t.createdAt)}</div></div><Badge label={t.status} color={sm.color} bg={sm.bg}/></div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>{asgn&&<Avatar name={asgn.name} id={asgn.id} size={18}/>}<span style={{fontSize:11,color:"#64748b"}}>{asgn?asgn.name:"Unassigned"}</span>{sessions.length>0&&<span style={{fontSize:10,color:"#94a3b8"}}>· {sessions.length} session{sessions.length!==1?"s":""}</span>}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>{mins>0&&<div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,mins/240*100)+"%",background:cc,borderRadius:3}}/></div>}<span style={{fontSize:13,fontWeight:700,color:cc}}>{mins>0?fmtDuration(mins):"No time logged"}</span></div>
+            </div>
+          </div>;})}
+      </div>
+    </div>}
+    {activeTab==="create_time"&&<div>
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#92400e"}}>📝 This tracks how long each user took to <strong>fill in and submit</strong> the ticket form — from when they opened it to when they clicked Submit.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {filtered.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found.</div></Card>}
+        {filtered.map(function(t){var sub=fu(t.submittedBy);var sm=STATUS_META[t.status]||STATUS_META.Open;var cm=t.timeToCreateMins||0;var cc=cm<=2?"#10b981":cm<=10?"#f59e0b":"#ef4444";var pct=Math.min(100,cm/15*100);
+          return<div key={t.id} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:14,cursor:"pointer"}} onClick={function(){setSelTicket(t.id);}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:600,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Submitted: {fdt(t.submittedAt||t.createdAt)}</div></div><Badge label={t.status} color={sm.color} bg={sm.bg}/></div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>{sub&&<Avatar name={sub.name} id={sub.id} size={18}/>}<span style={{fontSize:11,color:"#64748b"}}>{sub?sub.name:"Unknown"}</span></div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:40,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:cc,borderRadius:3}}/></div><span style={{fontSize:13,fontWeight:700,color:cc}}>{cm>0?fmtMs(cm):"—"}</span></div>
+            </div>
+          </div>;})}
+      </div>
+    </div>}
+  </div>;
+}
+
+// ── Tickets ───────────────────────────────────────────────────────────────────
+function PageTickets(p){
+  var tickets=p.tickets;var users=p.users;var clients=p.clients;var ticketTypes=p.ticketTypes;var curUser=p.curUser;
+  var setTickets=p.setTickets;var addLog=p.addLog;var showToast=p.showToast;var setSelTicket=p.setSelTicket;var setPage=p.setPage;var isAdmin=p.isAdmin;var statusSla=p.statusSla;var schedules=p.schedules||{};var isMobile=p.isMobile;
+  // ── FIX: accept loading/error state from parent ──
+  var ticketsLoaded=p.ticketsLoaded;var ticketsLoading=p.ticketsLoading;var ticketsError=p.ticketsError;var onRefresh=p.onRefresh||function(){};
+  var[search,setSearch]=useState("");var[fStat,setFStat]=useState("");var[fPri,setFPri]=useState("");var[fType,setFType]=useState("");
+  var[fAssignee,setFAssignee]=useState(function(){return(p.curUser&&IT_ROLES.includes(p.curUser.role)&&p.curUser.role!=="admin"&&p.curUser.role!=="it_manager")?p.curUser.id:"";});
+  var techUsers=useMemo(function(){return users.filter(function(u){return IT_ROLES.includes(u.role)&&u.active;});},[users]);
+  var STATUS_ORDER={"Open":0,"In Progress":1,"Pending":2,"Escalated":3,"Closed":4};
+  var filtered=tickets.filter(function(t){var q=search.toLowerCase();return(!q||t.title.toLowerCase().includes(q)||t.id.includes(q)||t.description.toLowerCase().includes(q))&&(!fStat||t.status===fStat)&&(!fPri||t.priority===fPri)&&(!fType||t.typeId===fType)&&(!fAssignee||(fAssignee==="unassigned"?!t.assignedTo:t.assignedTo===fAssignee));}).sort(function(a,b){return(STATUS_ORDER[a.status]??99)-(STATUS_ORDER[b.status]??99);});
+  function delTicket(id){setTickets(function(prev){return prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true}):t;});});addLog("TICKET_DELETED",id,"Ticket #"+id+" deleted");showToast("Ticket deleted");}
+  function fu(id){return users.find(function(x){return x.id===id;});}function ftt(id){return ticketTypes.find(function(x){return x.id===id;});}function fcl(id){return clients.find(function(x){return x.id===id;});}
+  var selStyle={padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",flexShrink:0};
+
+  // ── FIX: show loading/error states inline ──
+  if(ticketsLoading&&tickets.length===0){
+    return<div>
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}><input disabled placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f1f5f9",color:"#94a3b8"}}/><Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn></div>
+      <Card><div style={{textAlign:"center",padding:40}}><div style={{width:36,height:36,border:"3px solid #e2e8f0",borderTop:"3px solid #6366f1",borderRadius:"50%",animation:"spin 1s linear infinite",margin:"0 auto 14px"}}/><div style={{color:"#64748b",fontSize:13,fontWeight:600}}>Loading tickets…</div><div style={{color:"#94a3b8",fontSize:11,marginTop:4}}>Fetching from database</div></div></Card>
+    </div>;
+  }
+
+  if(ticketsError&&tickets.length===0){
+    return<div>
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}><input disabled placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f1f5f9",color:"#94a3b8"}}/><Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn></div>
+      <Card><div style={{textAlign:"center",padding:40}}><div style={{fontSize:36,marginBottom:12}}>⚠️</div><div style={{color:"#dc2626",fontSize:14,fontWeight:700,marginBottom:6}}>Could not load tickets</div><div style={{color:"#64748b",fontSize:12,marginBottom:16}}>{ticketsError}</div><Btn onClick={onRefresh}>🔄 Retry</Btn></div></Card>
+    </div>;
+  }
+
+  return<div>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+      <input value={search} onChange={function(e){setSearch(e.target.value);}} placeholder="🔍 Search tickets..." style={{flex:1,minWidth:140,padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none"}}/>
+      {ticketsLoading&&<div style={{width:18,height:18,border:"2px solid #e2e8f0",borderTop:"2px solid #6366f1",borderRadius:"50%",animation:"spin 1s linear infinite",flexShrink:0}}/>}
+      <Btn onClick={function(){setPage("new_ticket");}}>➕ New</Btn>
+      <button onClick={onRefresh} disabled={ticketsLoading} title="Refresh tickets" style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:8,padding:"9px 12px",cursor:ticketsLoading?"not-allowed":"pointer",fontSize:14,color:"#475569",display:"flex",alignItems:"center",justifyContent:"center"}}>🔄</button>
+    </div>
+    <div style={{display:"flex",gap:6,marginBottom:8,overflowX:"auto",paddingBottom:4,flexWrap:isMobile?"wrap":"nowrap"}}>
+      <select value={fStat} onChange={function(e){setFStat(e.target.value);}} style={selStyle}><option value="">All Status</option>{ALL_STATUSES.map(function(s){return<option key={s} value={s}>{s}</option>;})}</select>
+      <select value={fPri} onChange={function(e){setFPri(e.target.value);}} style={selStyle}><option value="">All Priority</option>{Object.keys(PRI_META).map(function(k){return<option key={k} value={k}>{PRI_META[k].label}</option>;})}</select>
+      <select value={fType} onChange={function(e){setFType(e.target.value);}} style={selStyle}><option value="">All Types</option>{ticketTypes.map(function(t){return<option key={t.id} value={t.id}>{t.name}</option>;})}</select>
+      <select value={fAssignee} onChange={function(e){setFAssignee(e.target.value);}} style={Object.assign({},selStyle,{background:fAssignee?"#eef2ff":"",color:fAssignee?"#4338ca":"",fontWeight:fAssignee?700:400})}><option value="">All Assignees</option><option value="unassigned">— Unassigned —</option>{techUsers.map(function(u){return<option key={u.id} value={u.id}>{u.name}</option>;})}</select>
+      {fAssignee&&<button onClick={function(){setFAssignee("");}} style={{padding:"7px 10px",border:"1px solid #c7d2fe",borderRadius:8,fontSize:11,fontWeight:700,color:"#4338ca",background:"#eef2ff",cursor:"pointer",flexShrink:0}}>✕ Clear</button>}
+    </div>
+    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Showing <strong style={{color:"#334155"}}>{filtered.length}</strong> ticket{filtered.length!==1?"s":""}{fAssignee&&fAssignee!=="unassigned"&&<span> assigned to <strong style={{color:"#6366f1"}}>{fu(fAssignee)?.name||"?"}</strong></span>}{fAssignee==="unassigned"&&<span> that are <strong style={{color:"#ef4444"}}>unassigned</strong></span>}</div>
+    {isMobile?(<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {filtered.length===0&&ticketsLoaded&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No tickets found</div></Card>}
+      {filtered.map(function(t){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
+        return<div key={t.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:14,boxShadow:"0 1px 4px rgba(0,0,0,.05)"}} onClick={function(){setSelTicket(t.id);}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}><div style={{flex:1}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,marginBottom:2}}>{t.title}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ago(t.createdAt)}</div></div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>📬 New</span>}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}><Badge label={t.status} color={sm.color} bg={sm.bg}/><Badge label={pri.label} color={pri.color} bg={pri.bg}/>{type&&<Badge label={type.name} color={type.color||"#94a3b8"}/>}</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:11,color:"#64748b"}}>{asgn?<span>👤 {asgn.name}</span>:<span style={{color:"#ef4444"}}>Unassigned</span>}{client&&<span> · 🤝 {client.name}</span>}</div>{sSla&&<div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h"}</div>}</div>
+          {isAdmin&&<div style={{marginTop:8,display:"flex",justifyContent:"flex-end"}} onClick={function(e){e.stopPropagation();delTicket(t.id);}}><Btn size="sm" variant="danger">🗑 Delete</Btn></div>}
+        </div>;})}
+    </div>):(<div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:800}}>
+        <thead><tr style={{background:"#f8fafc"}}>{["#","Title","Type","Priority","Status","Client","Assigned To","SLA",""].map(function(h){return<th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",borderBottom:"1px solid #e2e8f0",whiteSpace:"nowrap"}}>{h}</th>;})}</tr></thead>
+        <tbody>
+          {filtered.length===0&&ticketsLoaded&&<tr><td colSpan={9} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No tickets found</td></tr>}
+          {filtered.map(function(t,i){var asgn=fu(t.assignedTo);var type=ftt(t.typeId);var client=fcl(t.clientId);var pri=PRI_META[t.priority]||PRI_META.medium;var sm=STATUS_META[t.status]||STATUS_META.Open;var sSla=getStatusSla(t,statusSla,schedules);
+            return<tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#fafafa"}}>
+              <td style={{padding:"9px 12px",fontSize:11,color:"#94a3b8",fontWeight:600}}>#{t.id.slice(-6)}</td>
+              <td style={{padding:"9px 12px",maxWidth:200}}><div style={{fontWeight:600,color:"#1e293b",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{ago(t.createdAt)}</div>{t.hasUnreadReply&&<span style={{background:"#10b981",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>📬</span>}</td>
+              <td style={{padding:"9px 12px"}}><Badge label={type?.name||"—"} color={type?.color||"#94a3b8"}/></td>
+              <td style={{padding:"9px 12px"}}><Badge label={pri.label} color={pri.color} bg={pri.bg}/></td>
+              <td style={{padding:"9px 12px"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/></td>
+              <td style={{padding:"9px 12px",fontSize:11,color:"#334155"}}>{client?<span>🤝 {client.name}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
+              <td style={{padding:"9px 12px"}}>{asgn?<div style={{display:"flex",alignItems:"center",gap:5}}><Avatar name={asgn.name} id={asgn.id} size={20}/><span style={{fontSize:11}}>{asgn.name}</span></div>:<span style={{fontSize:11,color:"#ef4444"}}>Unassigned</span>}</td>
+              <td style={{padding:"9px 12px",minWidth:120}}>{sSla?<div><div style={{fontSize:10,color:sSla.breached?"#ef4444":"#64748b",fontWeight:600,marginBottom:2}}>{sSla.breached?"⚠️ Breached":"⏱ "+sSla.remaining.toFixed(1)+"h left"}</div><div style={{height:4,background:"#e2e8f0",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:sSla.pct+"%",background:sSla.pct>=100?"#ef4444":sSla.pct>=75?"#f59e0b":"#10b981",borderRadius:3}}/></div></div>:<span style={{fontSize:10,color:"#94a3b8"}}>—</span>}</td>
+              <td style={{padding:"9px 12px"}}><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setSelTicket(t.id);}}>View</Btn>{isAdmin&&<Btn size="sm" variant="danger" onClick={function(){delTicket(t.id);}}>🗑</Btn>}</div></td>
+            </tr>;})}
+        </tbody>
+      </table>
+    </div>)}
+  </div>;
+}
+
+// ── Reports, Users, Companies, Clients, Ticket Types, Activity Log, Integrations ──
+// (All identical to original — paste PageReports through PageIntegrations here unchanged)
+function PageReports(p){
+  var tickets=p.tickets;var users=p.users;var ticketTypes=p.ticketTypes;var clients=p.clients||[];var statusSla=p.statusSla||DEFAULT_STATUS_SLA;var schedules=p.schedules||{};var allTimeSessions=p.allTimeSessions||[];
+  var MONTH_OPTS=useMemo(function(){var opts=[];var now=new Date();for(var i=0;i<13;i++){var d=new Date(now.getFullYear(),now.getMonth()-i,1);var val=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");var lbl=d.toLocaleDateString("en-US",{month:"long",year:"numeric"});opts.push({value:val,label:lbl});}return opts;},[]);
+  var nowStr=(function(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");})();
+  var[view,setView]=useState("summary");
+  var[range,setRange]=useState("month-"+nowStr);
+  var[fClient,setFClient]=useState("");var[fLocation,setFLocation]=useState("");var[aiInsight,setAiInsight]=useState("");var[aiLoading,setAiLoading]=useState(false);
+  var selClientObj=clients.find(function(c){return c.id===fClient;});
+  var availLocations=selClientObj?selClientObj.locations:[];
+  function handleClientChange(v){setFClient(v);setFLocation("");}
+  var rangeStart=useMemo(function(){var now=new Date();if(range==="day")return new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return mon.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1])-1,1).toISOString();}if(range==="year")return new Date(now.getFullYear(),0,1).toISOString();return new Date(0).toISOString();},[range]);
+  var rangeEnd=useMemo(function(){var now=new Date();if(range==="week"){var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var sun=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon+6,23,59,59,999);return sun.toISOString();}if(range.startsWith("month-")){var parts=range.slice(6).split("-");return new Date(parseInt(parts[0]),parseInt(parts[1]),0,23,59,59,999).toISOString();}return null;},[range]);
+  var rangeLabel={day:"Today",week:"This Week",year:"This Year",all:"All Time"};
+  var techs=users.filter(function(u){return IT_ROLES.includes(u.role);});
+  var active=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;var d=new Date(t.createdAt);if(d<new Date(rangeStart))return false;if(rangeEnd&&d>new Date(rangeEnd))return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,rangeStart,rangeEnd,fClient,fLocation]);
+  var allActive=useMemo(function(){return tickets.filter(function(t){if(t.deleted)return false;if(fClient&&t.clientId!==fClient)return false;if(fLocation&&t.locationId!==fLocation)return false;return true;});},[tickets,fClient,fLocation]);
+  function loggedMins(ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
+  function userLoggedMins(userId,ticketArr){var ids=ticketArr.map(function(t){return t.id;});return allTimeSessions.filter(function(s){return s.user_id===userId&&ids.includes(s.ticket_id)&&s.ended_at;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
+  var statusTimeSummary=useMemo(function(){var totals={};var counts={};ALL_STATUSES.forEach(function(s){totals[s]=0;counts[s]=0;});active.forEach(function(t){var schedule=schedules&&t.assignedTo?schedules[t.assignedTo]:null;(t.statusTimeLog||[]).forEach(function(entry){if(!entry.enteredAt)return;var startMs=new Date(entry.enteredAt).getTime();var endMs=entry.exitedAt?new Date(entry.exitedAt).getTime():Date.now();var hrs=calcBusinessHoursElapsed(startMs,endMs,schedule);var mins=hrs*60;if(totals[entry.status]!==undefined){totals[entry.status]+=mins;counts[entry.status]+=1;}});});var avgs={};ALL_STATUSES.forEach(function(s){avgs[s]=counts[s]>0?totals[s]/counts[s]:0;});return avgs;},[active,schedules]);
+  var slaBreachAnalysis=useMemo(function(){var cfg=statusSla||DEFAULT_STATUS_SLA;var breachCount={};var breachDuration={};ALL_STATUSES.forEach(function(s){breachCount[s]=0;breachDuration[s]=0;});active.forEach(function(t){var schedule=schedules&&t.assignedTo?schedules[t.assignedTo]:null;(t.statusTimeLog||[]).forEach(function(entry){var allowed=cfg[entry.status];if(allowed===null||allowed===undefined)return;if(!entry.enteredAt)return;var startMs=new Date(entry.enteredAt).getTime();var endMs=entry.exitedAt?new Date(entry.exitedAt).getTime():Date.now();var businessHrs=calcBusinessHoursElapsed(startMs,endMs,schedule);var businessMins=businessHrs*60;var allowedMins=allowed*60;if(businessMins>allowedMins){breachCount[entry.status]=(breachCount[entry.status]||0)+1;breachDuration[entry.status]=(breachDuration[entry.status]||0)+(businessMins-allowedMins);}});});var totalBreachMins=Object.values(breachDuration).reduce(function(a,b){return a+b;},0);var totalBreachCount=Object.values(breachCount).reduce(function(a,b){return a+b;},0);var avgBreachMins=totalBreachCount>0?totalBreachMins/totalBreachCount:0;return{breachCount:breachCount,breachDuration:breachDuration,totalBreachMins:totalBreachMins,avgBreachMins:avgBreachMins,totalBreachCount:totalBreachCount};},[active,statusSla,schedules]);
+  var byType=ticketTypes.map(function(tt,i){var mine=active.filter(function(t){return t.typeId===tt.id;});var res=calcClosed(mine);return{id:tt.id,name:tt.name,color:tt.color,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine,statusSla,schedules),avgClose:calcAvgClose(res),loggedMins:loggedMins(mine),fill:PAL[i%PAL.length]};}).filter(function(x){return x.total>0;});
+  var byUser=techs.map(function(t){var mine=active.filter(function(tk){return tk.assignedTo===t.id;});var res=calcClosed(mine);return{id:t.id,name:t.name,role:t.role,total:mine.length,open:mine.filter(function(t){return t.status==="Open";}).length,resolved:res.length,breached:mine.filter(function(t){return t.slaBreached;}).length,slaRate:calcSlaRate(mine,statusSla,schedules),avgClose:calcAvgClose(res),loggedMins:userLoggedMins(t.id,active)};});
+  var totalBreached=active.filter(function(t){return t.slaBreached;}).length;
+  var totalSlaRate=calcSlaRate(active,statusSla,schedules);var avgCloseAll=calcAvgClose(calcClosed(active));var totalLoggedMins=loggedMins(active);
+  var statusPieData=ALL_STATUSES.map(function(s){return{name:s,value:active.filter(function(t){return t.status===s;}).length,color:STATUS_META[s].color};});
+  var top3=useMemo(function(){return ticketTypes.map(function(tt){return{name:tt.name,color:tt.color,total:allActive.filter(function(t){return t.typeId===tt.id;}).length};}).sort(function(a,b){return b.total-a.total;}).slice(0,3);},[allActive,ticketTypes]);
+  var weeklyTrend=useMemo(function(){var now=new Date();var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return Array.from({length:8},function(_,i){var wStart=new Date(thisMon.getTime()-(7-i)*7*86400000);var wEnd=new Date(wStart.getTime()+7*86400000-1);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<=wEnd;});var lbl=wStart.toLocaleDateString("en-US",{month:"short",day:"numeric"});return{label:lbl,total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
+  var byClient=useMemo(function(){return clients.map(function(cl){var cTickets=allActive.filter(function(t){return t.clientId===cl.id;});if(cTickets.length===0)return null;var byLoc=(cl.locations||[]).map(function(loc){var lT=cTickets.filter(function(t){return t.locationId===loc.id;});var typeBreakdown=ticketTypes.map(function(tt){var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;}).filter(Boolean);return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(lT),slaRate:calcSlaRate(lT,statusSla,schedules),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};}).filter(function(l){return l.total>0;});var noLoc=cTickets.filter(function(t){return !t.locationId;});return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(cTickets),slaRate:calcSlaRate(cTickets,statusSla,schedules),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};}).filter(Boolean).sort(function(a,b){return b.total-a.total;});},[clients,allActive,ticketTypes,allTimeSessions]);
+  async function generateInsight(){setAiLoading(true);setAiInsight("");var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),statusTimeBreakdown:Object.keys(statusTimeSummary).filter(function(s){return statusTimeSummary[s]>0&&s!=="Closed";}).map(function(s){return s+": "+fmtDuration(statusTimeSummary[s])+" (actual elapsed time in status)";}),slaBreachAnalysis:{totalBreachInstances:slaBreachAnalysis.totalBreachCount,totalBreachTime:fmtDuration(slaBreachAnalysis.totalBreachMins),byStatus:ALL_STATUSES.filter(function(s){return slaBreachAnalysis.breachCount[s]>0;}).map(function(s){return s+" — "+slaBreachAnalysis.breachCount[s]+" breaches, "+fmtDuration(slaBreachAnalysis.breachDuration[s])+" over SLA";})},techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
+  try{var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. ⏳ Status time bottlenecks\n3. 🚨 SLA breach analysis\n4. ⏱ IT hours analysis\n5. 💡 3 actionable recommendations\n\nBe concise. Use bullet points.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});var data=await res.json();setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");}catch(e){setAiInsight("Error: "+e.message);}setAiLoading(false);}
+  var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"sla_breach",label:"🚨 SLA Breaches"},{id:"by_client",label:"🤝 By Client"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
+  var filterLabel="";if(fClient){filterLabel=selClientObj?.name||"Client";if(fLocation){var lObj=availLocations.find(function(l){return l.id===fLocation;});filterLabel+=" → "+(lObj?.name||"Location");}}
+  return<div>
+    <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:4}}>{VIEWS.map(function(v){return<button key={v.id} onClick={function(){setView(v.id);}} style={{padding:"7px 12px",borderRadius:8,border:"none",background:view===v.id?"#6366f1":"#f1f5f9",color:view===v.id?"#fff":"#475569",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>{v.label}</button>;})}</div>
+    <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
+      <span style={{fontSize:11,fontWeight:700,color:"#64748b",flexShrink:0}}>🔍 Filter:</span>
+      <select value={fClient} onChange={function(e){handleClientChange(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Clients</option>{clients.map(function(c){return<option key={c.id} value={c.id}>{c.name}</option>;})}</select>
+      {fClient&&availLocations.length>0&&<select value={fLocation} onChange={function(e){setFLocation(e.target.value);}} style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none",background:"#fff",flexShrink:0}}><option value="">All Locations</option>{availLocations.map(function(l){return<option key={l.id} value={l.id}>{l.name}</option>;})}</select>}
+      {filterLabel&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 10px"}}><span style={{fontSize:11,fontWeight:700,color:"#4338ca"}}>📍 {filterLabel}</span><button onClick={function(){setFClient("");setFLocation("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#6366f1",fontSize:13,padding:0,lineHeight:1}}>✕</button></div>}
+      <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{active.length} tickets · {fmtDuration(totalLoggedMins)} logged</div>
+    </div>
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
+      {["day","week","month","year","all"].map(function(r){
+        if(r==="month"){return<select key="month" value={range.startsWith("month-")?range:"month-"+nowStr} onChange={function(e){setRange(e.target.value);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range.startsWith("month-")?"#6366f1":"#e2e8f0"),background:range.startsWith("month-")?"#6366f1":"#fff",color:range.startsWith("month-")?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0,outline:"none"}}>{MONTH_OPTS.map(function(o){return<option key={o.value} value={o.value}>{o.label}</option>;})}</select>;}
+        return<button key={r} onClick={function(){setRange(r);}} style={{padding:"5px 10px",borderRadius:8,border:"1px solid "+(range===r?"#6366f1":"#e2e8f0"),background:range===r?"#6366f1":"#fff",color:range===r?"#fff":"#475569",fontSize:11,fontWeight:600,cursor:"pointer",flexShrink:0}}>{rangeLabel[r]}</button>;
+      })}
+    </div>
+    {view==="summary"&&<div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+        <Stat label="SLA Rate" value={totalSlaRate+"%"} icon="🎯" color={slaColor(totalSlaRate)} sub={totalBreached+" breached"}/>
+        <Stat label="Avg Close" value={avgCloseAll+"h"} icon="⏱" color="#0ea5e9"/>
+        <Stat label="Total Tickets" value={active.length} icon="🎫" color="#6366f1"/>
+        <Stat label="IT Hours Logged" value={fmtDuration(totalLoggedMins)} icon="🕐" color="#8b5cf6" sub="actual work time"/>
+        <Stat label="Breach Instances" value={slaBreachAnalysis.totalBreachCount} icon="🚨" color="#ef4444" sub="status-level breaches"/>
+        <Stat label="Avg Breach Time" value={fmtDuration(slaBreachAnalysis.avgBreachMins)} icon="⏰" color="#dc2626" sub="avg per breach instance"/>
+      </div>
+      <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Tickets by Status</div><ResponsiveContainer width="100%" height={180}><PieChart><Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={pieLabel} fontSize={9}>{statusPieData.map(function(e,i){return<Cell key={i} fill={e.color}/>;})}</Pie><Tooltip/></PieChart></ResponsiveContainer></Card>
+      <Card style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,flexWrap:"wrap",gap:6}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>⏳ Time Per Status</div><span style={{fontSize:10,color:"#64748b",fontStyle:"italic"}}>Average business hours per ticket in each status</span></div>
+        <div style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"6px 10px",marginBottom:14}}>ℹ️ Average business hours each ticket spent in this status, based on assigned tech's schedule.</div>
+        {ALL_STATUSES.filter(function(s){return s!=="Closed";}).map(function(s){var sm=STATUS_META[s];var mins=statusTimeSummary[s]||0;var cfg=statusSla||DEFAULT_STATUS_SLA;var allowed=cfg[s];var allowedMins=allowed!=null?allowed*60:null;var maxMins=Math.max.apply(null,ALL_STATUSES.filter(function(sx){return sx!=="Closed";}).map(function(sx){return statusTimeSummary[sx]||0;}));var barPct=maxMins>0?Math.round(mins/maxMins*100):0;var isOverSla=allowedMins!=null&&mins>allowedMins;var bCount=slaBreachAnalysis.breachCount[s]||0;var ticketsNow=active.filter(function(t){return t.status===s;}).length;
+          return<div key={s} style={{marginBottom:14,padding:"10px 12px",background:isOverSla?"#fef2f2":"#f8fafc",border:"1px solid "+(isOverSla?"#fecaca":"#e2e8f0"),borderRadius:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:6}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/><span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{s}</span><Badge label={ticketsNow+" now"} color={sm.color}/>{bCount>0&&<Badge label={bCount+" breach"+(bCount!==1?"es":"")} color="#ef4444"/>}</div><div style={{display:"flex",gap:12,alignItems:"center"}}>{allowedMins!=null&&<span style={{fontSize:10,color:"#94a3b8"}}>SLA: {fmtDuration(allowedMins)}</span>}<span style={{fontSize:14,fontWeight:800,color:isOverSla?"#ef4444":sm.color}}>{mins>0?fmtDuration(mins):"—"}</span></div></div>
+            <div style={{height:7,background:"#e2e8f0",borderRadius:4,overflow:"hidden",marginBottom:isOverSla?6:0}}><div style={{height:"100%",width:barPct+"%",background:isOverSla?"#ef4444":sm.color,borderRadius:4,transition:"width .4s"}}/></div>
+            {isOverSla&&allowedMins!=null&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>⚠️ Average time exceeds SLA limit by {fmtDuration(mins-allowedMins)}</div>}
+          </div>;
+        })}
+        <div style={{marginTop:4,fontSize:10,color:"#94a3b8",textAlign:"right"}}>{active.filter(function(t){return t.statusTimeLog&&t.statusTimeLog.length>0;}).length} of {active.length} tickets have status tracking data</div>
+      </Card>
+      <Card style={{borderLeft:"4px solid #6366f1"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+          <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{filterLabel?"Filtered: "+filterLabel:"All clients & locations"}</div></div>
+          <button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer",flexShrink:0}}>{aiLoading?"⏳ Analyzing…":"✨ Analyze Now"}</button>
+        </div>
+        {!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>🔍</div>Click "Analyze Now" for AI insights.</div>}
+        {aiLoading&&<div style={{textAlign:"center",padding:20,color:"#6366f1",fontSize:13}}><div style={{fontSize:28,marginBottom:8}}>⏳</div>Analyzing {active.length} tickets…</div>}
+        {aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}
+      </Card>
+    </div>}
+    {view==="sla_breach"&&<div>
+      <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}><span style={{fontSize:24,flexShrink:0}}>🚨</span><div><div style={{fontWeight:700,fontSize:14,color:"#dc2626"}}>SLA Breach Report</div><div style={{fontSize:12,color:"#ef4444",marginTop:2}}>Tracks every instance a ticket exceeded its time limit in a given status.</div></div></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+        <div style={{background:slaBreachAnalysis.totalBreachCount===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.totalBreachCount===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}><div style={{fontSize:32,fontWeight:800,color:slaBreachAnalysis.totalBreachCount===0?"#10b981":"#ef4444"}}>{slaBreachAnalysis.totalBreachCount}</div><div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Total Breach Instances</div></div>
+        <div style={{background:slaBreachAnalysis.avgBreachMins===0?"#f0fdf4":"#fef2f2",border:"1px solid "+(slaBreachAnalysis.avgBreachMins===0?"#bbf7d0":"#fecaca"),borderRadius:12,padding:16,textAlign:"center"}}><div style={{fontSize:28,fontWeight:800,color:slaBreachAnalysis.avgBreachMins===0?"#10b981":"#dc2626"}}>{slaBreachAnalysis.avgBreachMins>0?fmtDuration(slaBreachAnalysis.avgBreachMins):"0"}</div><div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginTop:4}}>Avg Time Over SLA</div></div>
+      </div>
+      <Card style={{marginBottom:16}}>
+        <div style={{fontWeight:700,color:"#1e293b",marginBottom:14,fontSize:13}}>🚨 Breach Breakdown by Status</div>
+        {ALL_STATUSES.filter(function(s){return s!=="Closed";}).map(function(s){var sm=STATUS_META[s];var cfg=statusSla||DEFAULT_STATUS_SLA;var allowed=cfg[s];var bCount=slaBreachAnalysis.breachCount[s]||0;var bMins=slaBreachAnalysis.breachDuration[s]||0;var maxBCount=Math.max.apply(null,ALL_STATUSES.map(function(sx){return slaBreachAnalysis.breachCount[sx]||0;}));var pct=maxBCount>0?Math.round(bCount/maxBCount*100):0;var hasBreaches=bCount>0;
+          return<div key={s} style={{marginBottom:14,padding:"12px 14px",background:hasBreaches?"#fef2f2":"#f8fafc",border:"1px solid "+(hasBreaches?"#fecaca":"#e2e8f0"),borderRadius:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:10,height:10,borderRadius:"50%",background:sm.color,flexShrink:0}}/><span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{s}</span>{allowed!=null&&<span style={{fontSize:10,color:"#64748b",background:"#f1f5f9",borderRadius:4,padding:"2px 6px"}}>SLA: {allowed}h</span>}</div><div style={{display:"flex",gap:12,alignItems:"center"}}><div style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:800,color:hasBreaches?"#ef4444":"#10b981"}}>{bCount}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Breaches</div></div><div style={{textAlign:"center"}}><div style={{fontSize:14,fontWeight:700,color:hasBreaches?"#dc2626":"#10b981"}}>{bMins>0?fmtDuration(bMins):"—"}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Over SLA</div></div></div></div>
+            {allowed!=null&&<div><div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:4}}><div style={{height:"100%",width:pct+"%",background:hasBreaches?"#ef4444":sm.color,borderRadius:3}}/></div>{hasBreaches&&<div style={{fontSize:10,color:"#ef4444",marginTop:4}}>Avg excess per breach: {fmtDuration(bMins/bCount)}</div>}{!hasBreaches&&<div style={{fontSize:10,color:"#10b981",marginTop:4}}>✅ No breaches recorded</div>}</div>}
+          </div>;
+        })}
+      </Card>
+      <div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:10}}>🎫 Tickets with SLA Breaches</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {(function(){var cfg=statusSla||DEFAULT_STATUS_SLA;var breachedTickets=active.filter(function(t){return(t.statusTimeLog||[]).some(function(entry){var allowed=cfg[entry.status];if(allowed===null||allowed===undefined)return false;var allowedMins=allowed*60;var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);return durMins!=null&&durMins>allowedMins;});});
+          if(breachedTickets.length===0){return<Card><div style={{textAlign:"center",padding:32,color:"#10b981"}}><div style={{fontSize:32,marginBottom:8}}>✅</div><div style={{fontWeight:700,fontSize:14}}>No SLA breaches found</div></div></Card>;}
+          return breachedTickets.map(function(t){var sm=STATUS_META[t.status]||STATUS_META.Open;var asgn=users.find(function(u){return u.id===t.assignedTo;});var cfg2=statusSla||DEFAULT_STATUS_SLA;var breachedEntries=(t.statusTimeLog||[]).filter(function(entry){var allowed=cfg2[entry.status];if(allowed===null||allowed===undefined)return false;var allowedMins=allowed*60;var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);return durMins!=null&&durMins>allowedMins;});var totalExcess=breachedEntries.reduce(function(sum,entry){var allowed=cfg2[entry.status];var allowedMins=allowed*60;var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);return sum+(durMins-allowedMins);},0);
+            return<Card key={t.id} style={{padding:14,borderLeft:"3px solid #ef4444"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div><div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}><Badge label={t.status} color={sm.color} bg={sm.bg}/>{asgn&&<span style={{fontSize:11,color:"#64748b"}}>👤 {asgn.name}</span>}<span style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>🚨 {breachedEntries.length} breach{breachedEntries.length!==1?"es":""} · +{fmtDuration(totalExcess)} over SLA</span></div></div></div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>{breachedEntries.map(function(entry,i){var esm=STATUS_META[entry.status]||STATUS_META.Open;var allowed=cfg2[entry.status];var allowedMins=allowed*60;var durMins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);var excess=durMins-allowedMins;return<div key={i} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"8px 12px"}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:esm.color,flexShrink:0}}/><span style={{fontSize:12,fontWeight:700,color:esm.color}}>{entry.status}</span></div><div style={{display:"flex",gap:8,fontSize:11,flexWrap:"wrap"}}><span style={{color:"#64748b"}}>Time: <strong>{fmtDuration(durMins)}</strong></span><span style={{color:"#64748b"}}>Limit: <strong>{fmtDuration(allowedMins)}</strong></span><span style={{color:"#ef4444",fontWeight:700}}>+{fmtDuration(excess)} over</span>{entry.exitedAt===null&&<Badge label="Active now" color="#ef4444"/>}</div></div></div>;})}</div>
+            </Card>;
+          });
+        })()}
+      </div>
+    </div>}
+    {view==="by_client"&&<div>
+      {byClient.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No client data yet.</div></Card>}
+      {byClient.map(function(cl){return<Card key={cl.id} style={{marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}><div style={{display:"flex",gap:10,alignItems:"center"}}><div style={{width:40,height:40,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div><div style={{fontWeight:800,color:"#1e293b",fontSize:14}}>{cl.name}</div><div style={{fontSize:11,color:"#64748b"}}>{cl.email}</div></div></div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><div style={{textAlign:"center",background:"#f8fafc",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#6366f1"}}>{cl.total}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Tickets</div></div><div style={{textAlign:"center",background:"#fef3c7",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:"#f59e0b"}}>{cl.open}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>Open</div></div><div style={{textAlign:"center",background:"#eef2ff",borderRadius:8,padding:"6px 12px",minWidth:70}}><div style={{fontSize:15,fontWeight:800,color:"#6366f1"}}>{fmtDuration(cl.loggedMins)}</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>IT Time</div></div><div style={{textAlign:"center",background:cl.slaRate>=90?"#f0fdf4":cl.slaRate>=75?"#fffbeb":"#fef2f2",borderRadius:8,padding:"6px 12px",minWidth:60}}><div style={{fontSize:18,fontWeight:800,color:slaColor(cl.slaRate)}}>{cl.slaRate}%</div><div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase",fontWeight:600}}>SLA</div></div></div></div>
+        {cl.byLoc.length>0&&<div><div style={{fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",marginBottom:8,letterSpacing:0.5}}>📍 Locations</div><div style={{display:"flex",flexDirection:"column",gap:8}}>{cl.byLoc.map(function(loc){return<div key={loc.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 14px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:6}}><div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div>{loc.address&&<div style={{fontSize:10,color:"#64748b"}}>{loc.address}</div>}</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge label={loc.total+" tickets"} color="#6366f1"/><Badge label={loc.open+" open"} color={loc.open>0?"#f59e0b":"#10b981"}/><Badge label={fmtDuration(loc.loggedMins)+" IT"} color="#8b5cf6"/><Badge label={loc.slaRate+"% SLA"} color={slaColor(loc.slaRate)}/>{loc.breached>0&&<Badge label={loc.breached+" breached"} color="#ef4444"/>}</div></div>{loc.typeBreakdown.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{loc.typeBreakdown.sort(function(a,b){return b.count-a.count;}).map(function(tb){return<div key={tb.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",display:"flex",alignItems:"center",gap:4}}><div style={{width:7,height:7,borderRadius:"50%",background:tb.color||"#6366f1",flexShrink:0}}/><span style={{fontSize:11,color:"#334155",fontWeight:600}}>{tb.name}</span><span style={{fontSize:11,color:"#6366f1",fontWeight:800}}>×{tb.count}</span></div>;})}</div>}</div>;})} {cl.noLoc>0&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#94a3b8"}}>+ {cl.noLoc} ticket{cl.noLoc>1?"s":""} with no location assigned</div>}</div></div>}
+      </Card>;})}
+    </div>}
+    {view==="trend"&&<div>
+      <Card style={{marginBottom:14}}><div style={{fontWeight:700,marginBottom:12,fontSize:13}}>Weekly Volume</div><ResponsiveContainer width="100%" height={200}><AreaChart data={weeklyTrend}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="label" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}}/><Tooltip/><Legend wrapperStyle={{fontSize:10}}/><Area type="monotone" dataKey="total" stroke="#6366f1" fill="#eef2ff" name="Total" strokeWidth={2}/><Area type="monotone" dataKey="closed" stroke="#10b981" fill="#d1fae5" name="Closed" strokeWidth={2}/></AreaChart></ResponsiveContainer></Card>
+      <Card style={{borderLeft:"4px solid #6366f1"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>🤖 AI Analysis</div><button onClick={generateInsight} disabled={aiLoading} style={{padding:"8px 14px",background:aiLoading?"#a5b4fc":"linear-gradient(135deg,#6366f1,#4338ca)",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:aiLoading?"not-allowed":"pointer"}}>{aiLoading?"⏳ Analyzing…":"✨ Generate"}</button></div>{!aiInsight&&!aiLoading&&<div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:13}}>Ready to analyze your data</div>}{aiInsight&&<div style={{background:"#f8fafc",borderRadius:8,padding:14,fontSize:12,color:"#334155",lineHeight:1.9,whiteSpace:"pre-wrap"}}>{aiInsight}</div>}</Card>
+    </div>}
+    {view==="by_type"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {byType.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
+      {byType.map(function(t){var typeTickets=active.filter(function(tk){return tk.typeId===t.id;});var typeStatusTime={};ALL_STATUSES.forEach(function(s){typeStatusTime[s]=0;});typeTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){var mins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);if(mins!=null&&typeStatusTime[entry.status]!==undefined)typeStatusTime[entry.status]+=mins;});});var hasStatusData=Object.values(typeStatusTime).some(function(v){return v>0;});
+        return<Card key={t.id}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}><Badge label={t.name} color={t.color}/><span style={{fontWeight:800,color:"#6366f1",fontSize:16}}>{t.total}</span></div><div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span><span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span><span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span></div>{hasStatusData&&<div><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Elapsed Time Per Status</div><div style={{display:"flex",flexDirection:"column",gap:3}}>{ALL_STATUSES.filter(function(s){return typeStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(typeStatusTime));var pct=maxV>0?Math.round(typeStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span><div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div><span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(typeStatusTime[s])}</span></div>;})}</div></div>}</Card>;
+      })}
+    </div>}
+    {view==="per_user"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {byUser.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No data yet.</div></Card>}
+      {byUser.map(function(t){var userTickets=active.filter(function(tk){return tk.assignedTo===t.id;});var userStatusTime={};ALL_STATUSES.forEach(function(s){userStatusTime[s]=0;});userTickets.forEach(function(tk){(tk.statusTimeLog||[]).forEach(function(entry){var mins=entry.durationMins!=null?entry.durationMins:(entry.exitedAt===null&&entry.enteredAt?parseFloat(((Date.now()-new Date(entry.enteredAt))/60000).toFixed(2)):null);if(mins!=null&&userStatusTime[entry.status]!==undefined)userStatusTime[entry.status]+=mins;});});var hasStatusData=Object.values(userStatusTime).some(function(v){return v>0;});
+        return<Card key={t.id}><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><Avatar name={t.name} id={t.id} size={32}/><div><div style={{fontWeight:600,fontSize:13}}>{t.name}</div><div style={{fontSize:11,color:"#94a3b8"}}>{ROLE_META[t.role]?.label||t.role}</div></div><span style={{marginLeft:"auto",fontWeight:700,color:"#6366f1",fontSize:18}}>{t.total}</span></div><div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:hasStatusData?12:0}}><span style={{fontSize:11,color:"#64748b"}}>Open: <strong>{t.open}</strong></span><span style={{fontSize:11,color:"#64748b"}}>Closed: <strong>{t.resolved}</strong></span><span style={{fontSize:11,color:"#64748b"}}>SLA: <strong style={{color:slaColor(t.slaRate)}}>{t.slaRate}%</strong></span><span style={{fontSize:11,color:"#64748b"}}>Avg close: <strong>{t.avgClose}h</strong></span><span style={{fontSize:11,color:"#8b5cf6"}}>IT Time: <strong>{fmtDuration(t.loggedMins)}</strong></span></div>{hasStatusData&&<div><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>⏳ Elapsed Time Per Status</div><div style={{display:"flex",flexDirection:"column",gap:3}}>{ALL_STATUSES.filter(function(s){return userStatusTime[s]>0;}).map(function(s){var sm=STATUS_META[s];var maxV=Math.max.apply(null,Object.values(userStatusTime));var pct=maxV>0?Math.round(userStatusTime[s]/maxV*100):0;return<div key={s} style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:10,color:sm.color,fontWeight:600,minWidth:80}}>{s}</span><div style={{flex:1,height:4,background:"#f1f5f9",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:sm.color,borderRadius:2}}/></div><span style={{fontSize:10,color:"#64748b",minWidth:50,textAlign:"right"}}>{fmtDuration(userStatusTime[s])}</span></div>;})}</div></div>}</Card>;
+      })}
+    </div>}
+  </div>;
+}
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+function PageUsers(p){
+  var users=p.users;var companies=p.companies;var setUsers=p.setUsers;var curUser=p.curUser;var addLog=p.addLog;var showToast=p.showToast;var schedules=p.schedules||{};var setSchedules=p.setSchedules;var isMobile=p.isMobile;
+  var dbSaveUser=p.dbSaveUser;var dbDeleteUser=p.dbDeleteUser;var dbSetPassword=p.dbSetPassword;var dbSaveSchedule=p.dbSaveSchedule;
+  var[modal,setModal]=useState(null);var[form,setForm]=useState({});var[emailStatus,setEmailStatus]=useState(null);
+  var[pwModal,setPwModal]=useState(null);var[newPw,setNewPw]=useState("");var[pwErr,setPwErr]=useState("");
+  var[roles,setRolesState]=useState(function(){return loadRoles();});
+  var[rolesModal,setRolesModal]=useState(false);
+  var[roleForm,setRoleForm]=useState({key:"",label:"",color:"#6366f1"});var[roleEdit,setRoleEdit]=useState(null);
+  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
+  function syncRoles(next){saveRoles(next);setRolesState(next);Object.keys(ROLE_META).forEach(function(k){delete ROLE_META[k];});Object.assign(ROLE_META,next);}
+  function addRole(){if(!roleForm.key.trim()||!roleForm.label.trim()){showToast("Key and label required","error");return;}var key=roleForm.key.trim().toLowerCase().replace(/\s+/g,"_");if(roles[key]){showToast("Role key already exists","error");return;}var next=Object.assign({},roles);next[key]={label:roleForm.label.trim(),color:roleForm.color,system:false};syncRoles(next);showToast("Role added!");setRoleForm({key:"",label:"",color:"#6366f1"});}
+  function saveRoleEdit(){if(!roleForm.label.trim()){showToast("Label required","error");return;}var next=Object.assign({},roles);next[roleEdit]=Object.assign({},next[roleEdit],{label:roleForm.label.trim(),color:roleForm.color});syncRoles(next);showToast("Role updated!");setRoleEdit(null);setRoleForm({key:"",label:"",color:"#6366f1"});}
+  function deleteRole(key){if(roles[key]?.system){showToast("Cannot delete system roles","error");return;}if(users.some(function(u){return u.role===key;})){showToast("Cannot delete — in use","error");return;}var next=Object.assign({},roles);delete next[key];syncRoles(next);showToast("Role deleted!");}
+  async function resetPassword(){if(!newPw||newPw.length<6){setPwErr("Minimum 6 characters");return;}await dbSetPassword(pwModal.id,newPw);addLog("PASSWORD_RESET",pwModal.id,"Password reset for "+pwModal.name);showToast("✅ Password reset!");setPwModal(null);setNewPw("");setPwErr("");}
+  async function approveUser(u){var updated=Object.assign({},u,{active:true});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});addLog("USER_APPROVED",u.id,u.name+" approved");showToast("✅ Account approved!");}
+  function handleScheduleChange(userId,sch){setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});dbSaveSchedule(userId,sch);}
+  var allRoleOpts=Object.keys(roles).map(function(k){return mkOpt(k,roles[k].label);});
+  var pendingUsers=users.filter(function(u){return !u.active;});
+  var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
+  async function save(){
+    if(!form.name||!form.email){showToast("Name and email required","error");return;}
+    if(modal==="new"){var nu=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString(),lastLogin:null});await dbSaveUser(nu);await dbSetPassword(nu.id,"password123");setUsers(function(prev){return prev.concat([nu]);});addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");showToast("User created");setEmailStatus("sending");var emailBody=["Hi "+nu.name+",","","An account has been created for you on the Hoptix IT Helpdesk portal.","","📧 Email: "+nu.email,"🔑 Temporary Password: password123","","⚠️ Please sign in and change your password immediately.","","— The Hoptix IT Team"].join("\n");var result=await callSendEmail({to:nu.email,subject:"🎉 Your Hoptix IT Helpdesk account is ready",body:emailBody});setEmailStatus(result.success?"sent":"failed");}
+    else{var old=users.find(function(u){return u.id===form.id;});await dbSaveUser(form);setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});if(old&&old.role!==form.role)addLog("USER_ROLE_CHANGE",form.id,"Role changed");showToast("User updated");}
+    setModal(null);
+  }
+  return<div>
+    {pendingUsers.length>0&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:14,marginBottom:16}}>
+      <div style={{fontWeight:700,color:"#92400e",marginBottom:10,fontSize:13}}>⏳ {pendingUsers.length} Account{pendingUsers.length>1?"s":""} Awaiting Approval</div>
+      {pendingUsers.map(function(u){return<div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fde68a",marginBottom:6,gap:8}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flex:1,overflow:"hidden"}}><Avatar name={u.name} id={u.id} size={30}/><div style={{overflow:"hidden"}}><div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div></div></div>
+        <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Rejected");}}>✕</Btn></div>
+      </div>;})}
+    </div>}
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,gap:8,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{fontWeight:700,fontSize:14}}>Users ({users.length})</div>
+      <div style={{display:"flex",gap:8}}><Btn variant="ghost" size="sm" onClick={function(){setRolesModal(true);}}>🏷️ Roles</Btn><Btn onClick={function(){setEmailStatus(null);setForm({name:"",email:"",role:"end_user",companyId:companies[0]?.id||"",phone:"",dept:"",active:true});setModal("new");}}>➕ Add</Btn></div>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {users.map(function(u){var co=companies.find(function(c){return c.id===u.companyId;});var rm=roles[u.role]||{label:u.role,color:"#6366f1"};
+        return<Card key={u.id} style={{padding:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar name={u.name} id={u.id} size={36}/><div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div></div><Badge label={u.active?"Active":"Pending"} color={u.active?"#10b981":"#f59e0b"}/></div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}><Badge label={rm.label} color={rm.color}/>{co&&<span style={{fontSize:11,color:"#64748b"}}>🏢 {co.name}</span>}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️ Edit</Btn>
+            <Btn size="sm" variant="ghost" onClick={function(){setPwModal(u);setNewPw("");setPwErr("");}}>🔑 Password</Btn>
+            <Btn size="sm" variant={u.active?"warning":"success"} onClick={async function(){var updated=Object.assign({},u,{active:!u.active});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>
+            {u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}
+          </div>
+        </Card>;
+      })}
+    </div>
+    {modal&&<Modal title={modal==="new"?"Add User":"Edit User"} onClose={function(){setModal(null);}}>
+      <FInput label="Full Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Email *" value={form.email||""} onChange={function(e){fld("email",e.target.value);}} type="email"/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Department" value={form.dept||""} onChange={function(e){fld("dept",e.target.value);}}/><FSelect label="Role" value={form.role||"end_user"} onChange={function(e){fld("role",e.target.value);}} options={allRoleOpts}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompanies(companies)}/>
+      {IT_ROLES.includes(form.role)&&<ScheduleEditor userId={form.id||"__new__"} schedules={schedules} onChange={handleScheduleChange}/>}
+      {modal==="new"&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1"}}>📧 A welcome email will be sent upon creation.</div>}
+      {emailStatus==="sending"&&<div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>⏳ Sending welcome email…</div>}
+      {emailStatus==="sent"&&<div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#166534"}}>✅ Welcome email sent!</div>}
+      {emailStatus==="failed"&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#dc2626"}}>⚠️ Email failed. Account still created.</div>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create & Email":"Save"}</Btn></div>
+    </Modal>}
+    {pwModal&&<Modal title={"🔑 Reset — "+pwModal.name} onClose={function(){setPwModal(null);setNewPw("");setPwErr("");}}>
+      <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#92400e"}}>Resetting password for <strong>{pwModal.name}</strong></div>
+      <div style={{marginBottom:8}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password (min 6 chars)</label><input type="password" value={newPw} onChange={function(e){setNewPw(e.target.value);setPwErr("");}} placeholder="••••••••" style={inp}/></div>
+      {pwErr&&<div style={{fontSize:12,color:"#dc2626",marginBottom:10}}>⚠️ {pwErr}</div>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:8}}><Btn variant="ghost" onClick={function(){setPwModal(null);}}>Cancel</Btn><Btn variant="danger" onClick={resetPassword}>🔑 Reset</Btn></div>
+    </Modal>}
+    {rolesModal&&<Modal title="🏷️ Manage Roles" onClose={function(){setRolesModal(false);setRoleEdit(null);setRoleForm({key:"",label:"",color:"#6366f1"});}}>
+      <div style={{marginBottom:16}}>{Object.keys(roles).map(function(key){var r=roles[key];var isEditing=roleEdit===key;return<div key={key} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#f8fafc",borderRadius:8,marginBottom:6,border:"1px solid #e2e8f0"}}>
+        {isEditing?<><input value={roleForm.label} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{label:e.target.value});});}} style={{flex:1,padding:"6px 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:13,outline:"none"}}/><input type="color" value={roleForm.color} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{color:e.target.value});});}} style={{width:32,height:30,border:"none",borderRadius:4,cursor:"pointer",padding:0}}/><Btn size="sm" variant="success" onClick={saveRoleEdit}>✓</Btn><Btn size="sm" variant="ghost" onClick={function(){setRoleEdit(null);}}>✕</Btn></>:<><div style={{width:10,height:10,borderRadius:"50%",background:r.color,flexShrink:0}}/><span style={{flex:1,fontSize:13,fontWeight:600}}>{r.label}</span><span style={{fontSize:10,color:"#94a3b8",background:"#e2e8f0",borderRadius:4,padding:"2px 6px"}}>{key}</span>{r.system&&<span style={{fontSize:10,color:"#6366f1",fontWeight:600}}>sys</span>}<Btn size="sm" variant="ghost" onClick={function(){setRoleEdit(key);setRoleForm({key:key,label:r.label,color:r.color});}}>✏️</Btn>{!r.system&&<Btn size="sm" variant="danger" onClick={function(){deleteRole(key);}}>🗑</Btn>}</>}
+      </div>;})}
+      </div>
+      <div style={{borderTop:"1px solid #e2e8f0",paddingTop:14}}><div style={{fontWeight:700,fontSize:13,marginBottom:10}}>➕ Add Role</div><FInput label="Key" value={roleForm.key} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{key:e.target.value});});}} placeholder="e.g. supervisor"/><FInput label="Label" value={roleForm.label} onChange={function(e){setRoleForm(function(prev){return Object.assign({},prev,{label:e.target.value});});}} placeholder="Supervisor"/><Btn onClick={addRole}>➕ Add Role</Btn></div>
+    </Modal>}
+  </div>;
+}
+
+// ── Companies ─────────────────────────────────────────────────────────────────
+function PageCompanies(p){
+  var companies=p.companies;var users=p.users;var setCompanies=p.setCompanies;var addLog=p.addLog;var showToast=p.showToast;var dbSaveCompany=p.dbSaveCompany;var dbDeleteCompany=p.dbDeleteCompany;
+  var[modal,setModal]=useState(null);var[form,setForm]=useState({});
+  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
+  async function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nc=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString()});await dbSaveCompany(nc);setCompanies(function(prev){return prev.concat([nc]);});addLog("COMPANY_CREATED",nc.id,'"'+nc.name+'" created');showToast("Created");}else{await dbSaveCompany(form);setCompanies(function(prev){return prev.map(function(c){return c.id===form.id?Object.assign({},form):c;});});showToast("Updated");}setModal(null);}
+  return<div>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Companies ({companies.length})</div><Btn onClick={function(){setForm({name:"",domain:"",address:"",phone:"",industry:"",size:""});setModal("new");}}>➕ Add</Btn></div>
+    {companies.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No companies yet.</div></Card>}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+      {companies.map(function(c){var members=users.filter(function(u){return u.companyId===c.id;});return<Card key={c.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><div style={{width:40,height:40,borderRadius:10,background:avCol(c.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16}}>{c.name[0]}</div><div style={{display:"flex",gap:6}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},c));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteCompany(c.id);setCompanies(function(prev){return prev.filter(function(x){return x.id!==c.id;});});showToast("Deleted");}}>🗑</Btn></div></div><div style={{fontWeight:700,color:"#1e293b",marginBottom:6,fontSize:14}}>{c.name}</div><div style={{fontSize:12,color:"#64748b"}}>🌐 {c.domain||"—"} · 📍 {c.address||"—"}</div><div style={{fontSize:12,color:"#64748b",marginBottom:10}}>🏭 {c.industry||"—"} · {c.size||"—"}</div><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{members.slice(0,5).map(function(m){return<Avatar key={m.id} name={m.name} id={m.id} size={22}/>;})}{members.length>5&&<div style={{fontSize:10,color:"#94a3b8",alignSelf:"center"}}>+{members.length-5}</div>}</div></Card>;})}
+    </div>
+    {modal&&<Modal title={modal==="new"?"Add Company":"Edit Company"} onClose={function(){setModal(null);}}>
+      <FInput label="Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Domain" value={form.domain||""} onChange={function(e){fld("domain",e.target.value);}}/><FInput label="Address" value={form.address||""} onChange={function(e){fld("address",e.target.value);}}/><FInput label="Phone" value={form.phone||""} onChange={function(e){fld("phone",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FInput label="Size" value={form.size||""} onChange={function(e){fld("size",e.target.value);}}/>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div>
+    </Modal>}
+  </div>;
+}
+
+// ── Clients ───────────────────────────────────────────────────────────────────
+function PageClients(p){
+  var clients=p.clients;var setClients=p.setClients;var companies=p.companies;var addLog=p.addLog;var showToast=p.showToast;var dbSaveClient=p.dbSaveClient;var dbDeleteClient=p.dbDeleteClient;
+  var[modal,setModal]=useState(null);var[selCl,setSelCl]=useState(null);var[form,setForm]=useState({});
+  var[lForm,setLForm]=useState({name:"",address:"",floor:"",contacts:[]});
+  var[newContact,setNewContact]=useState({name:"",email:"",phone:""});
+  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
+  function lfld(k,v){setLForm(function(prev){return Object.assign({},prev,{[k]:v});});}
+  function ncfld(k,v){setNewContact(function(prev){return Object.assign({},prev,{[k]:v});});}
+  function addContact(){if(!newContact.name.trim()){showToast("Contact name required","error");return;}lfld("contacts",(lForm.contacts||[]).concat([Object.assign({},newContact,{id:uid()})]));setNewContact({name:"",email:"",phone:""});}
+  function removeContact(cid){lfld("contacts",(lForm.contacts||[]).filter(function(c){return c.id!==cid;}));}
+  function updateContact(cid,field,val){lfld("contacts",(lForm.contacts||[]).map(function(c){return c.id===cid?Object.assign({},c,{[field]:val}):c;}));}
+  async function saveCl(){if(!form.name){showToast("Name required","error");return;}if(modal==="newCl"){var nc=Object.assign({},form,{id:uid(),locations:[],contacts:form.contacts||[]});await dbSaveClient(nc);setClients(function(prev){return prev.concat([nc]);});addLog("CLIENT_CREATED",nc.id,"Client \""+nc.name+"\" added");showToast("Client added");}else{var updated=Object.assign({},form,{locations:clients.find(function(c){return c.id===form.id;})?.locations||[],contacts:form.contacts||[]});await dbSaveClient(updated);setClients(function(prev){return prev.map(function(c){return c.id===form.id?updated:c;});});showToast("Updated");}setModal(null);}
+  async function saveLoc(){
+    if(!lForm.name||!lForm.address){showToast("Location name and address required","error");return;}
+    var cl=clients.find(function(c){return c.id===selCl;});if(!cl)return;
+    var locToSave=Object.assign({},lForm,{contacts:lForm.contacts||[]});
+    var newLocs;
+    if(modal==="newLoc"){var nl=Object.assign({},locToSave,{id:uid()});newLocs=cl.locations.concat([nl]);}
+    else{newLocs=cl.locations.map(function(l){return l.id===lForm.id?locToSave:l;});}
+    var updated2=Object.assign({},cl,{locations:newLocs});
+    await dbSaveClient(updated2);
+    setClients(function(prev){return prev.map(function(c){return c.id===selCl?updated2:c;});});
+    showToast(modal==="newLoc"?"Location added":"Location updated");setModal(null);
+  }
+  function openNewLoc(clId){setSelCl(clId);setLForm({name:"",address:"",floor:"",contacts:[]});setNewContact({name:"",email:"",phone:""});setModal("newLoc");}
+  function openEditLoc(clId,loc){setSelCl(clId);var contacts=loc.contacts||(loc.contact?[{id:uid(),name:loc.contact,email:"",phone:""}]:[]);setLForm(Object.assign({},loc,{contacts:contacts}));setNewContact({name:"",email:"",phone:""});setModal("editLoc");}
+  var inp={width:"100%",padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
+  return<div>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Clients ({clients.length})</div><Btn onClick={function(){setForm({name:"",email:"",phone:"",industry:"",companyId:companies[0]?.id||"",contacts:[]});setModal("newCl");}}>➕ Add Client</Btn></div>
+    {clients.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No clients yet.</div></Card>}
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {clients.map(function(cl){return<Card key={cl.id}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+          <div style={{display:"flex",gap:12,alignItems:"center",flex:1,overflow:"hidden"}}><div style={{width:42,height:42,borderRadius:10,background:avCol(cl.id),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>{cl.name[0]}</div><div style={{overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cl.name}</div>{cl.industry&&<div style={{fontSize:11,color:"#64748b"}}>🏭 {cl.industry}</div>}</div></div>
+          <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},cl));setModal("editCl");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteClient(cl.id);setClients(function(prev){return prev.filter(function(x){return x.id!==cl.id;});});showToast("Removed");}}>🗑</Btn></div>
+        </div>
+        {(cl.contacts||[]).length>0&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12,marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:"#0369a1",textTransform:"uppercase",marginBottom:8,letterSpacing:0.5}}>👥 Contact Persons</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{(cl.contacts||[]).map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#fff",borderRadius:8,padding:"7px 10px"}}><Avatar name={ct.name} id={ct.id} size={22}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}{ct.position&&<span style={{fontWeight:400,color:"#64748b",fontSize:11}}> · {ct.position}</span>}</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}{ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}</div></div></div>;})}</div></div>}
+        <div style={{background:"#f8fafc",borderRadius:10,padding:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{fontWeight:700,fontSize:12,color:"#475569"}}>📍 Locations ({cl.locations.length})</div><Btn size="sm" onClick={function(){openNewLoc(cl.id);}}>➕ Add Location</Btn></div>
+          {cl.locations.length===0&&<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"8px 0"}}>No locations yet.</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {cl.locations.map(function(loc){var contacts=loc.contacts||(loc.contact?[{id:"leg",name:loc.contact,email:"",phone:""}]:[]);return<div key={loc.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:contacts.length>0?8:0}}>
+                <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📍 {loc.name}</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>{loc.address}</div>{loc.floor&&<div style={{fontSize:11,color:"#64748b"}}>🏢 {loc.floor}</div>}</div>
+                <div style={{display:"flex",gap:4,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEditLoc(cl.id,loc);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){var newLocs=cl.locations.filter(function(l){return l.id!==loc.id;});var updated3=Object.assign({},cl,{locations:newLocs});await dbSaveClient(updated3);setClients(function(prev){return prev.map(function(c){return c.id===cl.id?updated3:c;});});showToast("Location removed");}}>🗑</Btn></div>
+              </div>
+              {contacts.length>0&&<div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}><div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase",marginBottom:6,letterSpacing:0.5}}>👥 Contact Persons</div><div style={{display:"flex",flexDirection:"column",gap:6}}>{contacts.map(function(ct){return<div key={ct.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}><Avatar name={ct.name} id={ct.id} size={22}/><div style={{flex:1,minWidth:0}}><div style={{fontWeight:600,fontSize:12,color:"#1e293b"}}>{ct.name}</div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{ct.email&&<span style={{fontSize:10,color:"#0369a1"}}>📧 {ct.email}</span>}{ct.phone&&<span style={{fontSize:10,color:"#64748b"}}>📞 {ct.phone}</span>}</div></div></div>;})}</div></div>}
+            </div>;})}
+          </div>
+        </div>
+      </Card>;})}
+    </div>
+    {(modal==="newCl"||modal==="editCl")&&<Modal title={modal==="newCl"?"Add Client":"Edit Client"} onClose={function(){setModal(null);}} wide>
+      <FInput label="Client Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FInput label="Industry" value={form.industry||""} onChange={function(e){fld("industry",e.target.value);}}/><FSelect label="Company" value={form.companyId||""} onChange={function(e){fld("companyId",e.target.value);}} options={optCompaniesNone(companies)}/>
+      <div style={{marginBottom:14}}>
+        <div style={{fontWeight:700,fontSize:12,color:"#475569",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>👥 Contact Persons ({(form.contacts||[]).length})</span><span style={{fontSize:10,color:"#94a3b8",fontWeight:400}}>Up to 5 contacts</span></div>
+        {(form.contacts||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>{(form.contacts||[]).map(function(ct,idx){return<div key={ct.id} style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontSize:11,fontWeight:700,color:"#0369a1"}}>Contact {idx+1}</div><button onClick={function(){fld("contacts",(form.contacts||[]).filter(function(c){return c.id!==ct.id;}));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:0,lineHeight:1}}>✕</button></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}><input value={ct.name||""} onChange={function(e){var v=e.target.value;fld("contacts",(form.contacts||[]).map(function(c){return c.id===ct.id?Object.assign({},c,{name:v}):c;}));}} placeholder="Full Name *" style={inp}/><input value={ct.position||""} onChange={function(e){var v=e.target.value;fld("contacts",(form.contacts||[]).map(function(c){return c.id===ct.id?Object.assign({},c,{position:v}):c;}));}} placeholder="Position / Title" style={inp}/><input value={ct.email||""} onChange={function(e){var v=e.target.value;fld("contacts",(form.contacts||[]).map(function(c){return c.id===ct.id?Object.assign({},c,{email:v}):c;}));}} placeholder="Email address" type="email" style={inp}/><input value={ct.phone||""} onChange={function(e){var v=e.target.value;fld("contacts",(form.contacts||[]).map(function(c){return c.id===ct.id?Object.assign({},c,{phone:v}):c;}));}} placeholder="Phone number" style={inp}/></div></div>;})}</div>}
+        {(form.contacts||[]).length<5&&<button onClick={function(){fld("contacts",(form.contacts||[]).concat([{id:uid(),name:"",position:"",email:"",phone:""}]));}} style={{width:"100%",padding:"10px",border:"2px dashed #bae6fd",borderRadius:8,background:"#f0f9ff",color:"#0369a1",fontSize:12,fontWeight:600,cursor:"pointer"}}>➕ Add Contact Person</button>}
+      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveCl}>{modal==="newCl"?"Add Client":"Save"}</Btn></div>
+    </Modal>}
+    {(modal==="newLoc"||modal==="editLoc")&&<Modal title={modal==="newLoc"?"Add Location":"Edit Location"} onClose={function(){setModal(null);}} wide>
+      <FInput label="Location Name *" value={lForm.name||""} onChange={function(e){lfld("name",e.target.value);}} placeholder="e.g. HQ — Makati"/>
+      <FInput label="Address *" value={lForm.address||""} onChange={function(e){lfld("address",e.target.value);}}/>
+      <FInput label="Floor / Area" value={lForm.floor||""} onChange={function(e){lfld("floor",e.target.value);}} placeholder="e.g. 3rd Floor, East Wing"/>
+      <div style={{marginBottom:14}}>
+        <div style={{fontWeight:700,fontSize:12,color:"#475569",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>👥 Contact Persons ({(lForm.contacts||[]).length})</span></div>
+        {(lForm.contacts||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>{(lForm.contacts||[]).map(function(ct,idx){return<div key={ct.id} style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><div style={{fontSize:11,fontWeight:700,color:"#0369a1"}}>Contact {idx+1}</div><button onClick={function(){removeContact(ct.id);}} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:14,padding:0,lineHeight:1}}>✕</button></div><div style={{display:"grid",gridTemplateColumns:"1fr",gap:6}}><input value={ct.name} onChange={function(e){updateContact(ct.id,"name",e.target.value);}} placeholder="Full Name *" style={inp}/><input value={ct.email} onChange={function(e){updateContact(ct.id,"email",e.target.value);}} placeholder="Email address" type="email" style={inp}/><input value={ct.phone} onChange={function(e){updateContact(ct.id,"phone",e.target.value);}} placeholder="Phone number" style={inp}/></div></div>;})}</div>}
+        {(lForm.contacts||[]).length<5&&<div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:10,padding:12}}><div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>➕ Add Contact Person</div><div style={{display:"grid",gridTemplateColumns:"1fr",gap:6,marginBottom:8}}><input value={newContact.name} onChange={function(e){ncfld("name",e.target.value);}} placeholder="Full Name *" style={inp}/><input value={newContact.email} onChange={function(e){ncfld("email",e.target.value);}} placeholder="Email address" type="email" style={inp}/><input value={newContact.phone} onChange={function(e){ncfld("phone",e.target.value);}} placeholder="Phone number" style={inp}/></div><Btn size="sm" onClick={addContact} variant="ghost">➕ Add Contact</Btn></div>}
+      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={saveLoc}>{modal==="newLoc"?"Add Location":"Save Location"}</Btn></div>
+    </Modal>}
+  </div>;
+}
+
+// ── Ticket Types ──────────────────────────────────────────────────────────────
+function PageTicketTypes(p){
+  var ticketTypes=p.ticketTypes;var users=p.users;var setTicketTypes=p.setTicketTypes;var statusSla=p.statusSla;var setStatusSla=p.setStatusSla;var addLog=p.addLog;var showToast=p.showToast;var dbSaveTicketType=p.dbSaveTicketType;var dbDeleteTicketType=p.dbDeleteTicketType;
+  var[modal,setModal]=useState(null);var[form,setForm]=useState({});var[kwInput,setKwInput]=useState("");
+  var[slaEdit,setSlaEdit]=useState(function(){return Object.assign({},statusSla);});var[slaChanged,setSlaChanged]=useState(false);
+  function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
+  async function save(){if(!form.name){showToast("Name required","error");return;}if(modal==="new"){var nt=Object.assign({},form,{id:uid(),keywords:form.keywords||[]});await dbSaveTicketType(nt);setTicketTypes(function(prev){return prev.concat([nt]);});showToast("Created");}else{await dbSaveTicketType(form);setTicketTypes(function(prev){return prev.map(function(t){return t.id===form.id?Object.assign({},form):t;});});showToast("Updated");}setModal(null);}
+  function addKw(){if(kwInput.trim()){fld("keywords",(form.keywords||[]).concat([kwInput.trim()]));setKwInput("");}}
+  function updateSlaField(status,val){var n=Object.assign({},slaEdit);n[status]=val===""||val===null?null:parseFloat(val);setSlaEdit(n);setSlaChanged(true);}
+  function saveSla(){setStatusSla(slaEdit);saveStatusSlaStore(slaEdit);addLog("SLA_UPDATED","system","SLA thresholds updated");showToast("✅ SLA settings saved!");setSlaChanged(false);}
+  var SLA_DESC={"Open":"Acknowledgement time","In Progress":"Resolution time","Pending":"Awaiting requester","Escalated":"Senior staff response","Closed":"No SLA"};
+  return<div>
+    <Card style={{marginBottom:20,borderTop:"3px solid #6366f1"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}><div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>⏱ Status SLA Thresholds</div></div><div style={{display:"flex",gap:8}}><Btn size="sm" variant="ghost" onClick={function(){setSlaEdit(Object.assign({},DEFAULT_STATUS_SLA));setSlaChanged(true);}}>↺ Reset</Btn><Btn size="sm" variant={slaChanged?"primary":"ghost"} onClick={saveSla} style={{opacity:slaChanged?1:0.5}}>💾 Save</Btn></div></div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {ALL_STATUSES.map(function(status){var sm=STATUS_META[status];var isClosed=status==="Closed";var val=slaEdit[status];return<div key={status} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:12}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:sm.color}}/><div style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{status}</div></div>{!isClosed&&val!==null?<Badge label={val+"h"} color={sm.color}/>:<Badge label="No SLA" color="#94a3b8"/>}</div><div style={{fontSize:11,color:"#64748b",marginBottom:isClosed?0:10}}>{SLA_DESC[status]}</div>{!isClosed&&<div style={{display:"flex",alignItems:"center",gap:8}}><input type="number" min="0.5" step="0.5" value={val===null||val===undefined?"":val} onChange={function(e){updateSlaField(status,e.target.value);}} style={{width:80,padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#fff",boxSizing:"border-box"}}/><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>hours</span></div>}</div>;})}
+      </div>
+      {slaChanged&&<div style={{marginTop:12,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e"}}>⚠️ Unsaved changes — click Save.</div>}
+    </Card>
+    <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,alignItems:"center"}}><div style={{fontWeight:700,fontSize:14}}>Ticket Types ({ticketTypes.length})</div><Btn onClick={function(){setForm({name:"",priority:"medium",slaHours:24,color:"#6366f1",keywords:[],defaultAssignee:""});setModal("new");}}>➕ Add Type</Btn></div>
+    {ticketTypes.length===0&&<Card><div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No ticket types yet.</div></Card>}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:12}}>
+      {ticketTypes.map(function(tt){var asgn=users.find(function(u){return u.id===tt.defaultAssignee;});return<Card key={tt.id}><div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><div style={{display:"flex",gap:8,alignItems:"center"}}><div style={{width:10,height:10,borderRadius:"50%",background:tt.color}}/><span style={{fontWeight:700,color:"#1e293b"}}>{tt.name}</span></div><div style={{display:"flex",gap:4}}><Btn size="sm" variant="ghost" onClick={function(){setForm(Object.assign({},tt,{keywords:(tt.keywords||[]).slice()}));setModal("edit");}}>✏️</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteTicketType(tt.id);setTicketTypes(function(prev){return prev.filter(function(t){return t.id!==tt.id;});});showToast("Deleted");}}>🗑</Btn></div></div><div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}><Badge label={PRI_META[tt.priority]?.label||tt.priority} color={PRI_META[tt.priority]?.color||"#6366f1"}/><Badge label={"SLA "+tt.slaHours+"h"} color="#0ea5e9"/></div>{asgn&&<div style={{fontSize:11,color:"#64748b",marginBottom:6}}>👤 {asgn.name}</div>}<div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(tt.keywords||[]).slice(0,4).map(function(k){return<span key={k} style={{background:"#f1f5f9",color:"#475569",fontSize:10,padding:"2px 6px",borderRadius:4}}>{k}</span>;})}{(tt.keywords||[]).length>4&&<span style={{fontSize:10,color:"#94a3b8"}}>+{(tt.keywords||[]).length-4}</span>}</div></Card>;})}
+    </div>
+    {modal&&<Modal title={modal==="new"?"Add Ticket Type":"Edit Ticket Type"} onClose={function(){setModal(null);}}><FInput label="Type Name *" value={form.name||""} onChange={function(e){fld("name",e.target.value);}}/><FSelect label="Priority" value={form.priority||"medium"} onChange={function(e){fld("priority",e.target.value);}} options={OPT_PRIORITY}/><FInput label="SLA Hours" value={form.slaHours||24} onChange={function(e){fld("slaHours",Number(e.target.value));}} type="number" min={1}/><FInput label="Color" value={form.color||"#6366f1"} onChange={function(e){fld("color",e.target.value);}} type="color"/><FSelect label="Default Assignee" value={form.defaultAssignee||""} onChange={function(e){fld("defaultAssignee",e.target.value);}} options={optAssignees(users)}/><div style={{marginBottom:14}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>Keywords</label><div style={{display:"flex",gap:6,marginBottom:6}}><input value={kwInput} onChange={function(e){setKwInput(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")addKw();}} placeholder="e.g. printer" style={{flex:1,padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:13,outline:"none"}}/><Btn size="sm" onClick={addKw}>Add</Btn></div><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{(form.keywords||[]).map(function(k,i){return<span key={i} onClick={function(){fld("keywords",(form.keywords||[]).filter(function(_,j){return j!==i;}));}} style={{background:"#eef2ff",color:"#4338ca",fontSize:12,padding:"3px 10px",borderRadius:4,cursor:"pointer"}}>{k} ×</span>;})}</div></div><div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setModal(null);}}>Cancel</Btn><Btn onClick={save}>{modal==="new"?"Create":"Save"}</Btn></div></Modal>}
+  </div>;
+}
+
+// ── Activity Log ──────────────────────────────────────────────────────────────
+const ACTION_META={INTEGRATIONS_UPDATED:{icon:"🔌",color:"#6366f1",label:"Integrations Updated"},USER_ROLE_CHANGE:{icon:"🔑",color:"#7c3aed",label:"Role Changed"},USER_CREATED:{icon:"👤",color:"#2563eb",label:"User Created"},USER_APPROVED:{icon:"✅",color:"#10b981",label:"User Approved"},USER_DELETED:{icon:"🗑",color:"#ef4444",label:"User Deleted"},PROFILE_UPDATED:{icon:"✏️",color:"#0ea5e9",label:"Profile Updated"},PASSWORD_CHANGED:{icon:"🔑",color:"#7c3aed",label:"Password Changed"},PASSWORD_RESET:{icon:"🔑",color:"#ef4444",label:"Password Reset"},COMPANY_CREATED:{icon:"🏢",color:"#10b981",label:"Company Created"},COMPANY_DELETED:{icon:"🗑",color:"#ef4444",label:"Company Deleted"},TICKET_CREATED:{icon:"🎫",color:"#6366f1",label:"Ticket Created"},TICKET_STATUS:{icon:"🔄",color:"#f59e0b",label:"Status Updated"},TICKET_DELETED:{icon:"🗑",color:"#dc2626",label:"Ticket Deleted"},TICKET_RESOLVED:{icon:"📝",color:"#10b981",label:"Resolution Note Added"},TICKET_REINSTATED:{icon:"♻️",color:"#10b981",label:"Ticket Reinstated"},TICKET_TYPE_CHANGE:{icon:"🏷️",color:"#0ea5e9",label:"Type Changed"},EMAIL_SENT:{icon:"📧",color:"#0ea5e9",label:"Email Sent"},CLIENT_CREATED:{icon:"🤝",color:"#10b981",label:"Client Added"},CLIENT_DELETED:{icon:"🗑",color:"#ef4444",label:"Client Removed"},TICKET_TYPE_CREATED:{icon:"🏷️",color:"#10b981",label:"Type Created"},TICKET_TYPE_DELETED:{icon:"🏷️",color:"#ef4444",label:"Type Deleted"},SLA_UPDATED:{icon:"⏱",color:"#6366f1",label:"SLA Updated"}};
+function PageActivityLog(p){
+  var logs=p.logs;var users=p.users;var tickets=p.tickets||[];var setTickets=p.setTickets||function(){};var isAdmin=p.isAdmin||false;var addLog=p.addLog||function(){};var showToast=p.showToast||function(){};
+  var[filter,setFilter]=useState("");
+  function fu(id){return users.find(function(x){return x.id===id;});}
+  var filtered=filter?logs.filter(function(l){return l.action===filter;}):logs;
+  async function reinstateTicket(ticketId,ticketTitle){setTickets(function(prev){return prev.map(function(t){return t.id===ticketId?Object.assign({},t,{deleted:false}):t;});});addLog("TICKET_REINSTATED",ticketId,"Ticket \""+ticketTitle+"\" reinstated by admin");showToast("♻️ Ticket reinstated!");}
+  return<div>
+    <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}><div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div><select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return<option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select></div>
+    <Card style={{padding:0}}>
+      {filtered.length===0&&<div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No activity found</div>}
+      {filtered.map(function(log,i){var am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action};var actor=fu(log.userId);var is
