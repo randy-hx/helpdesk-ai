@@ -1706,4 +1706,62 @@ function PageActivityLog(p){
     <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}><div style={{fontWeight:700,fontSize:14,flex:1}}>Activity Log ({filtered.length})</div><select value={filter} onChange={function(e){setFilter(e.target.value);}} style={{padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,outline:"none"}}><option value="">All Actions</option>{Object.keys(ACTION_META).map(function(k){return<option key={k} value={k}>{ACTION_META[k].label}</option>;})}</select></div>
     <Card style={{padding:0}}>
       {filtered.length===0&&<div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>No activity found</div>}
-      {filtered.map(function(log,i){var am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action};var actor=fu(log.userId);var is
+      {filtered.map(function(log,i){var am=ACTION_META[log.action]||{icon:"📝",color:"#6366f1",label:log.action};var actor=fu(log.userId);var isDeleteLog=log.action==="TICKET_DELETED";var deletedTicket=isDeleteLog?tickets.find(function(t){return t.id===log.target;}):null;var alreadyRestored=deletedTicket&&!deletedTicket.deleted;return<div key={log.id} style={{display:"flex",gap:12,padding:"12px 16px",borderBottom:i<filtered.length-1?"1px solid #f1f5f9":"none",alignItems:"flex-start"}}><div style={{width:32,height:32,borderRadius:8,background:am.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{am.icon}</div><div style={{flex:1,minWidth:0}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}><Badge label={am.label} color={am.color}/><span style={{fontSize:10,color:"#94a3b8"}}>{fdt(log.timestamp)}</span></div><div style={{fontSize:12,color:"#334155",marginTop:4,overflow:"hidden",textOverflow:"ellipsis"}}>{log.detail}</div>{actor&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Avatar name={actor.name} id={actor.id} size={14}/>By {actor.name}</div>}{isDeleteLog&&isAdmin&&deletedTicket&&<div style={{marginTop:8}}>{alreadyRestored?<span style={{fontSize:11,color:"#10b981",fontWeight:600}}>♻️ Already reinstated</span>:<Btn size="sm" variant="success" onClick={function(){reinstateTicket(log.target,log.detail);}}>♻️ Reinstate Ticket</Btn>}</div>}</div></div>;})}
+    </Card>
+  </div>;
+}
+
+// ── Integrations ──────────────────────────────────────────────────────────────
+function PageIntegrations(p){
+  var emailTemplates=p.emailTemplates||[];var setEmailTemplates=p.setEmailTemplates||function(){};var isAdmin=p.isAdmin;var showToast=p.showToast;
+  var[testTo,setTestTo]=useState("");var[sending,setSending]=useState(false);var[status,setStatus]=useState("");
+  var[tmplModal,setTmplModal]=useState(false);var[tmplForm,setTmplForm]=useState({name:"",subject:"",body:"",defaultCC:""});var[tmplEdit,setTmplEdit]=useState(null);
+  function openNew(){setTmplForm({name:"",subject:"",body:"",defaultCC:""});setTmplEdit(null);setTmplModal(true);}
+  function openEdit(t){setTmplForm({name:t.name,subject:t.subject,body:t.body,defaultCC:t.defaultCC||""});setTmplEdit(t.id);setTmplModal(true);}
+  async function saveTmpl(){if(!tmplForm.name.trim()||!tmplForm.subject.trim()||!tmplForm.body.trim()){showToast("Name, subject, and body required","error");return;}var t={id:tmplEdit||uid(),name:tmplForm.name.trim(),subject:tmplForm.subject.trim(),body:tmplForm.body.trim(),defaultCC:tmplForm.defaultCC.trim(),createdAt:new Date().toISOString()};await dbSaveEmailTemplate(t);setEmailTemplates(function(prev){return tmplEdit?prev.map(function(x){return x.id===tmplEdit?t:x;}):prev.concat([t]);});showToast(tmplEdit?"Template updated!":"Template created!");setTmplModal(false);}
+  async function deleteTmpl(id){await dbDeleteEmailTemplate(id);setEmailTemplates(function(prev){return prev.filter(function(x){return x.id!==id;});});showToast("Template deleted");}
+  async function runTest(){if(!testTo.trim()){showToast("Enter a recipient email","error");return;}setSending(true);setStatus("");try{var r=await callSendEmail({to:testTo.trim(),subject:"Hoptix Test",body:"Your email integration is working!"});if(r.success){setStatus("ok");showToast("📧 Test sent!");}else{setStatus("fail");showToast("Failed: "+r.error,"error");}}catch(e){setStatus("fail");showToast("Error: "+e.message,"error");}setSending(false);}
+  return<div style={{maxWidth:600}}>
+    <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🔌 Integrations</div>
+    <div style={{fontSize:12,color:"#64748b",marginBottom:20}}>Configure your email provider and review service costs.</div>
+    <Card style={{borderTop:"3px solid #10b981",marginBottom:20}}>
+      <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>💰 Cost Transparency</div>
+      <div style={{fontSize:11,color:"#64748b",marginBottom:14}}>Everything this app uses, and what (if anything) you pay for it.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {[{name:"Vercel (Hosting)",tier:"Free",detail:"Hobby plan — free forever for personal/small projects.",color:"#10b981"},{name:"Supabase (Database)",tier:"Free",detail:"Free tier — 500MB database, 1GB file storage, 50,000 monthly active users.",color:"#10b981"},{name:"GitHub (Code Storage)",tier:"Free",detail:"Free for public and private repos.",color:"#10b981"},{name:"Gmail / Nodemailer (Email)",tier:"Free",detail:"Uses your existing Gmail account with an App Password. No cost.",color:"#10b981"},{name:"AI Analysis (Google Gemini)",tier:"Free",detail:"Free tier via Google AI Studio — 1,500 requests/day, no credit card needed.",color:"#10b981"},{name:"Recharts (Charts)",tier:"Free",detail:"Open-source charting library. Zero cost, runs entirely in the browser.",color:"#10b981"}].map(function(item){return<div key={item.name} style={{display:"flex",gap:10,padding:"10px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,alignItems:"flex-start"}}><div style={{width:8,height:8,borderRadius:"50%",background:item.color,flexShrink:0,marginTop:4}}/><div style={{flex:1}}><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}><span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{item.name}</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{item.tier}</span></div><div style={{fontSize:11,color:"#475569",lineHeight:1.6}}>{item.detail}</div></div></div>;})}
+      </div>
+      <div style={{marginTop:12,background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",fontSize:11,color:"#0369a1",lineHeight:1.7}}>💡 <strong>Summary:</strong> Everything is free. The only potential cost is AI Analysis if you exceed free tier limits.</div>
+    </Card>
+    <Card style={{borderTop:"3px solid #6366f1",marginBottom:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>📧</span><span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Gmail</span><span style={{background:"#d1fae5",color:"#065f46",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>Active</span></div><a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#6366f1",fontWeight:700,textDecoration:"none"}}>App Passwords ↗</a></div>
+      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#0369a1",lineHeight:1.8}}>Set in Vercel → Settings → Environment Variables:<br/><code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_USER</code> and <code style={{background:"#e0f2fe",padding:"1px 5px",borderRadius:3}}>GMAIL_APP_PASSWORD</code></div>
+      <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>Send Test Email</label>
+      <div style={{display:"flex",gap:8,marginBottom:8}}><input type="email" value={testTo} onChange={function(e){setTestTo(e.target.value);}} placeholder="recipient@example.com" style={{flex:1,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"}}/><button onClick={runTest} disabled={sending} style={{padding:"10px 16px",background:sending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontWeight:700,fontSize:13,cursor:sending?"not-allowed":"pointer",flexShrink:0}}>{sending?"Sending…":"📤 Test"}</button></div>
+      {status==="ok"&&<div style={{padding:"8px 14px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,fontSize:12,color:"#166534"}}>✅ Test email delivered!</div>}
+      {status==="fail"&&<div style={{padding:"8px 14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,fontSize:12,color:"#dc2626"}}>❌ Failed — check env variables.</div>}
+    </Card>
+    {isAdmin&&<Card style={{borderTop:"3px solid #6366f1"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+        <div><div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>📝 Email Templates</div><div style={{fontSize:11,color:"#64748b",marginTop:2}}>Variables: <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{client_name}}"}</code> and <code style={{background:"#f1f5f9",padding:"1px 4px",borderRadius:3}}>{"{{agent_name}}"}</code></div></div>
+        <Btn onClick={openNew}>➕ Add Template</Btn>
+      </div>
+      {emailTemplates.length===0&&<div style={{textAlign:"center",padding:"20px 0",color:"#94a3b8",fontSize:13}}>No templates yet.</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {emailTemplates.map(function(t){return<div key={t.id} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+            <div style={{flex:1,overflow:"hidden"}}><div style={{fontWeight:700,color:"#1e293b",fontSize:13,marginBottom:3}}>{t.name}</div><div style={{fontSize:11,color:"#64748b",marginBottom:2}}>Subject: {t.subject}</div>{t.defaultCC&&<div style={{fontSize:11,color:"#64748b",marginBottom:4}}>Default CC: {t.defaultCC}</div>}<div style={{fontSize:11,color:"#94a3b8",background:"#fff",borderRadius:6,padding:"5px 8px",border:"1px solid #e2e8f0",maxHeight:44,overflow:"hidden"}}>{t.body.slice(0,100)}{t.body.length>100?"…":""}</div></div>
+            <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="ghost" onClick={function(){openEdit(t);}}>✏️</Btn><Btn size="sm" variant="danger" onClick={function(){deleteTmpl(t.id);}}>🗑</Btn></div>
+          </div>
+        </div>;})}
+      </div>
+    </Card>}
+    {tmplModal&&<Modal title={tmplEdit?"Edit Template":"New Email Template"} onClose={function(){setTmplModal(false);}}>
+      <FInput label="Template Name *" value={tmplForm.name} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{name:e.target.value});});}} placeholder="e.g. Initial Response"/>
+      <FInput label="Subject *" value={tmplForm.subject} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{subject:e.target.value});});}} placeholder="Re: Your IT Request"/>
+      <FInput label="Default CC (optional)" value={tmplForm.defaultCC} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{defaultCC:e.target.value});});}} placeholder="manager@company.com"/>
+      <FTextarea label="Body *" value={tmplForm.body} onChange={function(e){setTmplForm(function(prev){return Object.assign({},prev,{body:e.target.value});});}} rows={8} placeholder={"Hi {{client_name}},\n\nThank you for reaching out...\n\nBest regards,\n{{agent_name}}"}/>
+      <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:11,color:"#0369a1"}}>💡 <strong>{"{{client_name}}"}</strong> and <strong>{"{{agent_name}}"}</strong> auto-fill on tickets.</div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setTmplModal(false);}}>Cancel</Btn><Btn onClick={saveTmpl}>{tmplEdit?"Save Changes":"Create Template"}</Btn></div>
+    </Modal>}
+  </div>;
+}
