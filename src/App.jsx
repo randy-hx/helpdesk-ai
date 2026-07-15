@@ -753,90 +753,109 @@ export default function App(){
   var[ticketsLoading,setTicketsLoading]=useState(false);
   var[ticketsError,setTicketsError]=useState(null);
   var[sidebarOpen,setSidebarOpen]=useState(false);
+  var refreshTickets=useCallback(async function(){
+    setTicketsLoading(true);setTicketsError(null);
+    var attempts=0;
+    while(attempts<3){
+      try{
+        var tkt=await dbGetTickets();
+        setTicketsR(tkt);setTicketsLoaded(true);setTicketsLoading(false);
+        try{var cc=JSON.parse(localStorage.getItem("hd_appCache")||"{}");cc.tickets=tkt;localStorage.setItem("hd_appCache",JSON.stringify(cc));}catch(e){}
+        return;
+      }catch(e){
+        attempts++;
+        if(attempts<3)await new Promise(function(r){setTimeout(r,1200*attempts);});
+        else{setTicketsError("Could not load tickets — tap 🔄 to retry");setTicketsLoading(false);}
+      }
+    }
+  },[]);
   var[notifications,setNotifications]=useState([]);var[unreadChatCount,setUnreadChatCount]=useState(0);
   var prevBreachIdsRef=useRef([]);
   var isMobile=useIsMobile();
 
-  // ── FIX: reliable ticket loader with retry ──
-  var loadTicketsRef=useRef(null);
-  loadTicketsRef.current=async function(attempt){
-    attempt=attempt||1;
-    setTicketsLoading(true);
-    setTicketsError(null);
-    try{
-      var tkt=await dbGetTickets();
-      setTicketsR(tkt);
-      setTicketsLoaded(true);
-      setTicketsLoading(false);
-      try{
-        var cached=JSON.parse(localStorage.getItem("hd_appCache")||"{}");
-        cached.tickets=tkt;
-        localStorage.setItem("hd_appCache",JSON.stringify(cached));
-      }catch(e){}
-    }catch(e){
-      console.error("dbGetTickets attempt "+attempt+" failed:",e);
-      if(attempt<3){
-        setTimeout(function(){loadTicketsRef.current(attempt+1);},1500*attempt);
-      }else{
-        setTicketsError("Failed to load tickets. Tap Refresh to try again.");
-        setTicketsLoading(false);
-      }
-    }
-  };
-
   useEffect(function(){
-    async function loadAll(){
-      // Step 1: restore cache instantly
+  async function loadAll(){
+    // Step 1: restore cache instantly
+    try{
+      var cached=localStorage.getItem("hd_appCache");
+      if(cached){
+        var c=JSON.parse(cached);
+        if(c.users)setUsers(c.users);
+        if(c.companies)setCompanies(c.companies);
+        if(c.clients)setClients(c.clients);
+        if(c.ticketTypes)setTTR(c.ticketTypes);
+        if(c.tickets&&c.tickets.length>0){setTicketsR(c.tickets);setTicketsLoaded(true);}
+        if(c.logs)setLogsR(c.logs);
+        if(c.schedules)setSchedulesR(c.schedules);
+        if(c.emailTemplates)setEmailTemplates(c.emailTemplates);
+        if(c.allTimeSessions)setAllTimeSessions(c.allTimeSessions);
+        var sp=localStorage.getItem("hd_page");
+        var sfp=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];
+        if(sp&&sfp.includes(sp))setPageR(sp);
+        setAppReady(true);
+      }
+    }catch(e){}
+
+    // Step 2: fetch ALL data in parallel — tickets included
+    try{
+      setTicketsLoading(true);
+      var results=await Promise.allSettled([
+        dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes(),
+        dbGetTickets(),
+        dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates(),dbGetAllTimeSessions()
+      ]);
+      var uR=results[0],coR=results[1],clR=results[2],ttR=results[3];
+      var tktR=results[4],lgR=results[5],schR=results[6],etR=results[7],tsR=results[8];
+
+      if(uR.status==="fulfilled")setUsers(uR.value);
+      if(coR.status==="fulfilled")setCompanies(coR.value);
+      if(clR.status==="fulfilled")setClients(clR.value);
+      if(ttR.status==="fulfilled")setTTR(ttR.value);
+
+      if(tktR.status==="fulfilled"){
+        setTicketsR(tktR.value);setTicketsLoaded(true);setTicketsLoading(false);
+      }else{
+        // tickets failed — retry in background
+        setTicketsLoading(false);
+        refreshTickets();
+      }
+
+      if(lgR.status==="fulfilled")setLogsR(lgR.value);
+      if(schR.status==="fulfilled")setSchedulesR(schR.value);
+      if(etR.status==="fulfilled")setEmailTemplates(etR.value);
+      if(tsR.status==="fulfilled")setAllTimeSessions(tsR.value);
+
+      setAppReady(true);
+
+      var sp2=localStorage.getItem("hd_page");
+      var sfp2=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];
+      if(sp2&&sfp2.includes(sp2))setPageR(sp2);
+
+      // Step 3: save to cache
       try{
-        var cached=localStorage.getItem("hd_appCache");
-        if(cached){
-          var c=JSON.parse(cached);
-          if(c.users)setUsers(c.users);
-          if(c.companies)setCompanies(c.companies);
-          if(c.clients)setClients(c.clients);
-          if(c.ticketTypes)setTTR(c.ticketTypes);
-          if(c.tickets&&c.tickets.length>0){setTicketsR(c.tickets);setTicketsLoaded(true);}
-          if(c.logs)setLogsR(c.logs);
-          if(c.schedules)setSchedulesR(c.schedules);
-          if(c.emailTemplates)setEmailTemplates(c.emailTemplates);
-          if(c.allTimeSessions)setAllTimeSessions(c.allTimeSessions);
-          var savedPage=localStorage.getItem("hd_page");
-          var safePages=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];
-          if(savedPage&&safePages.includes(savedPage))setPageR(savedPage);
-          setAppReady(true);
-        }
+        var existing=JSON.parse(localStorage.getItem("hd_appCache")||"{}");
+        localStorage.setItem("hd_appCache",JSON.stringify(Object.assign({},existing,{
+          users:uR.status==="fulfilled"?uR.value:existing.users||[],
+          companies:coR.status==="fulfilled"?coR.value:existing.companies||[],
+          clients:clR.status==="fulfilled"?clR.value:existing.clients||[],
+          ticketTypes:ttR.status==="fulfilled"?ttR.value:existing.ticketTypes||[],
+          tickets:tktR.status==="fulfilled"?tktR.value:existing.tickets||[],
+          logs:lgR.status==="fulfilled"?lgR.value.slice(0,100):existing.logs||[],
+          schedules:schR.status==="fulfilled"?schR.value:existing.schedules||{},
+          emailTemplates:etR.status==="fulfilled"?etR.value:existing.emailTemplates||[],
+          allTimeSessions:tsR.status==="fulfilled"?tsR.value.slice(0,500):existing.allTimeSessions||[]
+        })));
       }catch(e){}
 
-      // Step 2: fetch fresh data
-      try{
-        var[u,co,cl,tt]=await Promise.all([dbGetUsers(),dbGetCompanies(),dbGetClients(),dbGetTicketTypes()]);
-        setUsers(u);setCompanies(co);setClients(cl);setTTR(tt);
-        setAppReady(true);
-
-        // Step 3: load tickets separately with retry logic
-        loadTicketsRef.current(1);
-
-        // Step 4: load secondary data
-        var[lg,sch,et,ts]=await Promise.all([dbGetLogs(),dbGetSchedules(),dbGetEmailTemplates(),dbGetAllTimeSessions()]);
-        setLogsR(lg);setSchedulesR(sch);setEmailTemplates(et);setAllTimeSessions(ts);
-
-        var savedPage2=localStorage.getItem("hd_page");
-        var safePages2=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];
-        if(savedPage2&&safePages2.includes(savedPage2))setPageR(savedPage2);
-
-        // Step 5: update cache (without tickets — tickets updates its own cache slice)
-        try{
-          var existing=JSON.parse(localStorage.getItem("hd_appCache")||"{}");
-          localStorage.setItem("hd_appCache",JSON.stringify(Object.assign({},existing,{
-            users:u,companies:co,clients:cl,ticketTypes:tt,
-            logs:lg.slice(0,100),schedules:sch,
-            emailTemplates:et,allTimeSessions:ts.slice(0,500)
-          })));
-        }catch(e){}
-      }catch(e){console.error("loadAll failed",e);setAppReady(true);}
+    }catch(e){
+      console.error("loadAll failed",e);
+      setAppReady(true);
+      setTicketsLoading(false);
+      refreshTickets();
     }
-    loadAll();
-  },[]);
+  }
+  loadAll();
+},[]);
 
   useEffect(function(){if(!appReady&&!curUser)return;var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];if(saved&&safe.includes(saved)&&saved!==page){setPageR(saved);}},[appReady,curUser?.id]);
   useEffect(function(){if(!curUser)return;dbGetNotifications(curUser.id).then(function(data){setNotifications(data);});var sub=supabase.channel("notifs-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"app_notifications",filter:"user_id=eq."+curUser.id},function(payload){setNotifications(function(prev){if(prev.find(function(n){return n.id===payload.new.id;}))return prev;return[payload.new].concat(prev);});}).subscribe();return function(){supabase.removeChannel(sub);};},[curUser?.id]);
@@ -890,7 +909,7 @@ export default function App(){
         {toast&&<div style={{position:"fixed",top:isMobile?70:20,right:12,left:isMobile?12:"auto",zIndex:10000,background:toast.type==="error"?"#ef4444":toast.type==="warn"?"#f59e0b":"#10b981",color:"#fff",padding:"10px 16px",borderRadius:10,fontWeight:600,fontSize:13,boxShadow:"0 4px 20px rgba(0,0,0,.2)",textAlign:"center"}}>{toast.msg}</div>}
         <div style={{flex:1,overflowY:"auto",padding:isMobile?"12px":"24px",paddingBottom:isMobile?"80px":"24px",WebkitOverflowScrolling:"touch"}}>
           {page==="dashboard"    &&<PageDashboard   tickets={visible} allTickets={allNonDeleted} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} setPage={setPage} setSelTicket={setSelTicket} breaches={breaches} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
-          {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile} ticketsLoaded={ticketsLoaded} ticketsLoading={ticketsLoading} ticketsError={ticketsError} onRefresh={function(){loadTicketsRef.current(1);}}/>}
+          {page==="tickets"      &&<PageTickets     tickets={visible} users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setSelTicket={setSelTicket} setPage={setPage} isAdmin={isAdmin} statusSla={statusSla} schedules={schedules} isMobile={isMobile} ticketsLoaded={ticketsLoaded} ticketsLoading={ticketsLoading} ticketsError={ticketsError} onRefresh={refreshTickets}/>}
           {page==="new_ticket"   &&<PageNewTicket   users={users} companies={companies} clients={clients} ticketTypes={ticketTypes} curUser={curUser} setTickets={setTickets} addLog={addLog} showToast={showToast} setPage={setPage} setSelTicket={setSelTicket} allTimeSessions={allTimeSessions}/>}
           {page==="time_tracking"&&<PageTimeTracking tickets={visible} users={users} ticketTypes={ticketTypes} curUser={curUser} isAdmin={isAdmin} isTech={isTech} setSelTicket={setSelTicket} isMobile={isMobile} allTimeSessions={allTimeSessions}/>}
           {page==="team_chat"    &&<PageTeamChat    curUser={curUser} users={users} isAdmin={isAdmin} isMobile={isMobile}/>}
