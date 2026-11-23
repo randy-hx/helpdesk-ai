@@ -58,7 +58,9 @@ export async function dbDeleteTicketType(id){
 // ── Tickets ────────────────────────────────────────────────────────────────
 export async function dbGetTickets(){
   var r=await supabase.from('tickets').select('*').order('created_at',{ascending:false});
-  if(r.error){console.error('dbGetTickets error',r.error);return[];}
+  // Throw instead of returning [] so the app retries and never wipes the ticket list on a failed load
+  if(r.error){console.error('dbGetTickets error',r.error);throw r.error;}
+  if(!r.data)throw new Error('dbGetTickets: no data returned');
   return (r.data||[]).map(dbTicketToApp);
 }
 export async function dbSaveTicket(t){

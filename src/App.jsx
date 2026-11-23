@@ -775,6 +775,7 @@ export default function App(){
 
   useEffect(function(){
   async function loadAll(){
+    var cachedTicketCount=0;
     // Step 1: restore cache instantly
     try{
       var cached=localStorage.getItem("hd_appCache");
@@ -784,7 +785,7 @@ export default function App(){
         if(c.companies)setCompanies(c.companies);
         if(c.clients)setClients(c.clients);
         if(c.ticketTypes)setTTR(c.ticketTypes);
-        if(c.tickets&&c.tickets.length>0){setTicketsR(c.tickets);setTicketsLoaded(true);}
+        if(c.tickets&&c.tickets.length>0){setTicketsR(c.tickets);setTicketsLoaded(true);cachedTicketCount=c.tickets.length;}
         if(c.logs)setLogsR(c.logs);
         if(c.schedules)setSchedulesR(c.schedules);
         if(c.emailTemplates)setEmailTemplates(c.emailTemplates);
@@ -812,7 +813,8 @@ export default function App(){
       if(clR.status==="fulfilled")setClients(clR.value);
       if(ttR.status==="fulfilled")setTTR(ttR.value);
 
-      if(tktR.status==="fulfilled"){
+      var ticketsOk=tktR.status==="fulfilled"&&!(tktR.value.length===0&&cachedTicketCount>0);
+      if(ticketsOk){
         setTicketsR(tktR.value);setTicketsLoaded(true);setTicketsLoading(false);
       }else{
         // tickets failed — retry in background
@@ -839,7 +841,7 @@ export default function App(){
           companies:coR.status==="fulfilled"?coR.value:existing.companies||[],
           clients:clR.status==="fulfilled"?clR.value:existing.clients||[],
           ticketTypes:ttR.status==="fulfilled"?ttR.value:existing.ticketTypes||[],
-          tickets:tktR.status==="fulfilled"?tktR.value:existing.tickets||[],
+          tickets:ticketsOk?tktR.value:existing.tickets||[],
           logs:lgR.status==="fulfilled"?lgR.value.slice(0,100):existing.logs||[],
           schedules:schR.status==="fulfilled"?schR.value:existing.schedules||{},
           emailTemplates:etR.status==="fulfilled"?etR.value:existing.emailTemplates||[],
@@ -861,8 +863,9 @@ export default function App(){
   useEffect(function(){if(!curUser)return;dbGetNotifications(curUser.id).then(function(data){setNotifications(data);});var sub=supabase.channel("notifs-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"app_notifications",filter:"user_id=eq."+curUser.id},function(payload){setNotifications(function(prev){if(prev.find(function(n){return n.id===payload.new.id;}))return prev;return[payload.new].concat(prev);});}).subscribe();return function(){supabase.removeChannel(sub);};},[curUser?.id]);
   var unreadCount=useMemo(function(){return notifications.filter(function(n){return !n.read;}).length;},[notifications]);
   useEffect(function(){var parts=[];if(breaches.length>0)parts.push("\uD83D\uDEA8"+breaches.length);if(unreadCount>0)parts.push("\uD83D\uDD14"+unreadCount);if(unreadChatCount>0)parts.push("\uD83D\uDCAC"+unreadChatCount);document.title=parts.length>0?"("+parts.join(" | ")+") Hoptix":"Hoptix";},[unreadCount,breaches,unreadChatCount]);
+  useEffect(function(){var last=Date.now();function onVis(){if(document.visibilityState==="visible"&&Date.now()-last>30000){last=Date.now();refreshTickets();}}document.addEventListener("visibilitychange",onVis);return function(){document.removeEventListener("visibilitychange",onVis);};},[refreshTickets]);
   var refreshTimeSessions=useCallback(async function(){var ts=await dbGetAllTimeSessions();setAllTimeSessions(ts);},[]);
-  useEffect(function(){var sub=supabase.channel('tickets-changes').on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(){dbGetTickets().then(function(t){setTicketsR(t);setTicketsLoaded(true);});}).on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){dbGetUsers().then(function(u){setUsers(u);});}).on('postgres_changes',{event:'*',schema:'public',table:'time_sessions'},function(){dbGetAllTimeSessions().then(function(ts){setAllTimeSessions(ts);});}).subscribe();return function(){supabase.removeChannel(sub);};},[]);
+  useEffect(function(){var sub=supabase.channel('tickets-changes').on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(){dbGetTickets().then(function(t){setTicketsR(t);setTicketsLoaded(true);}).catch(function(e){console.warn("realtime ticket refetch failed",e);});}).on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){dbGetUsers().then(function(u){setUsers(u);});}).on('postgres_changes',{event:'*',schema:'public',table:'time_sessions'},function(){dbGetAllTimeSessions().then(function(ts){setAllTimeSessions(ts);});}).subscribe();return function(){supabase.removeChannel(sub);};},[]);
   useEffect(function(){if(!curUser)return;var dmSub=supabase.channel("global-dm-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_chats"},function(payload){var m=payload.new;if(m.to_id===curUser.id){setPageR(function(curPage){if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});return curPage;});}}).subscribe();var groupSub=supabase.channel("global-group-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats"},function(payload){var m=payload.new;if(m.user_id===curUser.id)return;setPageR(function(curPage){if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});return curPage;});}).subscribe();return function(){supabase.removeChannel(dmSub);supabase.removeChannel(groupSub);};},[curUser?.id]);
   async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
   function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
