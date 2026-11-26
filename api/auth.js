@@ -83,8 +83,10 @@ async function migrateAttachments(req, res) {
   if (!secret || req.query.key !== secret) return res.status(401).json({ error: "Wrong or missing key." });
   const admin = getAdmin();
   const started = Date.now();
-  const idsR = await admin.from("tickets").select("id").order("id");
+  let idsR = await admin.rpc("hoptix_old_attachment_ids");
+  if (idsR.error) idsR = await admin.from("tickets").select("id").order("id");
   if (idsR.error) return res.status(500).json({ error: idsR.error.message });
+  if (idsR.data && idsR.data.length && typeof idsR.data[0] !== "object") idsR.data = idsR.data.map(function (x) { return { id: x }; });
   let checked = 0, ticketsMoved = 0, filesMoved = 0, timedOut = false;
   const errors = [];
   for (const row of idsR.data || []) {
