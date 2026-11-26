@@ -130,7 +130,7 @@ function NotificationBell(p){
   var notifications=p.notifications||[];var onMarkRead=p.onMarkRead||function(){};var onGoTicket=p.onGoTicket||function(){};
   var[open,setOpen]=useState(false);var unread=notifications.filter(function(n){return !n.read;}).length;var bellRef=useRef(null);
   useEffect(function(){function handleClick(e){if(bellRef.current&&!bellRef.current.contains(e.target))setOpen(false);}document.addEventListener("mousedown",handleClick);return function(){document.removeEventListener("mousedown",handleClick);};},[]);
-  var TYPE_ICON={"ticket":"🎫","status":"🔄","chat":"💬","email":"📧","sla":"🚨","team_chat":"💬","info":"🔔"};
+  var TYPE_ICON={"ticket":"🎫","status":"🔄","chat":"💬","email":"📧","sla":"🚨","team_chat":"💬","info":"🔔","timer":"⏱"};
   return<div ref={bellRef} style={{position:"relative"}}>
     <button onClick={function(){setOpen(!open);if(!open&&unread>0)onMarkRead();}} style={{position:"relative",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:18}}>🔔{unread>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#ef4444",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:9,fontWeight:800,minWidth:16,textAlign:"center",lineHeight:"14px"}}>{unread>99?"99+":unread}</span>}</button>
     {open&&<div style={{position:"absolute",top:"calc(100% + 8px)",right:0,width:320,maxHeight:440,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,.18)",border:"1px solid #e2e8f0",zIndex:9999,display:"flex",flexDirection:"column",overflow:"hidden"}}>
@@ -143,15 +143,152 @@ function NotificationBell(p){
   </div>;
 }
 
+// ── Timer Enforcement & Overtime Alerts ──────────────────────────────────────
+var TIMER_MAX_VALID_MINS=480;
+var TIMER_MIN_SAMPLE=3;
+var TIMER_DEFAULT_EXPECTED_MINS=60;
+var TIMER_SNOOZE_MINS=30;
+function computeTimerAverages(tickets,sessions){
+  var perTicket={};
+  (sessions||[]).forEach(function(s){if(!s.ended_at||s.duration_minutes==null)return;var d=Number(s.duration_minutes);if(!(d>0)||d>=TIMER_MAX_VALID_MINS)return;perTicket[s.ticket_id]=(perTicket[s.ticket_id]||0)+d;});
+  var byType={};var allSum=0;var allCount=0;
+  (tickets||[]).forEach(function(t){if(t.deleted||t.status!=="Closed")return;var m=perTicket[t.id];if(!m)return;allSum+=m;allCount+=1;var k=t.typeId||"_none";if(!byType[k])byType[k]={sum:0,count:0};byType[k].sum+=m;byType[k].count+=1;});
+  var out={byType:{},overall:allCount>0?{avg:allSum/allCount,count:allCount}:null};
+  Object.keys(byType).forEach(function(k){out.byType[k]={avg:byType[k].sum/byType[k].count,count:byType[k].count};});
+  return out;
+}
+function getExpectedTicketMins(ticket,avgData,ticketTypes){
+  if(!ticket)return{mins:TIMER_DEFAULT_EXPECTED_MINS,basis:"Default"};
+  var tt=(ticketTypes||[]).find(function(x){return x.id===ticket.typeId;});
+  var bt=avgData&&avgData.byType?avgData.byType[ticket.typeId||"_none"]:null;
+  if(bt&&bt.count>=TIMER_MIN_SAMPLE)return{mins:Math.max(5,Math.round(bt.avg)),basis:"average for "+(tt?tt.name:"this ticket type")+" ("+bt.count+" closed tickets)"};
+  if(avgData&&avgData.overall&&avgData.overall.count>=TIMER_MIN_SAMPLE)return{mins:Math.max(5,Math.round(avgData.overall.avg)),basis:"average for all tickets ("+avgData.overall.count+" closed tickets)"};
+  return{mins:TIMER_DEFAULT_EXPECTED_MINS,basis:"default — not enough history yet"};
+}
+function ticketLoggedMins(ticketId,sessions){return(sessions||[]).filter(function(s){return s.ticket_id===ticketId&&s.ended_at&&s.duration_minutes>0&&s.duration_minutes<TIMER_MAX_VALID_MINS;}).reduce(function(sum,s){return sum+Number(s.duration_minutes);},0);}
+function getMyOpenSessions(sessions,userId){return(sessions||[]).filter(function(s){return s.user_id===userId&&!s.ended_at;});}
+async function startTicketTimerSession(ticketId,userId,note){
+  var existing=await dbGetTimeSessions(ticketId);
+  var open=existing.find(function(s){return s.user_id===userId&&!s.ended_at;});
+  if(open)return open;
+  var now=new Date().toISOString();
+  var session={id:uid(),ticket_id:ticketId,user_id:userId,started_at:now,ended_at:null,duration_minutes:null,note:note||null,created_at:now};
+  await dbSaveTimeSession(session);
+  return session;
+}
+async function stopTicketTimerSessions(ticketId,userId){
+  var existing=await dbGetTimeSessions(ticketId);
+  var open=existing.filter(function(s){return !s.ended_at&&(!userId||s.user_id===userId);});
+  var total=0;var now=new Date();
+  for(var i=0;i<open.length;i++){var mins=parseFloat(((now-new Date(open[i].started_at))/60000).toFixed(4));if(mins<0)mins=0;total+=mins;await dbSaveTimeSession(Object.assign({},open[i],{ended_at:now.toISOString(),duration_minutes:mins}));}
+  return total;
+}
+function sendBrowserAlert(title,body){try{if(typeof window==="undefined"||!("Notification" in window))return;if(Notification.permission==="granted"){new Notification(title,{body:body});}}catch(e){}}
+function notifyManagersInApp(users,ticket,message,type,excludeUserId){(users||[]).forEach(function(u){if(!u.active)return;if(u.id===excludeUserId)return;if(u.role!=="admin"&&u.role!=="it_manager")return;dbSaveNotification({id:uid(),user_id:u.id,ticket_id:ticket.id,ticket_title:ticket.title,message:message,type:type||"timer",read:false,created_at:new Date().toISOString()});});}
+function TimerGateModal(p){
+  var btnStyles={success:{background:"#10b981",color:"#fff",border:"none"},danger:{background:"#ef4444",color:"#fff",border:"none"},ghost:{background:"#f1f5f9",color:"#475569",border:"1px solid #e2e8f0"},link:{background:"transparent",color:"#64748b",border:"none"}};
+  return<div style={{position:"fixed",inset:0,background:"rgba(15,23,42,.65)",zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div style={{background:"#fff",borderRadius:16,maxWidth:420,width:"100%",padding:"22px 20px",boxShadow:"0 20px 60px rgba(0,0,0,.35)",textAlign:"center",maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{fontSize:42,marginBottom:6}}>{p.icon||"⏱"}</div>
+      <div style={{fontWeight:800,fontSize:17,color:p.tone==="danger"?"#b91c1c":"#92400e",marginBottom:8}}>{p.title}</div>
+      <div style={{fontSize:13,color:"#475569",lineHeight:1.6,marginBottom:18,whiteSpace:"pre-wrap"}}>{p.message}</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {(p.buttons||[]).map(function(b,i){var st=btnStyles[b.variant]||btnStyles.ghost;return<button key={i} disabled={!!p.busy} onClick={b.onClick} style={Object.assign({},st,{borderRadius:10,padding:"13px 14px",fontSize:14,fontWeight:700,cursor:p.busy?"wait":"pointer",width:"100%",opacity:p.busy?0.6:1})}>{p.busy&&i===0?"⏳ Please wait…":b.label}</button>;})}
+      </div>
+    </div>
+  </div>;
+}
+function TimerWatchdog(p){
+  var curUser=p.curUser;var tickets=p.tickets||[];var users=p.users||[];var ticketTypes=p.ticketTypes||[];var allTimeSessions=p.allTimeSessions||[];var avgData=p.avgData;var isMobile=p.isMobile;
+  var onOpenTicket=p.onOpenTicket||function(){};var refreshTimeSessions=p.refreshTimeSessions||function(){};var showToast=p.showToast||function(){};var addLog=p.addLog||function(){};
+  var[now,setNow]=useState(Date.now());
+  var[collapsed,setCollapsed]=useState(false);
+  var[busyId,setBusyId]=useState("");
+  var[snoozeUntil,setSnoozeUntil]=useState(0);
+  var[notifPerm,setNotifPerm]=useState(function(){try{return("Notification" in window)?Notification.permission:"unsupported";}catch(e){return"unsupported";}});
+  var firedRef=useRef({});
+  var mySessions=getMyOpenSessions(allTimeSessions,curUser.id);
+  var hasRunning=mySessions.length>0;
+  useEffect(function(){var iv=setInterval(function(){setNow(Date.now());},hasRunning?1000:30000);return function(){clearInterval(iv);};},[hasRunning]);
+  useEffect(function(){if(!hasRunning)return;function onUnload(e){e.preventDefault();e.returnValue="You have a timer running. Stop it before you leave.";return e.returnValue;}window.addEventListener("beforeunload",onUnload);return function(){window.removeEventListener("beforeunload",onUnload);};},[hasRunning]);
+  var running=mySessions.map(function(s){var t=tickets.find(function(x){return x.id===s.ticket_id;})||{id:s.ticket_id,title:"(ticket not found)",status:"—"};var curMins=Math.max(0,(now-new Date(s.started_at).getTime())/60000);var totalMins=ticketLoggedMins(s.ticket_id,allTimeSessions)+curMins;var exp=getExpectedTicketMins(t,avgData,ticketTypes);var pct=exp.mins>0?Math.round(totalMins/exp.mins*100):0;return{session:s,ticket:t,curSecs:Math.floor(curMins*60),totalMins:totalMins,expected:exp,pct:pct};});
+  var runningIds=mySessions.map(function(s){return s.ticket_id;});
+  var missing=tickets.filter(function(t){return !t.deleted&&t.status==="In Progress"&&t.assignedTo===curUser.id&&runningIds.indexOf(t.id)<0;});
+  var showMissing=missing.length>0&&now>=snoozeUntil;
+  function fireOvertimeAlert(r,level){
+    var t=r.ticket;
+    var title=level==="200"?"🚨 Timer at 2× the average — "+t.title:"⏰ Over the average time — "+t.title;
+    var msg=curUser.name+" has spent "+fmtDuration(r.totalMins)+" on this ticket. Expected: "+fmtDuration(r.expected.mins)+" ("+r.expected.basis+").";
+    showToast(level==="200"?"🚨 2× over the average time on: "+t.title:"⏰ You passed the average time on: "+t.title,"warn");
+    sendBrowserAlert(title,msg+" If you've stopped working, stop the timer.");
+    try{if(navigator.vibrate)navigator.vibrate([200,100,200]);}catch(e){}
+    dbSaveNotification({id:uid(),user_id:curUser.id,ticket_id:t.id,ticket_title:t.title,message:"Your timer passed "+(level==="200"?"2× ":"")+"the average time ("+fmtDuration(r.totalMins)+" vs "+fmtDuration(r.expected.mins)+"). Stop the timer if you're no longer working on it.",type:"timer",read:false,created_at:new Date().toISOString()});
+    notifyManagersInApp(users,t,msg,"timer",curUser.id);
+    notifyAdmin(title,msg+"\n\nTicket: "+t.title+"\nStatus: "+t.status+"\nTimer started: "+fdt(r.session.started_at)+"\nTechnician: "+curUser.name);
+    addLog("TIMER_OVERTIME",t.id,"Timer passed "+(level==="200"?"2× ":"")+"average on \""+t.title+"\" ("+fmtDuration(r.totalMins)+" vs "+fmtDuration(r.expected.mins)+")");
+  }
+  useEffect(function(){
+    running.forEach(function(r){
+      var level=r.pct>=200?"200":r.pct>=100?"100":null;if(!level)return;
+      var key="hd_timerAlert_"+r.session.id+"_"+level;
+      if(firedRef.current[key])return;
+      firedRef.current[key]=true;
+      var already=false;try{already=localStorage.getItem(key)==="1";}catch(e){}
+      if(already)return;
+      try{localStorage.setItem(key,"1");localStorage.setItem("hd_timerAlert_"+r.session.id+"_100","1");}catch(e){}
+      fireOvertimeAlert(r,level);
+    });
+  },[now]);
+  async function stopOne(ticketId,title){setBusyId(ticketId);try{var m=await stopTicketTimerSessions(ticketId,curUser.id);await refreshTimeSessions();addLog("TIMER_STOP",ticketId,"Timer stopped ("+fmtDuration(m)+") on: "+title);showToast("⏹ Timer stopped — "+fmtDuration(m)+" saved");}catch(e){showToast("Could not stop timer. Try again.","error");}setBusyId("");}
+  async function startOne(ticketId,title){setBusyId(ticketId);try{await startTicketTimerSession(ticketId,curUser.id,null);await refreshTimeSessions();addLog("TIMER_START",ticketId,"Timer started on: "+title);showToast("⏱ Timer started");}catch(e){showToast("Could not start timer. Try again.","error");}setBusyId("");}
+  function askPermission(){try{Notification.requestPermission().then(function(r){setNotifPerm(r);if(r==="granted")showToast("🔔 Desktop alerts enabled");});}catch(e){}}
+  if(running.length===0&&!showMissing)return null;
+  var anyOver=running.some(function(r){return r.pct>=100;});
+  var wrapStyle=isMobile?{position:"fixed",left:8,right:8,bottom:68,zIndex:7990}:{position:"fixed",right:16,bottom:16,width:360,zIndex:7990};
+  var headBg=anyOver?"#b91c1c":showMissing&&running.length===0?"#b45309":"#065f46";
+  return<div style={wrapStyle}>
+    <div style={{background:"#fff",borderRadius:14,boxShadow:"0 10px 30px rgba(0,0,0,.25)",overflow:"hidden",border:"1px solid #e2e8f0"}}>
+      <div onClick={function(){setCollapsed(!collapsed);}} style={{background:headBg,color:"#fff",padding:"10px 14px",display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+        <span style={{fontSize:16}}>{anyOver?"🚨":running.length>0?"⏱":"⚠️"}</span>
+        <div style={{flex:1,fontWeight:700,fontSize:12}}>{running.length>0?running.length+" timer"+(running.length!==1?"s":"")+" running":""}{running.length>0&&showMissing?" · ":""}{showMissing?missing.length+" ticket"+(missing.length!==1?"s":"")+" not timed":""}</div>
+        <span style={{fontSize:11,opacity:.85}}>{collapsed?"▲ Show":"▼ Hide"}</span>
+      </div>
+      {!collapsed&&<div style={{maxHeight:isMobile?"40vh":320,overflowY:"auto"}}>
+        {running.map(function(r){var col=r.pct>=100?"#ef4444":r.pct>=75?"#f59e0b":"#10b981";return<div key={r.session.id} style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",background:r.pct>=100?"#fef2f2":"#fff"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+            <div style={{flex:1,minWidth:0,fontWeight:700,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.ticket.title}</div>
+            <div style={{fontFamily:"'Courier New',monospace",fontWeight:800,fontSize:13,color:col}}>{fmtElapsed(r.curSecs)}</div>
+          </div>
+          <div style={{height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:4}}><div style={{height:"100%",width:Math.min(100,r.pct)+"%",background:col}}/></div>
+          <div style={{fontSize:10,color:r.pct>=100?"#b91c1c":"#64748b",marginBottom:6,lineHeight:1.5}}>{r.pct>=100?"⚠️ Over the average time. Stop the timer if you're no longer working on it. ":""}Total {fmtDuration(r.totalMins)} · Avg {fmtDuration(r.expected.mins)} ({r.pct}%)</div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={function(){onOpenTicket(r.ticket.id);}} style={{flex:1,background:"#eef2ff",color:"#4f46e5",border:"none",borderRadius:8,padding:"8px 6px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Open</button>
+            <button disabled={busyId===r.ticket.id} onClick={function(){stopOne(r.ticket.id,r.ticket.title);}} style={{flex:1,background:"#ef4444",color:"#fff",border:"none",borderRadius:8,padding:"8px 6px",fontSize:12,fontWeight:700,cursor:"pointer",opacity:busyId===r.ticket.id?0.6:1}}>{busyId===r.ticket.id?"Saving…":"⏹ Stop"}</button>
+          </div>
+        </div>;})}
+        {showMissing&&<div style={{padding:"10px 14px",background:"#fffbeb"}}>
+          <div style={{fontSize:11,color:"#92400e",fontWeight:700,marginBottom:6,lineHeight:1.5}}>⚠️ These tickets are In Progress and assigned to you, but your timer is NOT running. Start the timer, or change the status if you're not working on it.</div>
+          {missing.map(function(t){return<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+            <div onClick={function(){onOpenTicket(t.id);}} style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",textDecoration:"underline"}}>{t.title}</div>
+            <button disabled={busyId===t.id} onClick={function(){startOne(t.id,t.title);}} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:8,padding:"7px 10px",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,opacity:busyId===t.id?0.6:1}}>{busyId===t.id?"…":"▶ Start"}</button>
+          </div>;})}
+          <button onClick={function(){setSnoozeUntil(Date.now()+TIMER_SNOOZE_MINS*60000);}} style={{background:"none",border:"none",color:"#b45309",fontSize:11,fontWeight:600,cursor:"pointer",padding:0}}>Remind me in {TIMER_SNOOZE_MINS} min</button>
+        </div>}
+        {notifPerm==="default"&&<div style={{padding:"8px 14px",borderTop:"1px solid #f1f5f9"}}><button onClick={askPermission} style={{background:"none",border:"none",color:"#4f46e5",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>🔔 Enable desktop alerts for timer warnings</button></div>}
+      </div>}
+    </div>
+  </div>;
+}
+
 function TicketTimer(p){
-  var ticketId=p.ticketId;var curUser=p.curUser;var users=p.users;var autoStart=p.autoStart||false;var onAutoStarted=p.onAutoStarted||function(){};var forceStopRef=p.forceStopRef;
+  var ticketId=p.ticketId;var curUser=p.curUser;var users=p.users;var autoStart=p.autoStart||false;var onAutoStarted=p.onAutoStarted||function(){};var forceStopRef=p.forceStopRef;var onSessionSaved=p.onSessionSaved||function(){};var expected=p.expected||null;
   var[sessions,setSessions]=useState([]);var[activeSession,setActiveSession]=useState(null);var[elapsed,setElapsed]=useState(0);var[note,setNote]=useState("");var[loading,setLoading]=useState(true);
   var intervalRef=useRef(null);var autoStartedRef=useRef(false);
   useEffect(function(){dbGetTimeSessions(ticketId).then(function(data){setSessions(data);var open=data.find(function(s){return s.user_id===curUser.id&&!s.ended_at;});if(open){setActiveSession({id:open.id,started_at:open.started_at});setElapsed(Math.floor((Date.now()-new Date(open.started_at))/1000));setLoading(false);}else{setLoading(false);if(autoStart&&!autoStartedRef.current){autoStartedRef.current=true;var now=new Date().toISOString();var session={id:uid(),ticket_id:ticketId,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:null,created_at:now};dbSaveTimeSession(session).then(function(){setSessions(function(prev){return prev.concat([session]);});setActiveSession({id:session.id,started_at:now});setElapsed(0);onAutoStarted();});}}});},[ticketId]);
   useEffect(function(){if(!forceStopRef)return;forceStopRef.current=async function(){if(!activeSession)return 0;var now=new Date().toISOString();var mins=parseFloat(((Date.now()-new Date(activeSession.started_at))/60000).toFixed(4));var updated=sessions.find(function(s){return s.id===activeSession.id;});if(!updated)return 0;var finished=Object.assign({},updated,{ended_at:now,duration_minutes:mins});await dbSaveTimeSession(finished);setSessions(function(prev){return prev.map(function(s){return s.id===finished.id?finished:s;});});setActiveSession(null);setElapsed(0);return mins;};},[activeSession,sessions]);
   useEffect(function(){if(activeSession){intervalRef.current=setInterval(function(){setElapsed(function(e){return e+1;});},1000);}else{clearInterval(intervalRef.current);}return function(){clearInterval(intervalRef.current);};},[activeSession]);
-  async function startTimer(){var now=new Date().toISOString();var session={id:uid(),ticket_id:ticketId,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:note.trim()||null,created_at:now};await dbSaveTimeSession(session);setSessions(function(prev){return prev.concat([session]);});setActiveSession({id:session.id,started_at:now});setElapsed(0);}
-  async function stopTimer(){if(!activeSession)return;var now=new Date().toISOString();var mins=parseFloat(((Date.now()-new Date(activeSession.started_at))/60000).toFixed(4));var updated=sessions.find(function(s){return s.id===activeSession.id;});if(!updated)return;var finished=Object.assign({},updated,{ended_at:now,duration_minutes:mins,note:note.trim()||updated.note||null});await dbSaveTimeSession(finished);setSessions(function(prev){return prev.map(function(s){return s.id===finished.id?finished:s;});});setActiveSession(null);setElapsed(0);setNote("");}
+  async function startTimer(){var session=await startTicketTimerSession(ticketId,curUser.id,note.trim()||null);setSessions(function(prev){return prev.find(function(s){return s.id===session.id;})?prev:prev.concat([session]);});setActiveSession({id:session.id,started_at:session.started_at});setElapsed(Math.max(0,Math.floor((Date.now()-new Date(session.started_at))/1000)));onSessionSaved();}
+  async function stopTimer(){if(!activeSession)return;var now=new Date().toISOString();var mins=parseFloat(((Date.now()-new Date(activeSession.started_at))/60000).toFixed(4));var updated=sessions.find(function(s){return s.id===activeSession.id;});if(!updated)return;var finished=Object.assign({},updated,{ended_at:now,duration_minutes:mins,note:note.trim()||updated.note||null});await dbSaveTimeSession(finished);setSessions(function(prev){return prev.map(function(s){return s.id===finished.id?finished:s;});});setActiveSession(null);setElapsed(0);setNote("");onSessionSaved();}
   function fu(id){return users.find(function(u){return u.id===id;});}
   var completedSessions=sessions.filter(function(s){return s.ended_at;});var totalMins=completedSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
   if(loading)return<div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>Loading timer…</div>;
@@ -165,6 +302,12 @@ function TicketTimer(p){
       {!activeSession&&<div style={{marginBottom:12}}><input value={note} onChange={function(e){setNote(e.target.value);}} placeholder="What are you working on? (optional)" style={{width:"100%",padding:"10px 14px",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,fontSize:13,outline:"none",background:"rgba(255,255,255,.1)",color:"#fff",boxSizing:"border-box"}}/></div>}
       {activeSession?<button onClick={stopTimer} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>⏹ Stop &amp; Save</button>:<button onClick={startTimer} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:12,padding:"14px 40px",fontSize:16,fontWeight:800,cursor:"pointer",letterSpacing:0.5}}>▶ Start Timer</button>}
     </div>
+    {expected&&(function(){var liveTotal=totalMins+elapsed/60;var pct=expected.mins>0?Math.round(liveTotal/expected.mins*100):0;var col=pct>=100?"#ef4444":pct>=75?"#f59e0b":"#10b981";return<div style={{background:pct>=100?"#fef2f2":"#f8fafc",border:"1px solid "+(pct>=100?"#fecaca":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700,color:"#1e293b",marginBottom:6}}><span>📊 Time vs. average</span><span style={{color:col}}>{pct}%</span></div>
+      <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:6}}><div style={{height:"100%",width:Math.min(100,pct)+"%",background:col}}/></div>
+      <div style={{fontSize:11,color:"#64748b",lineHeight:1.5}}>Total so far <strong>{fmtDuration(liveTotal)}</strong> · Expected <strong>{fmtDuration(expected.mins)}</strong> ({expected.basis})</div>
+      {pct>=100&&<div style={{fontSize:11,color:"#b91c1c",fontWeight:700,marginTop:4}}>⚠️ Over the average time — your manager has been notified. Stop the timer if you're no longer working on it.</div>}
+    </div>;})()}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
       <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:22,fontWeight:800,color:"#059669"}}>{fmtDuration(totalMins)}</div><div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginTop:2}}>Total IT Hours</div></div>
       <div style={{background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:22,fontWeight:800,color:"#6366f1"}}>{completedSessions.length}</div><div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",marginTop:2}}>Sessions Logged</div></div>
@@ -880,6 +1023,7 @@ export default function App(){
   var pendingUsers=useMemo(function(){return isAdmin?users.filter(function(u){return !u.active;}):[]},[users,isAdmin]);
   var visible=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
   var allNonDeleted=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
+  var timerAvgData=useMemo(function(){return computeTimerAverages(tickets,allTimeSessions);},[tickets,allTimeSessions]);
   if(!appReady)return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#062d6b)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #0ea5e9",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"#7dd3fc",fontSize:14,fontWeight:600}}>Loading Hoptix…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
   if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
   var NAV=[{id:"dashboard",icon:"🏠",label:"Dashboard"},{id:"tickets",icon:"🎫",label:"Tickets"},{id:"new_ticket",icon:"➕",label:"New Ticket"},{id:"time_tracking",icon:"⏱️",label:"Time Tracking"},{id:"team_chat",icon:"💬",label:"Team Chat",chatBadge:true},{id:"user_guide",icon:"📖",label:"User Guide"},{id:"knowledge_base",icon:"📚",label:"Knowledge Base"},{id:"reports",icon:"📊",label:"Reports",admin:true},{id:"users",icon:"👥",label:"Users",admin:true},{id:"companies",icon:"🏢",label:"Companies",superAdmin:true},{id:"clients",icon:"🤝",label:"Clients",superAdmin:true},{id:"ticket_types",icon:"🏷️",label:"Ticket Types",superAdmin:true},{id:"activity_log",icon:"📋",label:"Activity Log",superAdmin:true},{id:"integrations",icon:"🔌",label:"Integrations",superAdmin:true}].filter(function(n){if(n.superAdmin)return curUser.role==="admin";if(n.admin)return isAdmin;return true;});
@@ -888,7 +1032,7 @@ export default function App(){
   var sidebar=<div style={{width:220,background:"linear-gradient(180deg,#020e1f,#041833,#062d6b)",display:"flex",flexDirection:"column",flexShrink:0,height:"100%"}}>
     <div style={{padding:"20px 16px 14px",borderBottom:"1px solid rgba(56,189,248,.15)"}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#fff 60%,#b3d9ff)",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:18,height:18,borderRadius:"50%",background:"linear-gradient(135deg,#0369a1,#0ea5e9)",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:7,height:7,borderRadius:"50%",background:"#020e1f"}}/></div></div><div><div style={{color:"#fff",fontWeight:800,fontSize:14}}>hoptix</div><div style={{color:"#38bdf8",fontSize:9}}>A.eye technology</div></div></div></div>
     <div style={{padding:"8px",flex:1,overflowY:"auto"}}>{NAV.map(function(n){return<div key={n.id} className="nv" onClick={function(){setPage(n.id);}} style={{padding:"10px 12px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",gap:8,marginBottom:2,background:page===n.id?"rgba(14,165,233,.25)":"transparent",color:page===n.id?"#fff":"#93c5fd",fontWeight:page===n.id?700:500,fontSize:12,borderLeft:page===n.id?"3px solid #0ea5e9":"3px solid transparent"}}><span style={{fontSize:15}}>{n.icon}</span>{n.label}{n.id==="tickets"&&breaches.length>0&&<span style={{marginLeft:"auto",background:"#ef4444",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10}}>{breaches.length}</span>}{n.id==="team_chat"&&unreadChatCount>0&&<span style={{marginLeft:"auto",background:"#6366f1",color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10}}>{unreadChatCount>99?"99+":unreadChatCount}</span>}</div>;})}</div>
-    <div style={{padding:"12px 10px",borderTop:"1px solid rgba(56,189,248,.15)"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><Avatar name={curUser.name} id={curUser.id} size={30}/><div style={{flex:1,overflow:"hidden"}}><div style={{color:"#fff",fontSize:11,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{curUser.name}</div><div style={{color:"#7dd3fc",fontSize:10}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div></div><button onClick={function(){try{if(localStorage.getItem("hd_rememberMe")!=="true")localStorage.removeItem("hd_savedCreds");}catch(e){}setCurUser(null);setPageR("dashboard");saveState("hd_page","dashboard");setSelTicket(null);}} style={{width:"100%",padding:"7px",background:"rgba(239,68,68,.2)",color:"#fca5a5",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>🚪 Sign Out</button></div>
+    <div style={{padding:"12px 10px",borderTop:"1px solid rgba(56,189,248,.15)"}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><Avatar name={curUser.name} id={curUser.id} size={30}/><div style={{flex:1,overflow:"hidden"}}><div style={{color:"#fff",fontSize:11,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{curUser.name}</div><div style={{color:"#7dd3fc",fontSize:10}}>{ROLE_META[curUser.role]?.label||curUser.role}</div></div></div><button onClick={async function(){var myOpenT=curUser?getMyOpenSessions(allTimeSessions,curUser.id):[];if(myOpenT.length>0){if(!window.confirm("You still have "+myOpenT.length+" timer(s) running.\n\nOK = stop all timers and log out\nCancel = stay logged in"))return;for(var ti=0;ti<myOpenT.length;ti++){await stopTicketTimerSessions(myOpenT[ti].ticket_id,curUser.id);}}try{if(localStorage.getItem("hd_rememberMe")!=="true")localStorage.removeItem("hd_savedCreds");}catch(e){}setCurUser(null);setPageR("dashboard");saveState("hd_page","dashboard");setSelTicket(null);}} style={{width:"100%",padding:"7px",background:"rgba(239,68,68,.2)",color:"#fca5a5",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>🚪 Sign Out</button></div>
   </div>;
   return<ErrorBoundary>
     <div style={{display:"flex",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:"#f8fafc",fontSize:13,overflow:"hidden"}}>
@@ -931,7 +1075,8 @@ export default function App(){
           <button onClick={function(){setSidebarOpen(true);}} style={{flex:1,background:"none",border:"none",cursor:"pointer",padding:"8px 4px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:20}}>☰</span><span style={{fontSize:9,fontWeight:500,color:"#94a3b8"}}>More</span></button>
         </div>}
       </div>
-      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}} refreshTimeSessions={refreshTimeSessions} allTimeSessions={allTimeSessions}/>}
+      {selTicket&&<TicketDetail ticket={tickets.find(function(t){return t.id===selTicket;})} tickets={tickets} setTickets={setTickets} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} curUser={curUser} isAdmin={isAdmin} isTech={isTech} addLog={addLog} showToast={showToast} statusSla={statusSla} schedules={schedules} emailTemplates={emailTemplates} onClose={function(){setSelTicket(null);}} refreshTimeSessions={refreshTimeSessions} allTimeSessions={allTimeSessions} avgData={timerAvgData}/>}
+      {isTech&&<TimerWatchdog curUser={curUser} tickets={allNonDeleted} users={users} ticketTypes={ticketTypes} allTimeSessions={allTimeSessions} avgData={timerAvgData} isMobile={isMobile} onOpenTicket={setSelTicket} refreshTimeSessions={refreshTimeSessions} showToast={showToast} addLog={addLog}/>}
       {showProfile&&<ProfileModal curUser={curUser} setUsers={setUsers} setCurUser={setCurUser} showToast={showToast} addLog={addLog} schedules={schedules} setSchedules={setSchedulesR} dbSaveSchedule={dbSaveSchedule} onClose={function(){setShowProfile(false);}}/>}
     </div>
   </ErrorBoundary>;
@@ -1071,6 +1216,24 @@ function TicketDetail(p){
   var[showTimerBanner,setShowTimerBanner]=useState("");
   var forceStopRef=useRef(null);
   var shouldAutoStart=false;
+  var avgData=p.avgData||null;
+  var[gate,setGate]=useState(null);var[gateBusy,setGateBusy]=useState(false);
+  var[nowTick,setNowTick]=useState(Date.now());
+  var openGateShownRef=useRef(false);
+  var myOpenSession=ticket?allTimeSessions.find(function(s){return s.ticket_id===ticket.id&&s.user_id===curUser.id&&!s.ended_at;})||null:null;
+  var myOpenSessionId=myOpenSession?myOpenSession.id:null;
+  useEffect(function(){if(!myOpenSessionId)return;var iv=setInterval(function(){setNowTick(Date.now());},1000);return function(){clearInterval(iv);};},[myOpenSessionId]);
+  useEffect(function(){
+    if(openGateShownRef.current||!ticket||!isTech)return;
+    if(ticket.assignedTo!==curUser.id||ticket.status!=="In Progress")return;
+    if(myOpenSession)return;
+    openGateShownRef.current=true;
+    setGate({icon:"⏱",title:"Your timer is not running",message:"This ticket is In Progress and assigned to you, but your timer is stopped.\n\nStart the timer now if you're working on it. If you're not working on it, change the status to Pending.",buttons:[
+      {label:"▶ Start Timer Now",variant:"success",onClick:async function(){setGateBusy(true);await startMyTimer();setGateBusy(false);setGate(null);showToast("⏱ Timer started");}},
+      {label:"I'm not working on it — change status",variant:"ghost",onClick:function(){setGate(null);setStatus("Pending");setTab("status");}},
+      {label:"Dismiss",variant:"link",onClick:function(){setGate(null);}}
+    ]});
+  },[]);
   function handleAutoStarted(){setShowTimerBanner(true);setTimeout(function(){setShowTimerBanner(false);},8000);}
   var[msgTo,setMsgTo]=useState("");var[msgCC,setMsgCC]=useState("");
   var[msgSubj,setMsgSubj]=useState("Re: [#"+ticket.id+"] "+ticket.title);
@@ -1089,16 +1252,56 @@ function TicketDetail(p){
   var ticketSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});
   var hasLoggedTime=ticketSessions.length>0;
   var totalLoggedMins=ticketSessions.reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);
+  var expectedInfo=getExpectedTicketMins(ticket,avgData,ticketTypes);
+  var myRunSecs=myOpenSession?Math.max(0,Math.floor((nowTick-new Date(myOpenSession.started_at).getTime())/1000)):0;
+  var liveTicketMins=ticketLoggedMins(ticket.id,allTimeSessions)+myRunSecs/60;
+  var livePct=expectedInfo.mins>0?Math.round(liveTicketMins/expectedInfo.mins*100):0;
+  async function startMyTimer(){await startTicketTimerSession(ticket.id,curUser.id,null);await refreshTimeSessions();addLog("TIMER_START",ticket.id,"Timer started on: "+ticket.title);}
+  async function stopMyTimer(){var m=await stopTicketTimerSessions(ticket.id,curUser.id);await refreshTimeSessions();addLog("TIMER_STOP",ticket.id,"Timer stopped ("+fmtDuration(m)+") on: "+ticket.title);return m;}
+  function isMyWork(){return isTech&&ticket.status!=="Closed"&&ticket.assignedTo===curUser.id;}
+  function requireTimer(actionLabel,proceed){
+    if(!isMyWork()||myOpenSession){proceed();return;}
+    setGate({icon:"⏱",title:"Start your timer first",message:"You're about to "+actionLabel+", but your timer for this ticket is not running.\n\nAll work on tickets must be timed.",buttons:[
+      {label:"▶ Start Timer & Continue",variant:"success",onClick:async function(){setGateBusy(true);await startMyTimer();setGateBusy(false);setGate(null);showToast("⏱ Timer started");proceed();}},
+      {label:"Continue without timer",variant:"ghost",onClick:function(){addLog("TIMER_SKIPPED",ticket.id,curUser.name+" chose to "+actionLabel+" without a running timer");notifyManagersInApp(users,ticket,curUser.name+" chose to "+actionLabel+" without starting the timer.","timer",curUser.id);setGate(null);proceed();}},
+      {label:"Cancel",variant:"link",onClick:function(){setGate(null);}}
+    ]});
+  }
+  function onSaveClick(){
+    var changed=status!==ticket.status;
+    if(status==="Closed"&&changed&&isTech&&!hasLoggedTime&&!myOpenSession){
+      setGate({icon:"⚠️",tone:"danger",title:"No time logged on this ticket",message:"You're closing this ticket but no work time was recorded.\n\nPlease log your time first so reports stay accurate. If you close anyway, the administrator will be notified.",buttons:[
+        {label:"⏱ Go to Timer",variant:"success",onClick:function(){setGate(null);setTab("timer");}},
+        {label:"Close anyway",variant:"danger",onClick:function(){setGate(null);saveStatus();}},
+        {label:"Cancel",variant:"link",onClick:function(){setGate(null);}}
+      ]});
+      return;
+    }
+    if(!changed){requireTimer("update this ticket",saveStatus);return;}
+    saveStatus();
+  }
+  function handleClose(){
+    if(isTech&&myOpenSession&&ticket.status!=="Closed"){
+      setGate({icon:"⏱",title:"Your timer is still running",message:"Are you still working on this ticket?\n\nIf you're stopping (break, end of shift, waiting on someone), stop the timer so your time is accurate.",buttons:[
+        {label:"⏹ Stop Timer & Close",variant:"danger",onClick:async function(){setGateBusy(true);var m=await stopMyTimer();setGateBusy(false);setGate(null);showToast("⏹ Timer stopped — "+fmtDuration(m)+" saved");onClose();}},
+        {label:"I'm still working — keep it running",variant:"success",onClick:function(){setGate(null);onClose();}},
+        {label:"Cancel",variant:"link",onClick:function(){setGate(null);}}
+      ]});
+      return;
+    }
+    onClose();
+  }
   async function saveStatus(){
     var statusChanged=status!==ticket.status;
     var now=new Date().toISOString();
     if(status==="Closed"&&!(ticket._resolutionNote&&ticket._resolutionNote.trim())){showToast("A Resolution Note is required before closing this ticket.","error");return;}
     var wasInProgress=ticket.status==="In Progress";
     var movingAwayFromInProgress=statusChanged&&wasInProgress&&status!=="In Progress";
-    if(movingAwayFromInProgress&&forceStopRef.current){await forceStopRef.current();refreshTimeSessions();setShowTimerBanner("stopped");setTimeout(function(){setShowTimerBanner("");},8000);}
-    if(status==="Closed"&&!movingAwayFromInProgress&&forceStopRef.current){await forceStopRef.current();refreshTimeSessions();}
+    var stoppedMins=0;
+    if(status==="Closed"&&statusChanged){stoppedMins=await stopTicketTimerSessions(ticket.id,null);if(stoppedMins>0)addLog("TIMER_STOP",ticket.id,"Timer auto-stopped ("+fmtDuration(stoppedMins)+") — ticket closed");refreshTimeSessions();}
+    else if(movingAwayFromInProgress){stoppedMins=await stopTicketTimerSessions(ticket.id,curUser.id);if(stoppedMins>0)addLog("TIMER_STOP",ticket.id,"Timer auto-stopped ("+fmtDuration(stoppedMins)+") — status changed to "+status);refreshTimeSessions();}
     var movingToInProgress=statusChanged&&status==="In Progress";
-    if(movingToInProgress){var newSession={id:uid(),ticket_id:ticket.id,user_id:curUser.id,started_at:now,ended_at:null,duration_minutes:null,note:"Auto-started: status changed to In Progress",created_at:now};await dbSaveTimeSession(newSession);refreshTimeSessions();setShowTimerBanner("started");setTimeout(function(){setShowTimerBanner("");},8000);}
+    if(movingToInProgress){await startTicketTimerSession(ticket.id,curUser.id,"Auto-started: status changed to In Progress");addLog("TIMER_START",ticket.id,"Timer auto-started — status changed to In Progress");refreshTimeSessions();}
     var prevLog=ticket.statusTimeLog||[];
     var newLog=prevLog.map(function(entry){if(entry.exitedAt===null&&statusChanged){var durMins=parseFloat(((new Date(now)-new Date(entry.enteredAt))/60000).toFixed(2));return Object.assign({},entry,{exitedAt:now,durationMins:durMins});}return entry;});
     if(statusChanged){newLog=newLog.concat([{status:status,enteredAt:now,exitedAt:null,durationMins:null}]);}
@@ -1121,7 +1324,7 @@ function TicketDetail(p){
       notifyUsers(emails,subjStatus,bodyStatus);
       notifyAdmin("🔄 Ticket Status Updated — "+ticket.title,bodyStatus);
       createNotificationsForTicket(ticket,users,"Status changed to "+status+": "+ticket.title,"status",curUser.id);
-      if(status==="Closed"){var latestSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});if(latestSessions.length===0){notifyAdmin("⚠️ Ticket Closed Without Timer — "+ticket.title,"A ticket was closed without any IT work time being logged.\n\nTicket: "+ticket.title+"\nClosed By: "+curUser.name+"\nAssigned To: "+assigneeName);}}
+      if(status==="Closed"){var latestSessions=allTimeSessions.filter(function(s){return s.ticket_id===ticket.id&&s.ended_at;});if(latestSessions.length===0&&stoppedMins<=0){notifyAdmin("⚠️ Ticket Closed Without Timer — "+ticket.title,"A ticket was closed without any IT work time being logged.\n\nTicket: "+ticket.title+"\nClosed By: "+curUser.name+"\nAssigned To: "+assigneeName);}}
     }
     showToast("Ticket updated");setNote("");onClose();
   }
@@ -1148,7 +1351,21 @@ function TicketDetail(p){
   var TABS=["details","status","timer","email","chat","history"].filter(function(t){if(t==="status"||t==="timer")return isTech;return true;});
   var tabLabels={details:"📋",status:"🔄",timer:"⏱️",email:"📧",chat:"💬",history:"📜"};
   var tabFullLabels={details:"Details",status:"Status",timer:"Timer",email:"Email",chat:"Chat",history:"History"};
-  return<Modal title={ticket.title} onClose={onClose} wide>
+  return<Modal title={ticket.title} onClose={handleClose} wide>
+    {gate&&<TimerGateModal icon={gate.icon} tone={gate.tone} title={gate.title} message={gate.message} buttons={gate.buttons} busy={gateBusy}/>}
+    {isTech&&ticket.status!=="Closed"&&myOpenSession&&<div style={{background:livePct>=100?"#fef2f2":"#ecfdf5",border:"1px solid "+(livePct>=100?"#fecaca":"#a7f3d0"),borderRadius:10,padding:"10px 12px",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <span style={{fontSize:18}}>{livePct>=100?"🚨":"⏱"}</span>
+      <div style={{flex:1,minWidth:160}}>
+        <div style={{fontWeight:700,fontSize:13,color:livePct>=100?"#b91c1c":"#065f46"}}>Timer running · <span style={{fontFamily:"'Courier New',monospace"}}>{fmtElapsed(myRunSecs)}</span></div>
+        <div style={{fontSize:11,color:livePct>=100?"#b91c1c":"#047857",marginTop:2}}>{livePct>=100?"Over the average time! ":""}Total {fmtDuration(liveTicketMins)} · Avg {fmtDuration(expectedInfo.mins)} ({livePct}%)</div>
+      </div>
+      <button onClick={async function(){setGateBusy(true);var m=await stopMyTimer();setGateBusy(false);showToast("⏹ Timer stopped — "+fmtDuration(m)+" saved");}} disabled={gateBusy} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>⏹ Stop</button>
+    </div>}
+    {isTech&&ticket.status!=="Closed"&&!myOpenSession&&(ticket.assignedTo===curUser.id||ticket.status==="In Progress")&&<div style={{background:"#fffbeb",border:"2px solid #f59e0b",borderRadius:10,padding:"10px 12px",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <span style={{fontSize:18}}>⏸</span>
+      <div style={{flex:1,minWidth:160}}><div style={{fontWeight:700,fontSize:13,color:"#92400e"}}>Your timer is NOT running</div><div style={{fontSize:11,color:"#b45309",marginTop:2}}>Start it before you work on this ticket. Expected time: {fmtDuration(expectedInfo.mins)}.</div></div>
+      <button onClick={async function(){setGateBusy(true);await startMyTimer();setGateBusy(false);showToast("⏱ Timer started");}} disabled={gateBusy} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>▶ Start Timer</button>
+    </div>}
     {showTimerBanner&&<div style={{background:"linear-gradient(135deg,#064e3b,#065f46)",borderRadius:10,padding:"12px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
       <span style={{fontSize:18}}>⏱</span>
       <div style={{flex:1}}><div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Timer {showTimerBanner==="started"?"started":"stopped"} automatically</div><div style={{fontSize:11,color:"#a7f3d0",marginTop:2}}>{showTimerBanner==="started"?"Status changed to In Progress — your work time is now being tracked.":"Status changed — your work time has been saved."}</div></div>
@@ -1210,9 +1427,9 @@ function TicketDetail(p){
         <textarea value={ticket._resolutionNote||""} onChange={function(e){setTickets(function(prev){return prev.map(function(t){return t.id===ticket.id?Object.assign({},t,{_resolutionNote:e.target.value}):t;});});}} placeholder={"Describe the root cause and exact steps taken to fix this issue.\n\nExample:\nRoot Cause: DNS server misconfiguration after router firmware update.\nFix: Reset DNS to 8.8.8.8 via Network Settings → Advanced → DNS."} rows={6} style={{width:"100%",padding:"10px 12px",border:"2px solid #10b981",borderRadius:8,fontSize:13,outline:"none",background:"#f0fdf4",resize:"vertical",boxSizing:"border-box",lineHeight:1.6}}/>
         <div style={{fontSize:11,color:"#166534",marginTop:4}}>💡 Be specific — future IT staff will use this to resolve the same issue faster.</div>
       </div>}
-      <Btn onClick={saveStatus} style={{width:"100%"}}>💾 Save Changes</Btn>
+      <Btn onClick={onSaveClick} style={{width:"100%"}}>💾 Save Changes</Btn>
     </div>}
-    {tab==="timer"&&isTech&&<TicketTimer ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions} autoStart={shouldAutoStart} onAutoStarted={handleAutoStarted} forceStopRef={forceStopRef}/>}
+    {tab==="timer"&&isTech&&<TicketTimer key={ticket.id+"_"+(myOpenSessionId||"none")} ticketId={ticket.id} curUser={curUser} users={users} onSessionSaved={refreshTimeSessions} autoStart={shouldAutoStart} onAutoStarted={handleAutoStarted} forceStopRef={forceStopRef} expected={expectedInfo}/>}
     {tab==="email"&&<div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{fontWeight:700,color:"#1e293b"}}>📧 Send Email</div>
@@ -1222,7 +1439,7 @@ function TicketDetail(p){
       <FInput label="CC (optional)" value={msgCC} onChange={function(e){setMsgCC(e.target.value);}} placeholder="cc@example.com"/>
       <FInput label="Subject" value={msgSubj} onChange={function(e){setMsgSubj(e.target.value);}}/>
       <FTextarea label="Message" value={msgBody} onChange={function(e){setMsgBody(e.target.value);}} rows={4} placeholder="Type your message…"/>
-      <button onClick={sendEmail} disabled={emailSending} style={{background:emailSending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,padding:"10px 18px",fontWeight:600,fontSize:14,cursor:emailSending?"not-allowed":"pointer",width:"100%",marginBottom:16}}>{emailSending?"⏳ Sending…":"📤 Send Email"}</button>
+      <button onClick={function(){requireTimer("send an email",sendEmail);}} disabled={emailSending} style={{background:emailSending?"#a5b4fc":"#6366f1",color:"#fff",border:"none",borderRadius:8,padding:"10px 18px",fontWeight:600,fontSize:14,cursor:emailSending?"not-allowed":"pointer",width:"100%",marginBottom:16}}>{emailSending?"⏳ Sending…":"📤 Send Email"}</button>
       <div style={{fontWeight:700,color:"#1e293b",marginBottom:10}}>📬 Conversation Trail ({(liveTicket.conversations||[]).length})</div>
       {(liveTicket.conversations||[]).length===0&&<div style={{color:"#94a3b8",fontSize:13}}>No messages yet.</div>}
       {(liveTicket.conversations||[]).map(function(m){var isReply=m.isExternal||m.status==="received";return<div key={m.id} style={{background:isReply?"#f0fdf4":"#f8fafc",border:"1px solid "+(isReply?"#bbf7d0":"#e2e8f0"),borderRadius:10,padding:12,marginBottom:10}}>
