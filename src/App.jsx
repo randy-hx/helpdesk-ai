@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import React from "react";
 import ReactDOM from "react-dom";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from "recharts";
-import { supabase } from './supabase.js';
-import { dbGetUsers, dbSaveUser, dbDeleteUser, dbGetPassword, dbSetPassword, dbGetCompanies, dbSaveCompany, dbDeleteCompany, dbGetClients, dbSaveClient, dbDeleteClient, dbGetTicketTypes, dbSaveTicketType, dbDeleteTicketType, dbGetTickets, dbSaveTicket, dbGetLogs, dbAddLog, dbGetSchedules, dbSaveSchedule, dbGetEmailTemplates, dbSaveEmailTemplate, dbDeleteEmailTemplate, dbGetTimeSessions, dbSaveTimeSession, dbGetAllTimeSessions } from './db.js';
+import { supabase, isRecoveryLink } from './supabase.js';
+import { dbGetUsers, dbSaveUser, dbDeleteUser, dbGetMe, callAuthApi, dbGetTicket, dbGetTicketAttachments, uploadAttachment, dbGetCompanies, dbSaveCompany, dbDeleteCompany, dbGetClients, dbSaveClient, dbDeleteClient, dbGetTicketTypes, dbSaveTicketType, dbDeleteTicketType, dbGetTickets, dbSaveTicket, dbGetLogs, dbAddLog, dbGetSchedules, dbSaveSchedule, dbGetEmailTemplates, dbSaveEmailTemplate, dbDeleteEmailTemplate, dbGetTimeSessions, dbSaveTimeSession, dbGetAllTimeSessions } from './db.js';
 
 const PAL = ["#6366f1","#8b5cf6","#0ea5e9","#10b981","#f59e0b","#ef4444","#ec4899","#f97316"];
 const STATUS_META = { "Open":{color:"#f59e0b",bg:"#fef3c7"}, "In Progress":{color:"#6366f1",bg:"#eef2ff"}, "Pending":{color:"#0ea5e9",bg:"#e0f2fe"}, "Escalated":{color:"#ef4444",bg:"#fee2e2"}, "Closed":{color:"#94a3b8",bg:"#f1f5f9"} };
@@ -76,8 +76,9 @@ function getStatusSla(ticket,slaConfig,schedules){
 }
 function sumLoggedMinutes(sessions,ticketIds){return sessions.filter(function(s){return ticketIds?ticketIds.includes(s.ticket_id):true;}).reduce(function(sum,s){return sum+(s.duration_minutes||0);},0);}
 
+async function authHeaders(){var h={"Content-Type":"application/json"};try{var s=await supabase.auth.getSession();if(s&&s.data&&s.data.session)h["Authorization"]="Bearer "+s.data.session.access_token;}catch(e){}return h;}
 async function callSendEmail(opts){
-  try{var body={to:opts.to,subject:opts.subject||"(no subject)",text:opts.body||opts.message||""};if(opts.cc&&opts.cc.trim()){body.cc=opts.cc;}var res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});var data=await res.json();if(res.ok&&data.id)return{success:true,provider:"Gmail",id:data.id};throw new Error(data.error||("Status "+res.status));}catch(e){return{success:false,error:e.message,provider:"Gmail"};}
+  try{var body={to:opts.to,subject:opts.subject||"(no subject)",text:opts.body||opts.message||""};if(opts.cc&&opts.cc.trim()){body.cc=opts.cc;}var res=await fetch("/api/send-email",{method:"POST",headers:await authHeaders(),body:JSON.stringify(body)});var data=await res.json();if(res.ok&&data.id)return{success:true,provider:"Gmail",id:data.id};throw new Error(data.error||("Status "+res.status));}catch(e){return{success:false,error:e.message,provider:"Gmail"};}
 }
 async function notifyAdmin(subject,body){try{await callSendEmail({to:"randy@omnisecurityinc.com",subject:subject,body:body});}catch(e){console.error("notifyAdmin failed:",e);}}
 async function notifyUsers(recipients,subject,body){if(!recipients||!recipients.length)return;var deduped=recipients.filter(function(e,i,a){return e&&e.trim()&&a.indexOf(e)===i;});for(var i=0;i<deduped.length;i++){try{await callSendEmail({to:deduped[i],subject:subject,body:body});}catch(e){console.error("notifyUsers failed for "+deduped[i],e);}}}
@@ -548,7 +549,7 @@ function TcGroupChatArea(p){
 }
 
 function LoginPage(p){
-  var users=p.users;var setUsers=p.setUsers;var companies=p.companies;var onLogin=p.onLogin;
+  var onLogin=p.onLogin;
   var[view,setView]=useState("login");
   var[loginEmail,setLoginEmail]=useState("");var[loginPass,setLoginPass]=useState("");
   var[showP1,setShowP1]=useState(false);var[showP2,setShowP2]=useState(false);var[showP3,setShowP3]=useState(false);
@@ -557,12 +558,22 @@ function LoginPage(p){
   var[sigConf,setSigConf]=useState("");var[sigPhone,setSigPhone]=useState("");var[sigDept,setSigDept]=useState("");var[sigErr,setSigErr]=useState("");
   var[loading,setLoading]=useState(false);
   var[rememberMe,setRememberMe]=useState(function(){try{return localStorage.getItem("hd_rememberMe")==="true";}catch(e){return false;}});
-  useEffect(function(){try{var saved=localStorage.getItem("hd_savedCreds");if(saved){var creds=JSON.parse(saved);if(creds.email)setLoginEmail(creds.email);if(creds.pass)setLoginPass(creds.pass);setRememberMe(true);}}catch(e){};},[]);
+  useEffect(function(){try{var saved=localStorage.getItem("hd_savedCreds");if(saved){var creds=JSON.parse(saved);if(creds.email)setLoginEmail(creds.email);setRememberMe(true);localStorage.removeItem("hd_savedCreds");if(creds.email)localStorage.setItem("hd_savedEmail",creds.email);}var se=localStorage.getItem("hd_savedEmail");if(se){setLoginEmail(se);setRememberMe(true);}}catch(e){};if(p.notice)setLoginErr(p.notice);},[]);
   function pwStr(pw){if(!pw||pw.length<8)return 1;if(pw.length>=12&&/[A-Z]/.test(pw)&&/[0-9]/.test(pw)&&/[^A-Za-z0-9]/.test(pw))return 4;if(pw.length>=10&&/[A-Z]/.test(pw)&&/[0-9]/.test(pw))return 3;return 2;}
   var strLabel=["","Too short","Weak","Good","Strong ✅"];var strColor=["","#ef4444","#f59e0b","#3b82f6","#10b981"];var str=pwStr(sigPass);
-  async function doLogin(e){if(e&&e.preventDefault)e.preventDefault();setLoginErr("");if(!loginEmail.trim()||!loginPass.trim()){setLoginErr("Please enter your email and password.");return;}setLoading(true);var user=users.find(function(u){return u.email.toLowerCase()===loginEmail.toLowerCase().trim();});if(!user){setLoginErr("No account found with that email.");setLoading(false);return;}if(!user.active){setLoginErr("Your account is pending admin approval.");setLoading(false);return;}var pw=await dbGetPassword(user.id);if(loginPass!==pw){setLoginErr("Incorrect password.");setLoading(false);return;}try{if(rememberMe){localStorage.setItem("hd_savedCreds",JSON.stringify({email:loginEmail.trim(),pass:loginPass}));localStorage.setItem("hd_rememberMe","true");}else{localStorage.removeItem("hd_savedCreds");localStorage.setItem("hd_rememberMe","false");}}catch(ex){}setLoading(false);onLogin(user);}
-  async function doForgot(e){e.preventDefault();if(!resetEmail.trim()){return;}setLoading(true);await new Promise(function(r){setTimeout(r,900);});setLoading(false);setView("sent");}
-  async function doSignup(e){e.preventDefault();setSigErr("");if(!sigName.trim()){setSigErr("Full name is required.");return;}if(!sigEmail.trim()){setSigErr("Email is required.");return;}if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sigEmail.trim())){setSigErr("Enter a valid email.");return;}if(users.find(function(u){return u.email.toLowerCase()===sigEmail.toLowerCase().trim();})){setSigErr("An account with this email already exists.");return;}if(sigPass.length<8){setSigErr("Password must be at least 8 characters.");return;}if(sigPass!==sigConf){setSigErr("Passwords do not match.");return;}setLoading(true);var nu={id:uid(),name:sigName.trim(),email:sigEmail.trim().toLowerCase(),role:"end_user",companyId:companies&&companies[0]?companies[0].id:"",phone:sigPhone.trim(),dept:sigDept.trim(),active:false,createdAt:new Date().toISOString(),lastLogin:null};await dbSaveUser(nu);await dbSetPassword(nu.id,sigPass);setUsers(function(prev){return prev.concat([nu]);});notifyAdmin("🆕 New User Signup — Pending Approval","A new user has registered on Hoptix and is awaiting your approval.\n\nName: "+sigName.trim()+"\nEmail: "+sigEmail.trim()+"\nPhone: "+(sigPhone.trim()||"—")+"\nDepartment: "+(sigDept.trim()||"—")+"\nRegistered At: "+new Date().toLocaleString("en-US",{timeZone:"Asia/Manila"})+" PHT\n\nLog in to the Hoptix admin panel → Users page to approve or reject this account.");setLoading(false);setView("pending");}
+  async function doLogin(e){if(e&&e.preventDefault)e.preventDefault();setLoginErr("");var em=loginEmail.trim().toLowerCase();if(!em||!loginPass){setLoginErr("Please enter your email and password.");return;}setLoading(true);
+    var r=await supabase.auth.signInWithPassword({email:em,password:loginPass});
+    if(r.error||!r.data||!r.data.user){setLoading(false);setLoginErr("Incorrect email or password.");return;}
+    var me=await dbGetMe(r.data.user.id);
+    if(!me){await supabase.auth.signOut();setLoading(false);setLoginErr("No Hoptix profile is linked to this account. Contact your Administrator.");return;}
+    if(!me.active){await supabase.auth.signOut();setLoading(false);setLoginErr("Your account is pending admin approval.");return;}
+    try{if(rememberMe){localStorage.setItem("hd_savedEmail",em);localStorage.setItem("hd_rememberMe","true");}else{localStorage.removeItem("hd_savedEmail");localStorage.setItem("hd_rememberMe","false");}}catch(ex){}
+    setLoginPass("");setLoading(false);onLogin(me);}
+  async function doForgot(e){if(e&&e.preventDefault)e.preventDefault();if(!resetEmail.trim()){return;}setLoading(true);await callAuthApi({action:"forgot",email:resetEmail.trim().toLowerCase()});setLoading(false);setView("sent");}
+  async function doSignup(e){if(e&&e.preventDefault)e.preventDefault();setSigErr("");if(!sigName.trim()){setSigErr("Full name is required.");return;}if(!sigEmail.trim()){setSigErr("Email is required.");return;}if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sigEmail.trim())){setSigErr("Enter a valid email.");return;}if(sigPass.length<8){setSigErr("Password must be at least 8 characters.");return;}if(sigPass!==sigConf){setSigErr("Passwords do not match.");return;}setLoading(true);
+    var r=await callAuthApi({action:"signup",name:sigName.trim(),email:sigEmail.trim().toLowerCase(),password:sigPass,phone:sigPhone.trim(),dept:sigDept.trim()});
+    setLoading(false);if(!r.ok){setSigErr(r.error||"Could not create account.");return;}
+    setSigPass("");setSigConf("");setView("pending");}
   function PBtn(bp){return<button type={bp.type||"button"} onClick={bp.onClick} disabled={bp.disabled} style={{width:"100%",padding:"14px",background:bp.disabled?"#7dd3fc":"linear-gradient(135deg,#0369a1,#0ea5e9)",color:"#fff",border:"none",borderRadius:10,fontSize:16,fontWeight:700,cursor:bp.disabled?"not-allowed":"pointer",marginTop:4}}>{bp.children}</button>;}
   function BackBtn(bp){return<button type="button" onClick={bp.onClick} style={{background:"none",border:"none",color:"#0369a1",fontSize:14,fontWeight:600,cursor:"pointer",padding:"0 0 16px 0",display:"flex",alignItems:"center",gap:4}}>← Back to Sign In</button>;}
   function ErrBox(ep){return ep.msg?<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#dc2626",fontSize:13}}>⚠️ {ep.msg}</div>:null;}
@@ -609,6 +620,23 @@ function LoginPage(p){
   </div>;
 }
 
+function SetNewPasswordPage(p){
+  var[pw1,setPw1]=useState("");var[pw2,setPw2]=useState("");var[err,setErr]=useState("");var[busy,setBusy]=useState(false);var[show,setShow]=useState(false);
+  async function submit(e){if(e&&e.preventDefault)e.preventDefault();setErr("");if(pw1.length<8){setErr("Password must be at least 8 characters.");return;}if(pw1!==pw2){setErr("Passwords do not match.");return;}setBusy(true);var r=await supabase.auth.updateUser({password:pw1});setBusy(false);if(r.error){setErr(r.error.message||"Could not update password. The link may have expired — request a new one.");return;}p.onDone();}
+  var inp={width:"100%",padding:"12px 14px",border:"1px solid #e2e8f0",borderRadius:10,fontSize:16,outline:"none",background:"#f8fafc",boxSizing:"border-box",marginBottom:12};
+  return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f 0%,#062d6b 65%,#0a3d8f 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter',system-ui,sans-serif"}}>
+    <form onSubmit={submit} style={{width:"100%",maxWidth:420,background:"#fff",borderRadius:20,padding:"28px 24px",boxShadow:"0 25px 60px rgba(0,0,0,.5)"}}>
+      <div style={{textAlign:"center",marginBottom:18}}><div style={{fontSize:40,marginBottom:6}}>🔐</div><h2 style={{fontSize:18,fontWeight:700,color:"#1e293b",margin:0}}>Choose a new password</h2></div>
+      <input type={show?"text":"password"} autoComplete="new-password" value={pw1} onChange={function(e){setPw1(e.target.value);}} placeholder="New password (min 8 characters)" style={inp}/>
+      <input type={show?"text":"password"} autoComplete="new-password" value={pw2} onChange={function(e){setPw2(e.target.value);}} placeholder="Repeat new password" style={inp}/>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#475569",marginBottom:14}}><input type="checkbox" checked={show} onChange={function(e){setShow(e.target.checked);}}/>Show passwords</label>
+      {err&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,color:"#dc2626",fontSize:13}}>⚠️ {err}</div>}
+      <button type="submit" disabled={busy} style={{width:"100%",padding:14,background:busy?"#7dd3fc":"linear-gradient(135deg,#0369a1,#0ea5e9)",color:"#fff",border:"none",borderRadius:10,fontSize:16,fontWeight:700,cursor:busy?"not-allowed":"pointer"}}>{busy?"⏳ Saving…":"Save new password"}</button>
+      <button type="button" onClick={p.onCancel} style={{width:"100%",marginTop:10,padding:10,background:"none",border:"none",color:"#0369a1",fontSize:14,fontWeight:600,cursor:"pointer"}}>← Back to Sign In</button>
+    </form>
+  </div>;
+}
+
 function ProfileModal(p){
   var curUser=p.curUser;var setUsers=p.setUsers;var setCurUser=p.setCurUser;var showToast=p.showToast;var addLog=p.addLog;var onClose=p.onClose;
   var schedules=p.schedules||{};var setSchedules=p.setSchedules||function(){};var dbSaveSchedule=p.dbSaveSchedule||function(){};
@@ -619,8 +647,8 @@ function ProfileModal(p){
   var[pwErr,setPwErr]=useState("");var[pwOk,setPwOk]=useState("");var[saving,setSaving]=useState(false);
   var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
   function handleScheduleChange(userId,sch){setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});dbSaveSchedule(userId,sch);showToast("✅ Schedule saved!");}
-  async function saveProfile(){if(!name.trim()){showToast("Name cannot be empty","error");return;}setSaving(true);var updated=Object.assign({},curUser,{name:name.trim(),phone:phone.trim(),dept:dept.trim()});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?updated:u;});});setCurUser(updated);addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile");showToast("✅ Profile updated!");setSaving(false);onClose();}
-  async function changePw(){setPwErr("");setPwOk("");if(!curPw){setPwErr("Enter your current password.");return;}var existingPw=await dbGetPassword(curUser.id);if(curPw!==existingPw){setPwErr("Current password is incorrect.");return;}if(newPw.length<8){setPwErr("Min 8 characters.");return;}if(newPw!==confPw){setPwErr("Passwords do not match.");return;}if(newPw===curPw){setPwErr("Must differ from current.");return;}setSaving(true);await dbSetPassword(curUser.id,newPw);addLog("PASSWORD_CHANGED",curUser.id,curUser.name+" changed password");setSaving(false);setCurPw("");setNewPw("");setConfPw("");setPwOk("✅ Password changed!");showToast("Password updated!");onClose();}
+  async function saveProfile(){if(!name.trim()){showToast("Name cannot be empty","error");return;}setSaving(true);var updated=Object.assign({},curUser,{name:name.trim(),phone:phone.trim(),dept:dept.trim()});var saveErr=await dbSaveUser(updated);if(saveErr){setSaving(false);showToast("Could not save: "+saveErr,"error");return;}setUsers(function(prev){return prev.map(function(u){return u.id===curUser.id?updated:u;});});setCurUser(updated);addLog("PROFILE_UPDATED",curUser.id,curUser.name+" updated profile");showToast("✅ Profile updated!");setSaving(false);onClose();}
+  async function changePw(){setPwErr("");setPwOk("");if(!curPw){setPwErr("Enter your current password.");return;}if(newPw.length<8){setPwErr("Min 8 characters.");return;}if(newPw!==confPw){setPwErr("Passwords do not match.");return;}if(newPw===curPw){setPwErr("Must differ from current.");return;}setSaving(true);var chk=await supabase.auth.signInWithPassword({email:curUser.email,password:curPw});if(chk.error){setSaving(false);setPwErr("Current password is incorrect.");return;}var up=await supabase.auth.updateUser({password:newPw});if(up.error){setSaving(false);setPwErr(up.error.message||"Could not change password.");return;}addLog("PASSWORD_CHANGED",curUser.id,curUser.name+" changed password");setSaving(false);setCurPw("");setNewPw("");setConfPw("");setPwOk("✅ Password changed!");showToast("Password updated!");onClose();}
   var tabs=["profile","password"];if(isTechUser)tabs.push("schedule");
   var tabIcons={profile:"👤 Profile",password:"🔑 Password",schedule:"🗓 Schedule"};
   return<Modal title="My Profile" onClose={onClose} wide={isTechUser&&tab==="schedule"}>
@@ -885,7 +913,8 @@ export default function App(){
   var[statusSla,setStatusSlaR]=useState(DEFAULT_STATUS_SLA);var[schedules,setSchedulesR]=useState({});
   var[logs,setLogsR]=useState([]);var[emailTemplates,setEmailTemplates]=useState([]);
   var[allTimeSessions,setAllTimeSessions]=useState([]);
-  var[curUser,setCurUserR]=useState(function(){return loadState("hd_curUser",null);});
+  var[curUser,setCurUserR]=useState(null);
+  var[authChecked,setAuthChecked]=useState(false);var[recoveryMode,setRecoveryMode]=useState(isRecoveryLink);var[loginNotice,setLoginNotice]=useState("");
   var[page,setPageR]=useState(function(){try{var raw=localStorage.getItem("hd_page");var s=raw?raw.replace(/^"|"$/g,""):null;var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];return(s&&safe.includes(s))?s:"dashboard";}catch(e){return"dashboard";}});
   var[selTicket,setSelTicket]=useState(null);var[toast,setToast]=useState(null);
   var[breaches,setBreaches]=useState([]);var[inboxAlerts,setInboxAlerts]=useState([]);
@@ -916,7 +945,26 @@ export default function App(){
   var prevBreachIdsRef=useRef([]);
   var isMobile=useIsMobile();
 
+  // ── Secure sign-in: identity comes from the Supabase Auth session (signed by the server), never from localStorage ──
+  var resolveSession=useCallback(async function(session){
+    if(!session||!session.user){setCurUserR(null);setAuthChecked(true);return;}
+    var me=await dbGetMe(session.user.id);
+    if(!me||!me.active){await supabase.auth.signOut();setCurUserR(null);setLoginNotice(me?"Your account is pending admin approval.":"No Hoptix profile is linked to this account. Contact your Administrator.");setAuthChecked(true);return;}
+    setCurUserR(me);setAuthChecked(true);
+  },[]);
   useEffect(function(){
+    try{localStorage.removeItem("hd_curUser");localStorage.removeItem("hd_savedCreds");}catch(e){}
+    var alive=true;
+    supabase.auth.getSession().then(function(r){if(alive)resolveSession(r&&r.data?r.data.session:null);}).catch(function(){if(alive)setAuthChecked(true);});
+    var sub=supabase.auth.onAuthStateChange(function(event){
+      if(event==="PASSWORD_RECOVERY"){setRecoveryMode(true);}
+      if(event==="SIGNED_OUT"){setCurUserR(null);}
+    });
+    return function(){alive=false;try{sub.data.subscription.unsubscribe();}catch(e){}};
+  },[resolveSession]);
+
+  useEffect(function(){
+  if(!curUser)return;
   async function loadAll(){
     var cachedTicketCount=0;
     // Step 1: restore cache instantly
@@ -1000,7 +1048,7 @@ export default function App(){
     }
   }
   loadAll();
-},[]);
+},[curUser?.id]);
 
   useEffect(function(){if(!appReady&&!curUser)return;var saved=localStorage.getItem("hd_page");var safe=["dashboard","tickets","new_ticket","time_tracking","reports","users","companies","clients","ticket_types","activity_log","integrations","team_chat","user_guide","knowledge_base"];if(saved&&safe.includes(saved)&&saved!==page){setPageR(saved);}},[appReady,curUser?.id]);
   useEffect(function(){if(!curUser)return;dbGetNotifications(curUser.id).then(function(data){setNotifications(data);});var sub=supabase.channel("notifs-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"app_notifications",filter:"user_id=eq."+curUser.id},function(payload){setNotifications(function(prev){if(prev.find(function(n){return n.id===payload.new.id;}))return prev;return[payload.new].concat(prev);});}).subscribe();return function(){supabase.removeChannel(sub);};},[curUser?.id]);
@@ -1008,15 +1056,15 @@ export default function App(){
   useEffect(function(){var parts=[];if(breaches.length>0)parts.push("\uD83D\uDEA8"+breaches.length);if(unreadCount>0)parts.push("\uD83D\uDD14"+unreadCount);if(unreadChatCount>0)parts.push("\uD83D\uDCAC"+unreadChatCount);document.title=parts.length>0?"("+parts.join(" | ")+") Hoptix":"Hoptix";},[unreadCount,breaches,unreadChatCount]);
   useEffect(function(){var last=Date.now();function onVis(){if(document.visibilityState==="visible"&&Date.now()-last>30000){last=Date.now();refreshTickets();}}document.addEventListener("visibilitychange",onVis);return function(){document.removeEventListener("visibilitychange",onVis);};},[refreshTickets]);
   var refreshTimeSessions=useCallback(async function(){var ts=await dbGetAllTimeSessions();setAllTimeSessions(ts);},[]);
-  useEffect(function(){var sub=supabase.channel('tickets-changes').on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(){dbGetTickets().then(function(t){setTicketsR(t);setTicketsLoaded(true);}).catch(function(e){console.warn("realtime ticket refetch failed",e);});}).on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){dbGetUsers().then(function(u){setUsers(u);});}).on('postgres_changes',{event:'*',schema:'public',table:'time_sessions'},function(){dbGetAllTimeSessions().then(function(ts){setAllTimeSessions(ts);});}).subscribe();return function(){supabase.removeChannel(sub);};},[]);
+  useEffect(function(){if(!curUser)return;var sub=supabase.channel('tickets-changes').on('postgres_changes',{event:'*',schema:'public',table:'tickets'},function(payload){var rid=(payload.new&&payload.new.id)||(payload.old&&payload.old.id);if(!rid)return;if(payload.eventType==="DELETE"){setTicketsR(function(prev){return prev.filter(function(x){return x.id!==rid;});});return;}dbGetTicket(rid).then(function(nt){if(!nt)return;setTicketsR(function(prev){var found=false;var out=prev.map(function(x){if(x.id!==rid)return x;found=true;var keep={};Object.keys(x).forEach(function(k){if(k.charAt(0)==="_"&&k!=="_saveAttachments")keep[k]=x[k];});return Object.assign({},nt,keep);});return found?out:[nt].concat(out);});setTicketsLoaded(true);}).catch(function(e){console.warn("realtime ticket fetch failed",e);});}).on('postgres_changes',{event:'*',schema:'public',table:'users'},function(){dbGetUsers().then(function(u){setUsers(u);});}).on('postgres_changes',{event:'*',schema:'public',table:'time_sessions'},function(payload){var row=payload.new&&payload.new.id?payload.new:null;var oid=payload.old&&payload.old.id;setAllTimeSessions(function(prev){if(payload.eventType==="DELETE")return prev.filter(function(x){return x.id!==oid;});if(!row)return prev;var found=false;var out=prev.map(function(x){if(x.id===row.id){found=true;return row;}return x;});return found?out:[row].concat(out);});}).subscribe();return function(){supabase.removeChannel(sub);};},[curUser?.id]);
   useEffect(function(){if(!curUser)return;var dmSub=supabase.channel("global-dm-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"direct_chats"},function(payload){var m=payload.new;if(m.to_id===curUser.id){setPageR(function(curPage){if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});return curPage;});}}).subscribe();var groupSub=supabase.channel("global-group-"+curUser.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"team_chats"},function(payload){var m=payload.new;if(m.user_id===curUser.id)return;setPageR(function(curPage){if(curPage!=="team_chat")setUnreadChatCount(function(n){return n+1;});return curPage;});}).subscribe();return function(){supabase.removeChannel(dmSub);supabase.removeChannel(groupSub);};},[curUser?.id]);
-  async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||JSON.stringify(old)!==JSON.stringify(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
-  function setCurUser(u){if(u)saveState("hd_curUser",u);else clearAuth();setCurUserR(u);}
+  async function setTickets(updater){var prev=tickets;var next=typeof updater==="function"?updater(prev):updater;setTicketsR(next);function persisted(o){var c={};Object.keys(o).forEach(function(k){if(k.charAt(0)!=="_"&&k!=="attachments")c[k]=o[k];});return JSON.stringify(c);}var changed=next.filter(function(t){var old=prev.find(function(p){return p.id===t.id;});return !old||persisted(old)!==persisted(t);});for(var i=0;i<changed.length;i++){await dbSaveTicket(changed[i]);}}
+  function setCurUser(u){if(!u){supabase.auth.signOut();clearAuth();try{localStorage.removeItem("hd_appCache");}catch(e){}setAppReady(false);setTicketsLoaded(false);}setCurUserR(u);}
   function setPage(v){localStorage.setItem("hd_page",v);setPageR(v);setSidebarOpen(false);if(v==="team_chat")setUnreadChatCount(0);}
   var addLog=useCallback(function(action,target,detail,uId){var entry={id:uid(),action,userId:uId||curUser?.id,target,detail,timestamp:new Date().toISOString()};setLogsR(function(p){return[entry].concat(p).slice(0,500);});dbAddLog(entry);},[curUser]);
   var showToast=useCallback(function(msg,type){setToast({msg,type:type||"ok"});setTimeout(function(){setToast(null);},3500);},[]);
   useEffect(function(){function check(){var newBreaches=tickets.filter(function(t){if(t.deleted||t.status==="Closed")return false;var s=getStatusSla(t,statusSla,schedules);return s&&s.breached;});setBreaches(newBreaches);if(curUser){newBreaches.forEach(function(t){if(!prevBreachIdsRef.current.includes(t.id)){var emails=getTicketEmails(t,users);var subj="🚨 SLA Breach — "+t.title;var body="A ticket has exceeded its SLA time limit.\n\nTicket: "+t.title+"\nStatus: "+t.status+"\nAssigned To: "+(users.find(function(u){return u.id===t.assignedTo;})?.name||"Unassigned")+"\n\nPlease attend to this ticket immediately.";notifyUsers(emails,subj,body);createNotificationsForTicket(t,users,"SLA breach on ticket: "+t.title,"sla",null);}});prevBreachIdsRef.current=newBreaches.map(function(t){return t.id;});}}check();var iv=setInterval(check,30000);return function(){clearInterval(iv);};},[tickets,statusSla,schedules,users,curUser]);
-  useEffect(function(){if(!curUser)return;async function fetchReplies(){try{var res=await fetch("/api/fetch-replies");if(!res.ok)return;var data=await res.json();if(!data.replies||!data.replies.length)return;var updated=tickets.slice();data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});setTickets(function(){return updated;});setInboxAlerts(function(prev){return prev.concat(data.replies);});showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");}catch(e){}}fetchReplies();var iv=setInterval(fetchReplies,60000);return function(){clearInterval(iv);};},[curUser]);
+  useEffect(function(){if(!curUser||!IT_ROLES.includes(curUser.role))return;async function fetchReplies(){try{var res=await fetch("/api/fetch-replies",{headers:await authHeaders()});if(!res.ok)return;var data=await res.json();if(!data.replies||!data.replies.length)return;var updated=tickets.slice();data.replies.forEach(function(reply){var idx=updated.findIndex(function(t){return t.id===reply.ticketId;});if(idx<0)return;var ticket=updated[idx];var dupId="reply_"+reply.uid;if((ticket.conversations||[]).some(function(c){return c.id===dupId;}))return;var msg={id:dupId,from:null,fromEmail:reply.fromEmail,fromName:reply.fromName,to:[],toEmails:[],cc:[],subject:reply.subject,body:reply.body.trim(),timestamp:reply.timestamp,isExternal:true,status:"received"};updated[idx]=Object.assign({},ticket,{conversations:(ticket.conversations||[]).concat([msg]),hasUnreadReply:true});});setTickets(function(){return updated;});setInboxAlerts(function(prev){return prev.concat(data.replies);});showToast("📬 "+data.replies.length+" new email repl"+(data.replies.length>1?"ies":"y")+" received!");}catch(e){}}fetchReplies();var iv=setInterval(fetchReplies,60000);return function(){clearInterval(iv);};},[curUser]);
   async function handleMarkNotificationsRead(){if(!curUser)return;await dbMarkNotificationsRead(curUser.id);setNotifications(function(prev){return prev.map(function(n){return Object.assign({},n,{read:true});});});}
   var isAdmin=["admin","it_manager"].includes(curUser?.role);
   var isTech=IT_ROLES.includes(curUser?.role);
@@ -1024,8 +1072,10 @@ export default function App(){
   var visible=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
   var allNonDeleted=useMemo(function(){return tickets.filter(function(t){return !t.deleted;});},[tickets]);
   var timerAvgData=useMemo(function(){return computeTimerAverages(tickets,allTimeSessions);},[tickets,allTimeSessions]);
+  if(!authChecked)return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#062d6b)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #0ea5e9",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"#7dd3fc",fontSize:14,fontWeight:600}}>Loading Hoptix…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
+  if(recoveryMode)return<SetNewPasswordPage onDone={function(){try{window.history.replaceState(null,"",window.location.pathname);}catch(e){}setRecoveryMode(false);supabase.auth.getSession().then(function(r){resolveSession(r&&r.data?r.data.session:null);});}} onCancel={function(){try{window.history.replaceState(null,"",window.location.pathname);}catch(e){}setRecoveryMode(false);supabase.auth.signOut();setCurUserR(null);}}/>;
+  if(!curUser)return<LoginPage notice={loginNotice} onLogin={function(u){setLoginNotice("");setCurUserR(u);}}/>;
   if(!appReady)return<div style={{minHeight:"100vh",background:"linear-gradient(135deg,#020e1f,#062d6b)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #0ea5e9",borderRadius:"50%",animation:"spin 1s linear infinite"}}/><div style={{color:"#7dd3fc",fontSize:14,fontWeight:600}}>Loading Hoptix…</div><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
-  if(!curUser)return<LoginPage users={users} setUsers={setUsers} companies={companies} onLogin={function(u){setCurUser(u);}}/>;
   var NAV=[{id:"dashboard",icon:"🏠",label:"Dashboard"},{id:"tickets",icon:"🎫",label:"Tickets"},{id:"new_ticket",icon:"➕",label:"New Ticket"},{id:"time_tracking",icon:"⏱️",label:"Time Tracking"},{id:"team_chat",icon:"💬",label:"Team Chat",chatBadge:true},{id:"user_guide",icon:"📖",label:"User Guide"},{id:"knowledge_base",icon:"📚",label:"Knowledge Base"},{id:"reports",icon:"📊",label:"Reports",admin:true},{id:"users",icon:"👥",label:"Users",admin:true},{id:"companies",icon:"🏢",label:"Companies",superAdmin:true},{id:"clients",icon:"🤝",label:"Clients",superAdmin:true},{id:"ticket_types",icon:"🏷️",label:"Ticket Types",superAdmin:true},{id:"activity_log",icon:"📋",label:"Activity Log",superAdmin:true},{id:"integrations",icon:"🔌",label:"Integrations",superAdmin:true}].filter(function(n){if(n.superAdmin)return curUser.role==="admin";if(n.admin)return isAdmin;return true;});
   var bottomNav=NAV.slice(0,4);
   var curNav=NAV.find(function(n){return n.id===page;})||{icon:"",label:"—"};
@@ -1063,7 +1113,7 @@ export default function App(){
           {page==="user_guide"   &&<PageUserGuide   curUser={curUser}/>}
           {page==="knowledge_base"&&<PageKnowledgeBase tickets={allNonDeleted} ticketTypes={ticketTypes} users={users} isMobile={isMobile}/>}
           {page==="reports"      &&<PageReports     tickets={visible} users={users} ticketTypes={ticketTypes} companies={companies} clients={clients} statusSla={statusSla} schedules={schedules} allTimeSessions={allTimeSessions}/>}
-          {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSetPassword={dbSetPassword} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
+          {page==="users"        &&<PageUsers       users={users} companies={companies} setUsers={setUsers} curUser={curUser} addLog={addLog} showToast={showToast} schedules={schedules} setSchedules={setSchedulesR} dbSaveUser={dbSaveUser} dbDeleteUser={dbDeleteUser} dbSaveSchedule={dbSaveSchedule} isMobile={isMobile}/>}
           {page==="companies"    &&<PageCompanies   companies={companies} users={users} setCompanies={setCompanies} addLog={addLog} showToast={showToast} dbSaveCompany={dbSaveCompany} dbDeleteCompany={dbDeleteCompany}/>}
           {page==="clients"      &&<PageClients     clients={clients} setClients={setClients} companies={companies} addLog={addLog} showToast={showToast} dbSaveClient={dbSaveClient} dbDeleteClient={dbDeleteClient}/>}
           {page==="ticket_types" &&<PageTicketTypes ticketTypes={ticketTypes} users={users} setTicketTypes={setTTR} statusSla={statusSla} setStatusSla={setStatusSlaR} addLog={addLog} showToast={showToast} dbSaveTicketType={dbSaveTicketType} dbDeleteTicketType={dbDeleteTicketType}/>}
@@ -1135,11 +1185,12 @@ function PageNewTicket(p){
   var[startTime,setStartTime]=useState(Date.now());
   var[preview,setPreview]=useState(null);
   var[attachments,setAttachments]=useState([]);
+  var[submitting,setSubmitting]=useState(false);
   function fld(k,v){setForm(function(prev){return Object.assign({},prev,{[k]:v});});}
   var selType=ticketTypes.find(function(t){return t.id===form.typeId;});
   var selClient=clients.find(function(c){return c.id===form.clientId;});var availLocs=selClient?selClient.locations:[];
   var ACCEPTED=["image/jpeg","image/png","image/gif","image/webp","video/mp4","video/quicktime","video/webm"];
-  function processFiles(files){Array.from(files).forEach(function(file){if(!ACCEPTED.includes(file.type)){showToast("Unsupported: "+file.name,"error");return;}if(file.size>20*1024*1024){showToast(file.name+" > 20MB","error");return;}var r=new FileReader();r.onload=function(e){setAttachments(function(prev){if(prev.length>=10){showToast("Max 10 attachments","error");return prev;}return prev.concat([{id:uid(),name:file.name,type:file.type,size:file.size,dataUrl:e.target.result}]);});};r.readAsDataURL(file);});}
+  function processFiles(files){Array.from(files).forEach(function(file){if(!ACCEPTED.includes(file.type)){showToast("Unsupported: "+file.name,"error");return;}if(file.size>20*1024*1024){showToast(file.name+" > 20MB","error");return;}setAttachments(function(prev){if(prev.length>=10){showToast("Max 10 attachments","error");return prev;}return prev.concat([{id:uid(),name:file.name,type:file.type,size:file.size,file:file,previewUrl:URL.createObjectURL(file)}]);});});}
   function removeAtt(id){setAttachments(function(prev){return prev.filter(function(a){return a.id!==id;});});}
   function handlePreview(){
     if(!form.title.trim()||!form.description.trim()){showToast("Fill in title and description","error");return;}
@@ -1150,7 +1201,17 @@ function PageNewTicket(p){
     var draft=Object.assign({},form,{id:"t"+Date.now(),status:"Open",priority:tt?tt.priority:"medium",submittedBy:curUser.id,assignedTo:assign.id,createdAt:now,updatedAt:now,submittedAt:now,formOpenedAt:new Date(startTime).toISOString(),slaDeadline:sla,slaBreached:false,timeToCreateMins:mins,statusHistory:[{status:"Open",assignedTo:assign.id,timestamp:now,changedBy:curUser.id,note:"Ticket created — "+assign.reason}],statusTimeLog:[{status:"Open",enteredAt:now,exitedAt:null,durationMins:null}],conversations:[],closedAt:null,deleted:false,aiReason:assign.reason,attachments:attachments});
     setPreview({draft:draft,assign:assign});
   }
-  function handleSubmit(){
+  async function handleSubmit(){
+    if(submitting)return;
+    setSubmitting(true);
+    var uploaded=[];
+    try{
+      var files=preview.draft.attachments||[];
+      if(files.length)showToast("⏳ Uploading "+files.length+" file"+(files.length>1?"s":"")+"…");
+      for(var fi=0;fi<files.length;fi++){var meta=await uploadAttachment(files[fi].file);uploaded.push(Object.assign({id:files[fi].id},meta));}
+    }catch(upErr){setSubmitting(false);showToast("Upload failed: "+(upErr.message||"please try again"),"error");return;}
+    preview.draft=Object.assign({},preview.draft,{attachments:uploaded,_saveAttachments:true});
+    setSubmitting(false);
     setTickets(function(prev){return prev.concat([preview.draft]);});
     addLog("TICKET_CREATED",preview.draft.id,"Ticket \""+preview.draft.title+"\" created.");
     var assignedUser=users.find(function(u){return u.id===preview.draft.assignedTo;});
@@ -1164,6 +1225,7 @@ function PageNewTicket(p){
     var newId=preview.draft.id;
     setPreview(null);
     setForm(blankForm(ticketTypes,companies,curUser));
+    attachments.forEach(function(a){if(a.previewUrl){try{URL.revokeObjectURL(a.previewUrl);}catch(e){}}});
     setAttachments([]);
     setStartTime(Date.now());
     showToast("✅ Ticket submitted!");
@@ -1187,7 +1249,7 @@ function PageNewTicket(p){
         <label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:6}}>📎 Attachments</label>
         <button type="button" onClick={function(){document.getElementById("tfi").click();}} style={{width:"100%",padding:"14px",border:"2px dashed #cbd5e1",borderRadius:10,background:"#f8fafc",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>📁 Tap to attach files</button>
         <input id="tfi" type="file" multiple accept="image/*,video/*" style={{display:"none"}} onChange={function(e){processFiles(e.target.files);e.target.value="";}}/>
-        {attachments.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginTop:8}}>{attachments.map(function(a){return<div key={a.id} style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0"}}>{a.type.startsWith("image/")?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>:<div style={{height:70,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:24}}>🎬</span></div>}<button onClick={function(){removeAtt(a.id);}} style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,.55)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button></div>;})}</div>}
+        {attachments.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginTop:8}}>{attachments.map(function(a){return<div key={a.id} style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0"}}>{a.type.startsWith("image/")?<img src={a.previewUrl||a.dataUrl} alt={a.name} style={{width:"100%",height:70,objectFit:"cover",display:"block"}}/>:<div style={{height:70,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:24}}>🎬</span></div>}<button onClick={function(){removeAtt(a.id);}} style={{position:"absolute",top:3,right:3,background:"rgba(0,0,0,.55)",color:"#fff",border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button></div>;})}</div>}
       </div>
       {selType&&<div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:12,marginBottom:14,fontSize:12}}><div style={{fontWeight:700,color:"#0369a1",marginBottom:4}}>Auto-settings for "{selType.name}"</div><div style={{color:"#0c4a6e"}}>⚡ {PRI_META[selType.priority]?.label} · ⏱ {selType.slaHours}h SLA · 🤖 AI assign</div></div>}
       <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setPage("tickets");}}>Cancel</Btn><Btn onClick={handlePreview}>🔍 Preview &amp; Submit</Btn></div>
@@ -1195,7 +1257,7 @@ function PageNewTicket(p){
     {preview&&<Modal title="Confirm Submission" onClose={function(){setPreview(null);}}>
       <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:12,marginBottom:14}}><div style={{fontWeight:700,color:"#166534",marginBottom:4}}>🤖 AI Assignment</div><div style={{fontSize:13,color:"#14532d"}}>{preview.assign.reason}</div></div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>{[["Title",preview.draft.title],["Priority",PRI_META[preview.draft.priority]?.label],["Assigned To",(users.find(function(u){return u.id===preview.draft.assignedTo;})||{name:"Unassigned"}).name],["Attachments",preview.draft.attachments.length+" files"]].map(function(pair){return<div key={pair[0]} style={{background:"#f8fafc",padding:10,borderRadius:8}}><div style={{color:"#64748b",fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{pair[0]}</div><div style={{fontWeight:600,color:"#1e293b",marginTop:2,fontSize:13}}>{pair[1]||"—"}</div></div>;})}</div>
-      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setPreview(null);}}>Edit</Btn><Btn variant="success" onClick={handleSubmit}>✅ Submit</Btn></div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn variant="ghost" onClick={function(){setPreview(null);}}>Edit</Btn><Btn variant="success" onClick={handleSubmit} disabled={submitting}>{submitting?"⏳ Uploading…":"✅ Submit"}</Btn></div>
     </Modal>}
   </div>;
 }
@@ -1208,6 +1270,8 @@ function TicketDetail(p){
   var addLog=p.addLog;var showToast=p.showToast;var onClose=p.onClose;var statusSla=p.statusSla;var schedules=p.schedules||{};
   var refreshTimeSessions=p.refreshTimeSessions||function(){};
   var allTimeSessions=p.allTimeSessions||[];
+  var[atts,setAtts]=useState([]);
+  useEffect(function(){var alive=true;setAtts([]);dbGetTicketAttachments(ticket.id).then(function(a){if(alive)setAtts(a);});return function(){alive=false;};},[ticket.id]);
   var[tab,setTab]=useState("details");
   var[status,setStatus]=useState(ticket.status);
   var[asgn,setAsgn]=useState(ticket.assignedTo||"");
@@ -1413,7 +1477,7 @@ function TicketDetail(p){
         </div>
       </div>}
       {ticket.resolutionNote&&<div style={{marginTop:12,background:"#f0fdf4",border:"2px solid #10b981",borderRadius:10,padding:14}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><span style={{fontSize:16}}>📝</span><div style={{fontWeight:700,color:"#166534",fontSize:13}}>Resolution Note</div><span style={{fontSize:10,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 8px",fontWeight:700}}>Knowledge Base</span></div><div style={{fontSize:13,color:"#14532d",lineHeight:1.7,whiteSpace:"pre-wrap",background:"#fff",borderRadius:8,padding:"10px 14px",border:"1px solid #bbf7d0"}}>{ticket.resolutionNote}</div><div style={{fontSize:10,color:"#16a34a",marginTop:6}}>💡 Saved to team knowledge base — reference this when the same issue arises.</div></div>}
-      {ticket.attachments&&ticket.attachments.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>📎 Attachments ({ticket.attachments.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>{ticket.attachments.map(function(a){var isImg=a.type.startsWith("image/");return<div key={a.id} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){var w=window.open();w.document.write(isImg?'<img src="'+a.dataUrl+'" style="max-width:100%;"/>':'<video src="'+a.dataUrl+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={a.dataUrl} alt={a.name} style={{width:"100%",height:80,objectFit:"cover",display:"block"}}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:28}}>▶️</span></div>}</div>;})}</div></div>}
+      {atts.length>0&&<div style={{marginTop:12}}><div style={{fontWeight:700,color:"#1e293b",fontSize:12,marginBottom:8}}>📎 Attachments ({atts.length})</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>{atts.map(function(a,ai){var isImg=(a.type||"").startsWith("image/");var src=a.url||a.dataUrl||"";return<div key={a.id||ai} style={{borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}} onClick={function(){if(!src)return;if(a.url){window.open(a.url,"_blank","noopener");return;}var w=window.open();if(w)w.document.write(isImg?'<img src="'+src+'" style="max-width:100%;"/>':'<video src="'+src+'" controls style="max-width:100%;"></video>');}}>{isImg?<img src={src} alt={a.name} style={{width:"100%",height:80,objectFit:"cover",display:"block"}}/>:<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"#1e1b4b"}}><span style={{fontSize:28}}>▶️</span></div>}</div>;})}</div></div>}
     </div>}
     {tab==="status"&&isTech&&<div>
       <FSelect label="Update Status" value={status} onChange={function(e){setStatus(e.target.value);}} options={OPT_STATUSES}/>
@@ -1628,7 +1692,7 @@ function PageReports(p){
   var weeklyTrend=useMemo(function(){var now=new Date();var dow=now.getDay();var diffToMon=dow===0?6:dow-1;var thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-diffToMon);return Array.from({length:8},function(_,i){var wStart=new Date(thisMon.getTime()-(7-i)*7*86400000);var wEnd=new Date(wStart.getTime()+7*86400000-1);var wT=allActive.filter(function(t){var d=new Date(t.createdAt);return d>=wStart&&d<=wEnd;});var lbl=wStart.toLocaleDateString("en-US",{month:"short",day:"numeric"});return{label:lbl,total:wT.length,closed:calcClosed(wT).length,breached:wT.filter(function(t){return t.slaBreached;}).length};});},[allActive]);
   var byClient=useMemo(function(){return clients.map(function(cl){var cTickets=allActive.filter(function(t){return t.clientId===cl.id;});if(cTickets.length===0)return null;var byLoc=(cl.locations||[]).map(function(loc){var lT=cTickets.filter(function(t){return t.locationId===loc.id;});var typeBreakdown=ticketTypes.map(function(tt){var cnt=lT.filter(function(t){return t.typeId===tt.id;}).length;return cnt>0?{name:tt.name,count:cnt,color:tt.color}:null;}).filter(Boolean);return{id:loc.id,name:loc.name,address:loc.address,total:lT.length,open:lT.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(lT),slaRate:calcSlaRate(lT,statusSla,schedules),breached:lT.filter(function(t){return t.slaBreached;}).length,typeBreakdown:typeBreakdown};}).filter(function(l){return l.total>0;});var noLoc=cTickets.filter(function(t){return !t.locationId;});return{id:cl.id,name:cl.name,email:cl.email,total:cTickets.length,open:cTickets.filter(function(t){return t.status!=="Closed";}).length,loggedMins:loggedMins(cTickets),slaRate:calcSlaRate(cTickets,statusSla,schedules),breached:cTickets.filter(function(t){return t.slaBreached;}).length,byLoc:byLoc,noLoc:noLoc.length};}).filter(Boolean).sort(function(a,b){return b.total-a.total;});},[clients,allActive,ticketTypes,allTimeSessions]);
   async function generateInsight(){setAiLoading(true);setAiInsight("");var summary={totalTickets:allActive.length,slaRate:calcSlaRate(allActive),breached:allActive.filter(function(t){return t.slaBreached;}).length,topIssueTypes:top3.map(function(t){return t.name+" ("+t.total+")";}),openCount:allActive.filter(function(t){return t.status==="Open";}).length,escalatedCount:allActive.filter(function(t){return t.status==="Escalated";}).length,totalITHoursLogged:parseFloat((loggedMins(allActive)/60).toFixed(1)),statusTimeBreakdown:Object.keys(statusTimeSummary).filter(function(s){return statusTimeSummary[s]>0&&s!=="Closed";}).map(function(s){return s+": "+fmtDuration(statusTimeSummary[s])+" (actual elapsed time in status)";}),slaBreachAnalysis:{totalBreachInstances:slaBreachAnalysis.totalBreachCount,totalBreachTime:fmtDuration(slaBreachAnalysis.totalBreachMins),byStatus:ALL_STATUSES.filter(function(s){return slaBreachAnalysis.breachCount[s]>0;}).map(function(s){return s+" — "+slaBreachAnalysis.breachCount[s]+" breaches, "+fmtDuration(slaBreachAnalysis.breachDuration[s])+" over SLA";})},techBreakdown:techs.map(function(t){var m=userLoggedMins(t.id,allActive);return{name:t.name,tickets:allActive.filter(function(tk){return tk.assignedTo===t.id;}).length,loggedHours:parseFloat((m/60).toFixed(1))};}).filter(function(t){return t.tickets>0;}),clientBreakdown:byClient.map(function(c){return{client:c.name,tickets:c.total,loggedHours:parseFloat((c.loggedMins/60).toFixed(1)),slaRate:c.slaRate};}).slice(0,8),filterContext:fClient?(selClientObj?.name+(fLocation?" — "+(availLocations.find(function(l){return l.id===fLocation;})?.name||""):"")):"All clients"};
-  try{var res=await fetch("/api/ai-insight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. ⏳ Status time bottlenecks\n3. 🚨 SLA breach analysis\n4. ⏱ IT hours analysis\n5. 💡 3 actionable recommendations\n\nBe concise. Use bullet points.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});var data=await res.json();setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");}catch(e){setAiInsight("Error: "+e.message);}setAiLoading(false);}
+  try{var res=await fetch("/api/ai-insight",{method:"POST",headers:await authHeaders(),body:JSON.stringify({messages:[{role:"user",content:"You are an IT helpdesk analyst. Analyze this data and provide:\n1. 🔥 Top 3 biggest issues (what & where)\n2. ⏳ Status time bottlenecks\n3. 🚨 SLA breach analysis\n4. ⏱ IT hours analysis\n5. 💡 3 actionable recommendations\n\nBe concise. Use bullet points.\n\nData:\n"+JSON.stringify(summary,null,2)}]})});var data=await res.json();setAiInsight(data.content&&data.content[0]?data.content[0].text:"Unable to generate insight.");}catch(e){setAiInsight("Error: "+e.message);}setAiLoading(false);}
   var VIEWS=[{id:"summary",label:"📊 Summary"},{id:"sla_breach",label:"🚨 SLA Breaches"},{id:"by_client",label:"🤝 By Client"},{id:"trend",label:"📈 Trend"},{id:"by_type",label:"🏷️ By Type"},{id:"per_user",label:"👤 Per User"}];
   var filterLabel="";if(fClient){filterLabel=selClientObj?.name||"Client";if(fLocation){var lObj=availLocations.find(function(l){return l.id===fLocation;});filterLabel+=" → "+(lObj?.name||"Location");}}
   return<div>
@@ -1736,7 +1800,7 @@ function PageReports(p){
 // ── Users ─────────────────────────────────────────────────────────────────────
 function PageUsers(p){
   var users=p.users;var companies=p.companies;var setUsers=p.setUsers;var curUser=p.curUser;var addLog=p.addLog;var showToast=p.showToast;var schedules=p.schedules||{};var setSchedules=p.setSchedules;var isMobile=p.isMobile;
-  var dbSaveUser=p.dbSaveUser;var dbDeleteUser=p.dbDeleteUser;var dbSetPassword=p.dbSetPassword;var dbSaveSchedule=p.dbSaveSchedule;
+  var dbSaveUser=p.dbSaveUser;var dbDeleteUser=p.dbDeleteUser;var dbSaveSchedule=p.dbSaveSchedule;
   var[modal,setModal]=useState(null);var[form,setForm]=useState({});var[emailStatus,setEmailStatus]=useState(null);
   var[pwModal,setPwModal]=useState(null);var[newPw,setNewPw]=useState("");var[pwErr,setPwErr]=useState("");
   var[roles,setRolesState]=useState(function(){return loadRoles();});
@@ -1747,16 +1811,16 @@ function PageUsers(p){
   function addRole(){if(!roleForm.key.trim()||!roleForm.label.trim()){showToast("Key and label required","error");return;}var key=roleForm.key.trim().toLowerCase().replace(/\s+/g,"_");if(roles[key]){showToast("Role key already exists","error");return;}var next=Object.assign({},roles);next[key]={label:roleForm.label.trim(),color:roleForm.color,system:false};syncRoles(next);showToast("Role added!");setRoleForm({key:"",label:"",color:"#6366f1"});}
   function saveRoleEdit(){if(!roleForm.label.trim()){showToast("Label required","error");return;}var next=Object.assign({},roles);next[roleEdit]=Object.assign({},next[roleEdit],{label:roleForm.label.trim(),color:roleForm.color});syncRoles(next);showToast("Role updated!");setRoleEdit(null);setRoleForm({key:"",label:"",color:"#6366f1"});}
   function deleteRole(key){if(roles[key]?.system){showToast("Cannot delete system roles","error");return;}if(users.some(function(u){return u.role===key;})){showToast("Cannot delete — in use","error");return;}var next=Object.assign({},roles);delete next[key];syncRoles(next);showToast("Role deleted!");}
-  async function resetPassword(){if(!newPw||newPw.length<6){setPwErr("Minimum 6 characters");return;}await dbSetPassword(pwModal.id,newPw);addLog("PASSWORD_RESET",pwModal.id,"Password reset for "+pwModal.name);showToast("✅ Password reset!");setPwModal(null);setNewPw("");setPwErr("");}
-  async function approveUser(u){var updated=Object.assign({},u,{active:true});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});addLog("USER_APPROVED",u.id,u.name+" approved");showToast("✅ Account approved!");}
+  async function resetPassword(){if(!newPw||newPw.length<8){setPwErr("Minimum 8 characters");return;}var r=await callAuthApi({action:"set_password",userId:pwModal.id,password:newPw});if(!r.ok){setPwErr(r.error||"Could not reset password");return;}addLog("PASSWORD_RESET",pwModal.id,"Password reset for "+pwModal.name);showToast("✅ Password reset!");setPwModal(null);setNewPw("");setPwErr("");}
+  async function approveUser(u){var updated=Object.assign({},u,{active:true});var er=await dbSaveUser(updated);if(er){showToast("Could not approve: "+er,"error");return;}setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});addLog("USER_APPROVED",u.id,u.name+" approved");showToast("✅ Account approved!");}
   function handleScheduleChange(userId,sch){setSchedules(function(prev){var n=Object.assign({},prev);if(sch===null){delete n[userId];}else{n[userId]=sch;}return n;});dbSaveSchedule(userId,sch);}
   var allRoleOpts=Object.keys(roles).map(function(k){return mkOpt(k,roles[k].label);});
   var pendingUsers=users.filter(function(u){return !u.active;});
   var inp={width:"100%",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,outline:"none",background:"#f8fafc",boxSizing:"border-box"};
   async function save(){
     if(!form.name||!form.email){showToast("Name and email required","error");return;}
-    if(modal==="new"){var nu=Object.assign({},form,{id:uid(),createdAt:new Date().toISOString(),lastLogin:null});await dbSaveUser(nu);await dbSetPassword(nu.id,"password123");setUsers(function(prev){return prev.concat([nu]);});addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");showToast("User created");setEmailStatus("sending");var emailBody=["Hi "+nu.name+",","","An account has been created for you on the Hoptix IT Helpdesk portal.","","📧 Email: "+nu.email,"🔑 Temporary Password: password123","","⚠️ Please sign in and change your password immediately.","","— The Hoptix IT Team"].join("\n");var result=await callSendEmail({to:nu.email,subject:"🎉 Your Hoptix IT Helpdesk account is ready",body:emailBody});setEmailStatus(result.success?"sent":"failed");}
-    else{var old=users.find(function(u){return u.id===form.id;});await dbSaveUser(form);setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},form):u;});});if(old&&old.role!==form.role)addLog("USER_ROLE_CHANGE",form.id,"Role changed");showToast("User updated");}
+    if(modal==="new"){setEmailStatus("sending");var cr=await callAuthApi({action:"create_user",user:Object.assign({},form,{id:uid()})});if(!cr.ok){setEmailStatus(null);showToast(cr.error||"Could not create user","error");return;}var nu={id:cr.user.id,name:cr.user.name,email:cr.user.email,role:cr.user.role,companyId:cr.user.company_id||"",phone:cr.user.phone||"",dept:cr.user.dept||"",active:cr.user.active,createdAt:cr.user.created_at,lastLogin:null};setUsers(function(prev){return prev.concat([nu]);});addLog("USER_CREATED",nu.id,"New user "+nu.name+" created");showToast("User created");setEmailStatus(cr.emailSent?"sent":"failed");if(!cr.emailSent)showToast("User created, but the welcome email failed — use 🔑 Password to set one","error");}
+    else{var old=users.find(function(u){return u.id===form.id;});var newEmail=(form.email||"").trim().toLowerCase();if(old&&newEmail!==(old.email||"").toLowerCase()){var er1=await callAuthApi({action:"set_email",userId:form.id,email:newEmail});if(!er1.ok){showToast(er1.error||"Could not change email","error");return;}}var toSave=Object.assign({},form,{email:old&&newEmail===(old.email||"").toLowerCase()?old.email:newEmail});var er2=await dbSaveUser(toSave);if(er2){showToast("Could not save: "+er2,"error");return;}setUsers(function(prev){return prev.map(function(u){return u.id===form.id?Object.assign({},toSave):u;});});if(old&&old.role!==form.role)addLog("USER_ROLE_CHANGE",form.id,"Role changed");showToast("User updated");}
     setModal(null);
   }
   return<div>
@@ -1764,7 +1828,7 @@ function PageUsers(p){
       <div style={{fontWeight:700,color:"#92400e",marginBottom:10,fontSize:13}}>⏳ {pendingUsers.length} Account{pendingUsers.length>1?"s":""} Awaiting Approval</div>
       {pendingUsers.map(function(u){return<div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",padding:"10px 12px",borderRadius:8,border:"1px solid #fde68a",marginBottom:6,gap:8}}>
         <div style={{display:"flex",gap:8,alignItems:"center",flex:1,overflow:"hidden"}}><Avatar name={u.name} id={u.id} size={30}/><div style={{overflow:"hidden"}}><div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div><div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div></div></div>
-        <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅</Btn><Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Rejected");}}>✕</Btn></div>
+        <div style={{display:"flex",gap:6,flexShrink:0}}><Btn size="sm" variant="success" onClick={function(){approveUser(u);}}>✅</Btn><Btn size="sm" variant="danger" onClick={async function(){try{await dbDeleteUser(u.id);}catch(ex){showToast(ex.message||"Could not reject","error");return;}setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});showToast("Rejected");}}>✕</Btn></div>
       </div>;})}
     </div>}
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,gap:8,flexWrap:"wrap",alignItems:"center"}}>
@@ -1779,8 +1843,8 @@ function PageUsers(p){
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <Btn size="sm" variant="ghost" onClick={function(){setEmailStatus(null);setForm(Object.assign({},u));setModal("edit");}}>✏️ Edit</Btn>
             <Btn size="sm" variant="ghost" onClick={function(){setPwModal(u);setNewPw("");setPwErr("");}}>🔑 Password</Btn>
-            <Btn size="sm" variant={u.active?"warning":"success"} onClick={async function(){var updated=Object.assign({},u,{active:!u.active});await dbSaveUser(updated);setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>
-            {u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={async function(){await dbDeleteUser(u.id);setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}
+            <Btn size="sm" variant={u.active?"warning":"success"} onClick={async function(){var updated=Object.assign({},u,{active:!u.active});var er=await dbSaveUser(updated);if(er){showToast("Could not update: "+er,"error");return;}setUsers(function(prev){return prev.map(function(x){return x.id===u.id?updated:x;});});showToast(u.active?"Deactivated":"Activated");}}>{u.active?"Disable":"Enable"}</Btn>
+            {u.id!==curUser.id&&<Btn size="sm" variant="danger" onClick={async function(){if(!window.confirm("Delete "+u.name+"? This cannot be undone."))return;try{await dbDeleteUser(u.id);}catch(ex){showToast(ex.message||"Could not delete","error");return;}setUsers(function(prev){return prev.filter(function(x){return x.id!==u.id;});});addLog("USER_DELETED",u.id,"User "+u.name+" deleted");showToast("Deleted");}}>🗑</Btn>}
           </div>
         </Card>;
       })}
@@ -1796,7 +1860,7 @@ function PageUsers(p){
     </Modal>}
     {pwModal&&<Modal title={"🔑 Reset — "+pwModal.name} onClose={function(){setPwModal(null);setNewPw("");setPwErr("");}}>
       <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#92400e"}}>Resetting password for <strong>{pwModal.name}</strong></div>
-      <div style={{marginBottom:8}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password (min 6 chars)</label><input type="password" value={newPw} onChange={function(e){setNewPw(e.target.value);setPwErr("");}} placeholder="••••••••" style={inp}/></div>
+      <div style={{marginBottom:8}}><label style={{display:"block",fontSize:12,fontWeight:600,color:"#475569",marginBottom:4}}>New Password (min 8 chars)</label><input type="password" value={newPw} onChange={function(e){setNewPw(e.target.value);setPwErr("");}} placeholder="••••••••" style={inp}/></div>
       {pwErr&&<div style={{fontSize:12,color:"#dc2626",marginBottom:10}}>⚠️ {pwErr}</div>}
       <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:8}}><Btn variant="ghost" onClick={function(){setPwModal(null);}}>Cancel</Btn><Btn variant="danger" onClick={resetPassword}>🔑 Reset</Btn></div>
     </Modal>}

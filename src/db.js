@@ -5,18 +5,34 @@ export async function dbGetUsers(){
   var r=await supabase.from('users').select('*');
   return (r.data||[]).map(dbUserToApp);
 }
+// Updates an existing user's profile row. New users are created on the server (/api/auth).
 export async function dbSaveUser(u){
-  await supabase.from('users').upsert({id:u.id,name:u.name,email:u.email,role:u.role,company_id:u.companyId||null,phone:u.phone||'',dept:u.dept||'',active:u.active,created_at:u.createdAt,last_login:u.lastLogin});
+  var r=await supabase.from('users').update({name:u.name,email:u.email,role:u.role,company_id:u.companyId||null,phone:u.phone||'',dept:u.dept||'',active:u.active,last_login:u.lastLogin||null}).eq('id',u.id);
+  if(r.error){console.error('dbSaveUser error',r.error);return r.error.message||'Save failed';}
+  return null;
+}
+// Loads the signed-in person's own user row (matched by their Supabase Auth id)
+export async function dbGetMe(authId){
+  var r=await supabase.from('users').select('*').eq('auth_id',authId).maybeSingle();
+  if(r.error){console.error('dbGetMe error',r.error);return null;}
+  return r.data?dbUserToApp(r.data):null;
+}
+// Calls the secure server endpoint, sending the Supabase sign-in token
+export async function callAuthApi(payload){
+  try{
+    var s=await supabase.auth.getSession();
+    var token=s&&s.data&&s.data.session?s.data.session.access_token:null;
+    var headers={'Content-Type':'application/json'};
+    if(token)headers['Authorization']='Bearer '+token;
+    var res=await fetch('/api/auth',{method:'POST',headers:headers,body:JSON.stringify(payload)});
+    var data={};try{data=await res.json();}catch(e){}
+    if(!res.ok)return{ok:false,error:data.error||('Error '+res.status)};
+    return Object.assign({ok:true},data);
+  }catch(e){return{ok:false,error:e.message||'Network error'};}
 }
 export async function dbDeleteUser(id){
-  await supabase.from('users').delete().eq('id',id);
-}
-export async function dbGetPassword(id){
-  var r=await supabase.from('passwords').select('password').eq('user_id',id).single();
-  return r.data?.password||'password123';
-}
-export async function dbSetPassword(id,pw){
-  await supabase.from('passwords').upsert({user_id:id,password:pw});
+  var r=await callAuthApi({action:'delete_user',userId:id});
+  if(!r.ok)throw new Error(r.error);
 }
 
 // ── Companies ──────────────────────────────────────────────────────────────
@@ -56,15 +72,51 @@ export async function dbDeleteTicketType(id){
 }
 
 // ── Tickets ────────────────────────────────────────────────────────────────
+// Every ticket column EXCEPT attachments (attachments are heavy and loaded only when a ticket is opened)
+export const TICKET_COLS='id,title,description,type_id,company_id,client_id,location_id,status,priority,submitted_by,assigned_to,external_email,custom_type_name,sla_deadline,sla_breached,time_to_create_mins,status_history,status_time_log,conversations,ai_reason,has_unread_reply,deleted,closed_at,submitted_at,form_opened_at,created_at,updated_at,resolution_note';
+export const ATTACH_BUCKET='ticket-attachments';
+
 export async function dbGetTickets(){
-  var r=await supabase.from('tickets').select('*').order('created_at',{ascending:false});
+  var r=await supabase.from('tickets').select(TICKET_COLS).order('created_at',{ascending:false});
   // Throw instead of returning [] so the app retries and never wipes the ticket list on a failed load
   if(r.error){console.error('dbGetTickets error',r.error);throw r.error;}
   if(!r.data)throw new Error('dbGetTickets: no data returned');
   return (r.data||[]).map(dbTicketToApp);
 }
+// Loads ONE ticket (no attachments) — used by live updates instead of reloading every ticket
+export async function dbGetTicket(id){
+  var r=await supabase.from('tickets').select(TICKET_COLS).eq('id',id).maybeSingle();
+  if(r.error){console.error('dbGetTicket error',r.error);return null;}
+  return r.data?dbTicketToApp(r.data):null;
+}
+// Loads a ticket's attachments and creates short-lived secure links for files kept in Storage
+export async function dbGetTicketAttachments(id){
+  try{
+    var r=await supabase.from('tickets').select('attachments').eq('id',id).maybeSingle();
+    if(r.error||!r.data)return[];
+    var atts=Array.isArray(r.data.attachments)?r.data.attachments:[];
+    var paths=atts.filter(function(a){return a&&a.path;}).map(function(a){return a.path;});
+    if(paths.length){
+      var sr=await supabase.storage.from(ATTACH_BUCKET).createSignedUrls(paths,3600);
+      var map={};(sr.data||[]).forEach(function(x){if(x&&x.path&&x.signedUrl)map[x.path]=x.signedUrl;});
+      atts=atts.map(function(a){return a&&a.path?Object.assign({},a,{url:map[a.path]||''}):a;});
+    }
+    return atts.filter(Boolean);
+  }catch(e){console.error('dbGetTicketAttachments',e);return[];}
+}
+// Uploads one file to Storage and returns the small record saved on the ticket
+export async function uploadAttachment(file){
+  var safe=String(file.name||'file').replace(/[^a-zA-Z0-9._-]/g,'_').slice(-80);
+  var d=new Date();
+  var path=d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+safe;
+  var r=await supabase.storage.from(ATTACH_BUCKET).upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});
+  if(r.error)throw r.error;
+  return{name:file.name,type:file.type,size:file.size,path:path};
+}
 export async function dbSaveTicket(t){
   var row=appTicketToDb(t);
+  // Attachments are written only when a ticket is created — never re-sent on every update
+  if(t._saveAttachments&&t.attachments&&t.attachments.length)row.attachments=(t.attachments||[]).map(function(a){return{id:a.id,name:a.name,type:a.type,size:a.size,path:a.path};});
   var r=await supabase.from('tickets').upsert(row);
   if(r.error)console.error('dbSaveTicket error',r.error,row);
 }
@@ -314,6 +366,7 @@ export function dbTicketToApp(t){
     conversations:t.conversations||[],
     attachments:t.attachments||[],
     aiReason:t.ai_reason||'',
+    resolutionNote:t.resolution_note||'',
     hasUnreadReply:t.has_unread_reply||false,
     deleted:t.deleted||false,
     closedAt:t.closed_at||null,
@@ -344,8 +397,8 @@ export function appTicketToDb(t){
     status_history:t.statusHistory||[],
     status_time_log:t.statusTimeLog||[],
     conversations:t.conversations||[],
-    attachments:t.attachments||[],
     ai_reason:t.aiReason||'',
+    resolution_note:t.resolutionNote||null,
     has_unread_reply:t.hasUnreadReply||false,
     deleted:t.deleted||false,
     closed_at:t.closedAt||null,

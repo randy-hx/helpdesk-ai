@@ -1,8 +1,12 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
+import { requireCaller, STAFF_ROLES } from "./_lib.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
+  // Only IT staff may read inbox replies
+  const caller = await requireCaller(req, res, STAFF_ROLES);
+  if (!caller) return;
   const gmail = process.env.GMAIL_USER;
   const pass  = process.env.GMAIL_APP_PASSWORD;
   if (!gmail || !pass) return res.status(200).json({ replies: [] });

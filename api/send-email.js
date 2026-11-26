@@ -1,7 +1,11 @@
 import nodemailer from "nodemailer";
+import { requireCaller } from "./_lib.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
+  // Only signed-in, active Hoptix users may send email through the company Gmail
+  const caller = await requireCaller(req, res);
+  if (!caller) return;
   const { to, subject, text } = req.body;
   const gmailUser = process.env.GMAIL_USER;
   const gmailPass = process.env.GMAIL_APP_PASSWORD;

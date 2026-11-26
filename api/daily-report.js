@@ -4,10 +4,11 @@
 
 import nodemailer from "nodemailer";
 import { createClient } from "@supabase/supabase-js";
+import { cronAllowed } from "./_lib.js";
 
 const RECIPIENT = "randy@omnisecurityinc.com";
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const ALL_STATUSES = ["Open", "In Progress", "Pending", "Escalated", "Closed"];
 const IT_ROLES = ["admin", "it_manager", "it_technician"];
@@ -257,12 +258,13 @@ export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+  if (!cronAllowed(req)) return res.status(401).json({ error: "Unauthorized" });
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
     const [ticketsRes, usersRes, sessionsRes] = await Promise.all([
-      supabase.from("tickets").select("*"),
+      supabase.from("tickets").select("id,title,description,type_id,company_id,client_id,location_id,status,priority,submitted_by,assigned_to,external_email,custom_type_name,sla_deadline,sla_breached,time_to_create_mins,status_history,status_time_log,conversations,ai_reason,has_unread_reply,deleted,closed_at,submitted_at,form_opened_at,created_at,updated_at"),
       supabase.from("users").select("*"),
       supabase.from("time_sessions").select("*")
     ]);

@@ -7,7 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 // Rebuild statusTimeLog from statusHistory timestamps
@@ -73,12 +73,12 @@ export default async function handler(req, res) {
 
   // Simple secret key protection
   const secret = req.query.secret || req.body?.secret;
-  if (secret !== "hoptix-backfill-2026") {
-    return res.status(401).json({ error: "Unauthorized. Add ?secret=hoptix-backfill-2026 to the URL." });
+  if (!process.env.MIGRATION_SECRET || secret !== process.env.MIGRATION_SECRET) {
+    return res.status(401).json({ error: "Unauthorized. Add ?secret=<your MIGRATION_SECRET> to the URL." });
   }
 
   try {
-    const { data: tickets, error } = await supabase.from("tickets").select("*");
+    const { data: tickets, error } = await supabase.from("tickets").select("id,title,description,type_id,company_id,client_id,location_id,status,priority,submitted_by,assigned_to,external_email,custom_type_name,sla_deadline,sla_breached,time_to_create_mins,status_history,status_time_log,conversations,ai_reason,has_unread_reply,deleted,closed_at,submitted_at,form_opened_at,created_at,updated_at");
     if (error) throw error;
 
     const all = tickets || [];
